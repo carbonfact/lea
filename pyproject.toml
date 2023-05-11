@@ -8,7 +8,6 @@ authors = ["Max Halford <maxhalford25@gmail.com>"]
 python = ">=3.10,<3.11"
 networkx = "^2.8.6"
 sqlglot = "^6.0.4"
-dataclasses-json = "^0.5.7"
 Jinja2 = "^3.1.2"
 typer = "^0.6.1"
 google-cloud-bigquery = "^3.3.2"
@@ -24,3 +23,6 @@ ipykernel = "^6.21.2"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+lea = "lea.main:app"

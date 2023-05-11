@@ -1,5 +1,11 @@
+import abc
+import ast
 import dataclasses
+import itertools
 import pathlib
+
+import jinja2
+import sqlglot
 
 @dataclasses.dataclass
 class View(abc.ABC):
@@ -66,6 +72,7 @@ class SQLView(View):
     @property
     def dependencies(self):
         # HACK: sqlglot can't parse these views
+        # TODO: allow specifying these dependencies in a config file
         if self.schema == "core" and self.name == "measured_carbonverses_measurements":
             return {("core", "measured_carbonverses"), ("core", "indicators")}
         if self.schema == "core" and self.name == "carbonverses":
