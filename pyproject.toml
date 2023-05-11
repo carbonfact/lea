@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "lea"
+version = "0.1.0"
+description = "An opinionated alternative to dbt"
+authors = ["Max Halford <maxhalford25@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.11"
+networkx = "^2.8.6"
+sqlglot = "^6.0.4"
+dataclasses-json = "^0.5.7"
+Jinja2 = "^3.1.2"
+typer = "^0.6.1"
+google-cloud-bigquery = "^3.3.2"
+graphviz = "^0.20.1"
+db-dtypes = "^1.0.3"
+requests = "^2.28.1"
+python-dotenv = "^0.21.0"
+rich = "^12.6.0"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.21.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
