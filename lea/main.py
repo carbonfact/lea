@@ -22,7 +22,7 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from rich.console import Console
 
-from . import clients
+import lea
 
 
 @dataclasses.dataclass
@@ -114,6 +114,17 @@ def to_graphviz(dag, views, order):
 app = typer.Typer()
 
 
+def _make_client(username):
+    return lea.clients.BigQuery(
+        credentials=service_account.Credentials.from_service_account_info(
+            json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
+        ),
+        project_id="carbonfact-gsheet",
+        dataset_name=os.environ["SCHEMA"],
+        username=username
+    )
+
+
 @app.command()
 def run(
     views_dir: str,
@@ -140,18 +151,25 @@ def run(
     if end:
         end = tuple(end.split("."))
 
+    # Determine the username, who will be the author of this run
+    username = (
+        None
+        if (production or test)
+        else os.environ.get("USER", getpass.getuser())
+    )
+
     # The client determines where the views will be written
     # TODO: move this to a config file
-    client = clients.BigQuery(
-        credentials=service_account.Credentials.from_service_account_info(
-            json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
-        ),
-        project_id="carbonfact-gsheet",
-        dataset_name=os.environ["SCHEMA"],
-        username=None
-        if (production or test)
-        else os.environ.get("USER", getpass.getuser()),
-    )
+    client = _make_client(username)
+
+    # List all the relevant views
+    views = lea.views.load_views(views_dir)
+    console.log(f"Found {len(views):,d} views")
+
+    # Organize the views into a directed acyclic graph
+    dag = lea.dag.DAGOfViews(views)
+
+    # HACK
     # if production:
     #     account_clients = {
     #         account: BigQuery(
@@ -167,51 +185,8 @@ def run(
     #         .splitlines()
     #     }
 
-    # # Test views
-    # if test:
-    #     tests = [
-    #         View.from_path(path)
-    #         for path in map(pathlib.Path, glob.glob(f"{views_dir}/tests/**"))
-    #         if not path.name.startswith("_") and path.suffix in {".py", ".sql"}
-    #     ]
-    #     for test in tests:
-    #         console.log(test)
-    #         if dry:
-    #             console.log(str(test))
-    #             continue
-    #         try:
-    #             conflicts = client.load(test)
-    #         except Exception as e:
-    #             console.log(f"Failed running {test}")
-    #             raise e
-    #         conflicts = client.load(test)
-    #         if not conflicts.empty:
-    #             console.log(str(test))
-    #             console.log(conflicts)
-    #         else:
-    #             console.log(str(test))
-    #         client.delete(view_name=f"tests__{test.name}")
-    #     return
-
     # # Load/create a run
     # run = Run.load(fresh=rerun)
-
-    # # Enumerate the views
-    # schema_dirs = [p for p in views_dir.iterdir() if p.is_dir()]
-    # all_views = [
-    #     View.from_path(path)
-    #     for schema_dir in schema_dirs
-    #     for path in schema_dir.rglob("*")
-    #     if not path.is_dir()
-    #     and not path.name.startswith("_")
-    #     and path.suffix in {".py", ".sql"}
-    #     and path.stat().st_size > 0
-    # ]
-    # views = [view for view in all_views if view.schema not in {"tests", "stale", "funcs"}]
-
-    # # Organize the views into a directed acyclic graph
-    # dag = DAGOfViews(views)
-    # views = {(view.schema, view.name): view for view in views}
 
     # # Determine the execution order
     # order = determine_execution_order(dag, views, start, end, only, inclusive)
@@ -280,5 +255,28 @@ def test(views_dir: str):
     views_dir = pathlib.Path(views_dir)
     dotenv.load_dotenv()
 
-    # The client determines where the views will be written
-    ...
+    # # Test views
+    # if test:
+    #     tests = [
+    #         View.from_path(path)
+    #         for path in map(pathlib.Path, glob.glob(f"{views_dir}/tests/**"))
+    #         if not path.name.startswith("_") and path.suffix in {".py", ".sql"}
+    #     ]
+    #     for test in tests:
+    #         console.log(test)
+    #         if dry:
+    #             console.log(str(test))
+    #             continue
+    #         try:
+    #             conflicts = client.load(test)
+    #         except Exception as e:
+    #             console.log(f"Failed running {test}")
+    #             raise e
+    #         conflicts = client.load(test)
+    #         if not conflicts.empty:
+    #             console.log(str(test))
+    #             console.log(conflicts)
+    #         else:
+    #             console.log(str(test))
+    #         client.delete(view_name=f"tests__{test.name}")
+    #     return

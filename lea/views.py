@@ -9,7 +9,12 @@ import sqlglot
 
 @dataclasses.dataclass
 class View(abc.ABC):
-    path: pathlib.Path
+    origin: pathlib.Path
+    relative_path: pathlib.Path
+
+    @property
+    def path(self):
+        return self.origin.joinpath(self.relative_path)
 
     def __post_init__(self):
         if not isinstance(self.path, pathlib.Path):
@@ -17,25 +22,23 @@ class View(abc.ABC):
 
     @property
     def schema(self):
-        return list(self.path.parents)[:-2][-1].name
+        return self.relative_path.parts[0]
 
     @property
     def name(self):
-        parents = itertools.takewhile(
-            lambda x: x != self.schema, (p.stem for p in self.path.parents)
-        )
-        name_parts = itertools.chain(parents, [self.path.stem])
+        name_parts = itertools.chain(self.relative_path.parts[1:-1], [self.relative_path.stem])
         return "__".join(name_parts)
 
     def __repr__(self):
         return f"{self.schema}.{self.name}"
 
     @classmethod
-    def from_path(cls, path):
+    def from_path(cls, path, origin):
+        relative_path = path.relative_to(origin)
         if path.suffix == ".py":
-            return PythonView(path)
+            return PythonView(origin, relative_path)
         if path.suffix == ".sql":
-            return SQLView(path)
+            return SQLView(origin, relative_path)
 
     @property
     @abc.abstractmethod
@@ -73,6 +76,8 @@ class SQLView(View):
     def dependencies(self):
         # HACK: sqlglot can't parse these views
         # TODO: allow specifying these dependencies in a config file
+        if self.schema == "core" and self.name == "transport_steps":
+            return {("core", "measured_carbonverses")}
         if self.schema == "core" and self.name == "measured_carbonverses_measurements":
             return {("core", "measured_carbonverses"), ("core", "indicators")}
         if self.schema == "core" and self.name == "carbonverses":
@@ -146,3 +151,16 @@ class PythonView(View):
                     pass
 
         return set(_dependencies())
+
+
+def load_views(views_dir: pathlib.Path) -> list[View]:
+    return [
+        view
+        for schema_dir in (d for d in views_dir.iterdir() if d.is_dir())
+        for path in schema_dir.rglob("*")
+        if not path.is_dir()
+        and not path.name.startswith("_")
+        and path.suffix in {".py", ".sql"}
+        and path.stat().st_size > 0
+        and (view := View.from_path(path, origin=views_dir)).schema not in {"tests", "stale", "funcs"}
+    ]
