@@ -7,6 +7,7 @@ import datetime as dt
 import getpass
 import glob
 import importlib
+import io
 import itertools
 import json
 import os
@@ -278,9 +279,10 @@ def test(views_dir: str):
 
 
 @app.command()
-def docs(views_dir: str):
+def docs(views_dir: str, output_dir: str = "docs"):
     # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
+    output_dir = pathlib.Path(output_dir)
 
     # List all the relevant views
     views = lea.views.load_views(views_dir)
@@ -288,3 +290,42 @@ def docs(views_dir: str):
 
     # Organize the views into a directed acyclic graph
     dag = lea.dag.DAGOfViews(views)
+
+    # Now we can generate the docs for each schema and view therein
+    readme_content = io.StringIO()
+    readme_content.write("# Views\n\n")
+    readme_content.write("## Schemas\n\n")
+    for schema in dag.schemas:
+        readme_content.write(f"- [`{schema}`](./{schema})\n")
+        content = io.StringIO()
+
+        # Write down the schema description if it exists
+        if (existing_readme := views_dir / schema / "README.md").exists():
+            content.write(existing_readme.read_text() + "\n")
+        else:
+            content.write(f"# `{schema}`\n\n")
+
+        # Write down the views
+        content.write("## Views\n\n")
+        for view in dag.values():
+            if view.schema != schema:
+                continue
+            content.write(f"### `{view.name}`\n\n")
+
+        # Write the schema README
+        schema_readme = output_dir / schema / "README.md"
+        schema_readme.parent.mkdir(parents=True, exist_ok=True)
+        schema_readme.write_text(content.getvalue())
+    else:
+        readme_content.write("\n")
+
+    # Flowchart
+    mermaid = dag.to_mermaid()
+    mermaid = mermaid.replace("style", "style_")  # HACK
+    readme_content.write("## Flowchart\n\n")
+    readme_content.write(f"```mermaid\n{mermaid}```\n")
+
+    # Write the root README
+    readme = output_dir / "README.md"
+    readme.parent.mkdir(parents=True, exist_ok=True)
+    readme.write_text(readme_content.getvalue())
