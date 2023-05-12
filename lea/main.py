@@ -125,22 +125,6 @@ def run(
     if only:
         blacklist = set(dag.keys()).difference(only)
 
-    # Display progress
-    colors = dict(
-        zip(
-            sorted(dag.schemas),
-            (
-                "turquoise4",
-                "magenta",
-                "slate_blue1",
-                "dark_orange3",
-                "deep_pink2",
-                "yellow",
-                "green",
-            ),
-        )
-    )
-
     def display_progress() -> rich.table.Table:
         table = rich.table.Table()
         table.add_column("schema")
@@ -150,11 +134,12 @@ def run(
 
         for schema, view_name in jobs:
             status = "[yellow]RUNNING" if (schema, view_name) in jobs_in_progress else "[green]DONE"
-            duration = ""
-            if seconds := jobs_time_taken.get((schema, view_name)):
-                duration = dt.timedelta(seconds=seconds)
-                duration = duration - dt.timedelta(microseconds=duration.microseconds)
-            table.add_row(schema, view_name, status, str(duration))
+            duration = (
+                jobs_ended_at.get((schema, view_name), dt.datetime.now())
+                - jobs_started_at[(schema, view_name)]
+            )
+            rounded_seconds = round(duration.total_seconds(), 1)
+            table.add_row(schema, view_name, status, f"{rounded_seconds}s")
 
         return table
 
@@ -162,18 +147,10 @@ def run(
     dag.prepare()
     jobs = {}
     jobs_in_progress = set()
-    jobs_time_taken = {}
-    n_done = 0
+    jobs_started_at = {}
+    jobs_ended_at = {}
 
-    def time_job(job, key):
-        def _w(*a, **k):
-            tic = time.time()
-            job(*a, **k)
-            jobs_time_taken[key] = time.time() - tic
-
-        return _w
-
-    with rich.live.Live(display_progress(), refresh_per_second=4) as live:
+    with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
         while dag.is_active():
             # We check if new views have been unlocked
             # If so, we submit a job to create them
@@ -188,13 +165,11 @@ def run(
                 if node in blacklist:
                     dag.done(node)
                     continue
+                jobs_started_at[node] = dt.datetime.now()
                 jobs[node] = threads.submit(
-                    time_job(
-                        job=functools.partial(client.create, view=dag[node])
-                        if not dry
-                        else functools.partial(_do_nothing),
-                        key=node,
-                    )
+                    functools.partial(client.create, view=dag[node])
+                    if not dry
+                    else functools.partial(_do_nothing)
                 )
                 jobs_in_progress.add(node)
             # We check if any jobs are done
@@ -203,6 +178,7 @@ def run(
                 if jobs[node].done():
                     dag.done(node)
                     jobs_in_progress.remove(node)
+                    jobs_ended_at[node] = dt.datetime.now()
             live.update(display_progress())
 
     # HACK
@@ -325,7 +301,7 @@ def docs(views_dir: str, output_dir: str = "docs"):
 
         # Write down the views
         content.write("## Views\n\n")
-        for view in dag.values():
+        for view in sorted(dag.values()):
             if view.schema != schema:
                 continue
             content.write(f"### `{view.name}`\n\n")
