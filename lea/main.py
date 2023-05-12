@@ -25,6 +25,10 @@ from rich.console import Console
 import lea
 
 
+console = Console()
+dotenv.load_dotenv()
+
+
 @dataclasses.dataclass
 class Step:
     n_errors: int = 0
@@ -110,7 +114,6 @@ def to_graphviz(dag, views, order):
     return dot
 
 
-
 app = typer.Typer()
 
 
@@ -121,7 +124,7 @@ def _make_client(username):
         ),
         project_id="carbonfact-gsheet",
         dataset_name=os.environ["SCHEMA"],
-        username=username
+        username=username,
     )
 
 
@@ -138,12 +141,8 @@ def run(
     rerun: bool = False,
     production: bool = False,
 ):
-
+    # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
-    console = Console()
-    dotenv.load_dotenv()
-
-    # Massage CLI inputs into tuples
     if only:
         only = [tuple(v.split(".")) for v in only]
     if start:
@@ -152,11 +151,7 @@ def run(
         end = tuple(end.split("."))
 
     # Determine the username, who will be the author of this run
-    username = (
-        None
-        if (production or test)
-        else os.environ.get("USER", getpass.getuser())
-    )
+    username = None if (production or test) else os.environ.get("USER", getpass.getuser())
 
     # The client determines where the views will be written
     # TODO: move this to a config file
@@ -280,3 +275,16 @@ def test(views_dir: str):
     #             console.log(str(test))
     #         client.delete(view_name=f"tests__{test.name}")
     #     return
+
+
+@app.command()
+def docs(views_dir: str):
+    # Massage CLI inputs
+    views_dir = pathlib.Path(views_dir)
+
+    # List all the relevant views
+    views = lea.views.load_views(views_dir)
+    console.log(f"Found {len(views):,d} views")
+
+    # Organize the views into a directed acyclic graph
+    dag = lea.dag.DAGOfViews(views)
