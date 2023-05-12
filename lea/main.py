@@ -133,7 +133,7 @@ def run(
         table.add_column("duration")
 
         for schema, view_name in jobs:
-            status = "[yellow]RUNNING" if (schema, view_name) in jobs_in_progress else "[green]DONE"
+            status = "[yellow]RUNNING" if (schema, view_name) in jobs_started_at else "[green]DONE"
             duration = (
                 jobs_ended_at.get((schema, view_name), dt.datetime.now())
                 - jobs_started_at[(schema, view_name)]
@@ -144,13 +144,12 @@ def run(
         return table
 
     threads = concurrent.futures.ThreadPoolExecutor(max_workers=8)
-    dag.prepare()
     jobs = {}
-    jobs_in_progress = set()
     jobs_started_at = {}
     jobs_ended_at = {}
 
     with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
+        dag.prepare()
         while dag.is_active():
             # We check if new views have been unlocked
             # If so, we submit a job to create them
@@ -165,19 +164,17 @@ def run(
                 if node in blacklist:
                     dag.done(node)
                     continue
-                jobs_started_at[node] = dt.datetime.now()
                 jobs[node] = threads.submit(
                     functools.partial(client.create, view=dag[node])
                     if not dry
                     else functools.partial(_do_nothing)
                 )
-                jobs_in_progress.add(node)
+                jobs_started_at[node] = dt.datetime.now()
             # We check if any jobs are done
             # When a job is done, we notify the DAG, which will unlock the next views
-            for node in list(jobs_in_progress):
-                if jobs[node].done():
+            for node in jobs_started_at:
+                if node not in jobs_ended_at and jobs[node].done():
                     dag.done(node)
-                    jobs_in_progress.remove(node)
                     jobs_ended_at[node] = dt.datetime.now()
             live.update(display_progress())
 
