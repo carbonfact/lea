@@ -55,14 +55,9 @@ class BigQuery(Client):
 
     @property
     def dataset_name(self):
-        return (
-            f"{self._dataset_name}_{self.username}"
-            if self.username
-            else self._dataset_name
-        )
+        return f"{self._dataset_name}_{self.username}" if self.username else self._dataset_name
 
     def _make_job(self, view: views.SQLView):
-
         query = view.query
         if self.username:
             query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
@@ -106,7 +101,9 @@ class BigQuery(Client):
         return job.to_dataframe()
 
     def list_existing(self):
-        return [table.table_id for table in self.client.list_tables(self.dataset_name)]
+        return [
+            table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
+        ]
 
     def delete(self, view_name: str):
         self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{view_name}")

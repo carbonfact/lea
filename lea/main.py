@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import abc
 import ast
+import collections
+import concurrent.futures
 import dataclasses
 import datetime as dt
+import functools
 import getpass
 import glob
 import importlib
@@ -13,21 +16,20 @@ import json
 import os
 import pathlib
 import pickle
+import time
 
 import dotenv
-import jinja2
-import networkx as nx
-import sqlglot
 import typer
-from google.cloud import bigquery
-from google.oauth2 import service_account
-from rich.console import Console
+import rich.console
+import rich.live
+import rich.table
 
 import lea
 
 
-console = Console()
 dotenv.load_dotenv()
+app = typer.Typer()
+console = rich.console.Console()
 
 
 @dataclasses.dataclass
@@ -65,60 +67,9 @@ class Run:
         pathlib.Path(".run.pkl").unlink(missing_ok=True)
 
 
-def determine_execution_order(dag, views, start, end, only, inclusive):
-    if only:
-        return only
-
-    if start:
-        order = [start] if inclusive else []
-        for src, dst in nx.bfs_edges(dag, start):
-            if dst not in order:
-                order.append(dst)
-        return order
-
-    if end:
-        subset = {end} if inclusive else []
-        for src, dst in nx.bfs_edges(dag, end, reverse=True):
-            if dst not in subset and dst in views:
-                subset.add(dst)
-        order = list(nx.topological_sort(dag.subgraph(subset)))
-        return order
-
-    return list(nx.topological_sort(dag))
-
-
-def to_graphviz(dag, views, order):
-    import graphviz
-
-    dot = graphviz.Digraph()
-
-    for node in dag.nodes:
-        style = {}
-        # Source tables
-        if node not in views.keys():
-            style["shape"] = "box"
-        # Views
-        else:
-            if isinstance(views[node], PythonView):
-                style["color"] = "darkgoldenrod2"
-                style["fontcolor"] = "dodgerblue4"
-        if node in views.keys() and node in order:
-            style["style"] = "filled"
-            style["fillcolor"] = "lightgreen"
-        dot.node(".".join(node), **style)
-
-    # Dependencies
-    for dst in dag.nodes:
-        for src in dag.predecessors(dst):
-            dot.edge(".".join(src), ".".join(dst))
-
-    return dot
-
-
-app = typer.Typer()
-
-
 def _make_client(username):
+    from google.oauth2 import service_account
+
     return lea.clients.BigQuery(
         credentials=service_account.Credentials.from_service_account_info(
             json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
@@ -129,16 +80,15 @@ def _make_client(username):
     )
 
 
+def _do_nothing():
+    """This is a dummy function for dry runs"""
+
+
 @app.command()
 def run(
     views_dir: str,
     only: list[str] = typer.Option(None),
-    start: str = typer.Option(None),
-    end: str = typer.Option(None),
-    inclusive: bool = True,
     dry: bool = False,
-    viz: bool = False,
-    test: bool = False,
     rerun: bool = False,
     production: bool = False,
 ):
@@ -146,10 +96,6 @@ def run(
     views_dir = pathlib.Path(views_dir)
     if only:
         only = [tuple(v.split(".")) for v in only]
-    if start:
-        start = tuple(start.split("."))
-    if end:
-        end = tuple(end.split("."))
 
     # Determine the username, who will be the author of this run
     username = None if (production or test) else os.environ.get("USER", getpass.getuser())
@@ -164,6 +110,100 @@ def run(
 
     # Organize the views into a directed acyclic graph
     dag = lea.dag.DAGOfViews(views)
+
+    # Remove orphan views
+    for schema, table in client.list_existing():
+        if (schema, table) in dag:
+            continue
+        console.log(f"Removing {schema}.{table}")
+        if not dry:
+            client.delete(view_name=name)
+        console.log(f"Removed {schema}.{table}")
+
+    # Determine which views need to be run
+    blacklist = set()
+    if only:
+        blacklist = set(dag.keys()).difference(only)
+
+    # Display progress
+    colors = dict(
+        zip(
+            sorted(dag.schemas),
+            (
+                "turquoise4",
+                "magenta",
+                "slate_blue1",
+                "dark_orange3",
+                "deep_pink2",
+                "yellow",
+                "green",
+            ),
+        )
+    )
+
+    def display_progress() -> rich.table.Table:
+        table = rich.table.Table()
+        table.add_column("schema")
+        table.add_column("view")
+        table.add_column("status")
+        table.add_column("duration")
+
+        for schema, view_name in jobs:
+            status = "[yellow]RUNNING" if (schema, view_name) in jobs_in_progress else "[green]DONE"
+            duration = ""
+            if seconds := jobs_time_taken.get((schema, view_name)):
+                duration = dt.timedelta(seconds=seconds)
+                duration = duration - dt.timedelta(microseconds=duration.microseconds)
+            table.add_row(schema, view_name, status, str(duration))
+
+        return table
+
+    threads = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+    dag.prepare()
+    jobs = {}
+    jobs_in_progress = set()
+    jobs_time_taken = {}
+    n_done = 0
+
+    def time_job(job, key):
+        def _w(*a, **k):
+            tic = time.time()
+            job(*a, **k)
+            jobs_time_taken[key] = time.time() - tic
+
+        return _w
+
+    with rich.live.Live(display_progress(), refresh_per_second=4) as live:
+        while dag.is_active():
+            # We check if new views have been unlocked
+            # If so, we submit a job to create them
+            # We record the job in a dict, so that we can check when it's done
+            for node in dag.get_ready():
+                # Some nodes in the graph are not part of the views, they're external dependencies,
+                # so we skip them
+                if node not in dag:
+                    dag.done(node)
+                    continue
+                # Some nodes are blacklisted, so we skip them
+                if node in blacklist:
+                    dag.done(node)
+                    continue
+                jobs[node] = threads.submit(
+                    time_job(
+                        job=functools.partial(client.create, view=dag[node])
+                        if not dry
+                        else functools.partial(_do_nothing),
+                        key=node,
+                    )
+                )
+                jobs_in_progress.add(node)
+            # We check if any jobs are done
+            # When a job is done, we notify the DAG, which will unlock the next views
+            for node in list(jobs_in_progress):
+                if jobs[node].done():
+                    dag.done(node)
+                    jobs_in_progress.remove(node)
+            live.update(display_progress())
 
     # HACK
     # if production:
@@ -187,30 +227,8 @@ def run(
     # # Determine the execution order
     # order = determine_execution_order(dag, views, start, end, only, inclusive)
 
-    # # Visualize dependencies
-    # if viz:
-    #     dot = to_graphviz(dag, views, order)
-    #     dot.render(view=True, cleanup=True)
-    #     return
-
-    # # Removing orphan views
-    # for name in client.list_existing():
-    #     # HACK: can be fixed once we have one dataset per schema
-    #     schema, table = name.split("__", 1)
-    #     if (schema, table) in views:
-    #         continue
-    #     console.log(f"Removing {schema}.{table}")
-    #     if not dry:
-    #         client.delete(view_name=name)
-    #     console.log(f"Removed {schema}.{table}")
-
     # # Run views
     # for view_key in order:
-    #     if not (view := views.get(view_key)):
-    #         continue
-    #     if run[view_key].done:
-    #         console.log(f"Skipping {view}")
-    #         continue
     #     if not dry:
     #         tic = dt.datetime.now()
     #         try:

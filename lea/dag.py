@@ -31,7 +31,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             out.write("    end\n\n")
         for dst, srcs in self.dependencies.items():
             dst = ".".join(dst)
-            for src in srcs:
+            for src in sorted(srcs):
                 src = ".".join(src)
                 out.write(f"    {src} --> {dst}\n")
         return out.getvalue()
