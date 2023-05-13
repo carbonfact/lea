@@ -19,7 +19,6 @@ import pickle
 import time
 
 import dotenv
-import jinja2
 import typer
 import rich.console
 import rich.live
@@ -65,6 +64,7 @@ def run(
     production: bool = False,
     threads: int = 8,
     show: int = 20,
+    raise_exceptions: bool = False,
 ):
     # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
@@ -144,8 +144,8 @@ def run(
             # We record the job in a dict, so that we can check when it's done
             for node in dag.get_ready():
                 if (
-                    # Some nodes in the graph are not part of the views, they're external dependencies,
-                    # so we skip them
+                    # Some nodes in the graph are not part of the views,
+                    # they're external dependencies which can be ignored
                     node not in dag
                     # Some nodes are blacklisted, so we skip them
                     or node in blacklist
@@ -184,7 +184,10 @@ def run(
     # Save the cache
     all_done = not exceptions and not skipped
     cache = set() if all_done else cache
-    cache_path.write_bytes(pickle.dumps(cache))
+    if cache:
+        cache_path.write_bytes(pickle.dumps(cache))
+    else:
+        cache_path.unlink(missing_ok=True)
 
     # Summary statistics
     console.log(f"Finished in {round(time.time() - tic)}s")
@@ -202,26 +205,56 @@ def run(
             console.print(f"{schema}.{view_name}", style="bold red")
             console.print(exception)
 
+        if raise_exceptions:
+            raise Exception("Some views failed to build")
+
 
 @app.command()
-def export(self, views_dir: str):
-    ...
+def export(views_dir: str):
+    """
 
-    # HACK
-    # if production:
-    #     account_clients = {
-    #         account: BigQuery(
-    #             credentials=service_account.Credentials.from_service_account_info(
-    #                 json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
-    #             ),
-    #             project_id="carbonfact-gsheet",
-    #             dataset_name=f"export_{account.replace('-', '_')}",
-    #             username=None,
-    #         )
-    #         for account in pathlib.Path(views_dir / "export" / "accounts.txt")
-    #         .read_text()
-    #         .splitlines()
-    #     }
+    HACK: this is too bespoke for Carbonfact
+
+    """
+
+    # Massage CLI inputs
+    views_dir = pathlib.Path(views_dir)
+
+    # List the export views
+    views = lea.views.load_views(views_dir)
+    views = [view for view in views if view.schema == "export"]
+    console.log(f"Found {len(views):,d} views")
+
+    # List the accounts for which to produce exports
+    accounts = pathlib.Path(views_dir / "export" / "accounts.txt").read_text().splitlines()
+    console.log(f"Found {len(accounts):,d} accounts")
+
+    production = True
+    username = None if production else os.environ.get("USER", getpass.getuser())
+
+    from google.oauth2 import service_account
+
+    account_clients = {
+        account: lea.clients.BigQuery(
+            credentials=service_account.Credentials.from_service_account_info(
+                json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
+            ),
+            project_id="carbonfact-gsheet",
+            dataset_name=f"export_{account.replace('-', '_')}",
+            username=None,
+        )
+        for account in accounts
+    }
+
+    for account in account_clients:
+        for view in views:
+            account_view = lea.views.GenericSQLView(
+                schema="",
+                name=view.name,
+                query=f"SELECT * FROM (\n{view.query}\n)\nWHERE account = '{account}'",
+            )
+            account_clients[account].create(account_view)
+            console.log(f"Created {view} for {account}")
 
 
 @app.command()
@@ -255,6 +288,36 @@ def test(views_dir: str, threads: int = 8, production: bool = False):
                 console.log(str(test), style="bold green" if conflicts.empty else "bold red")
             except Exception as exc:
                 console.log(f"Failed running {test}", style="bold magenta")
+
+
+@app.command()
+def archive(views_dir: str, view: str):
+    # Massage CLI inputs
+    views_dir = pathlib.Path(views_dir)
+    schema, view_name = tuple(view.split("."))
+
+    from google.oauth2 import service_account
+
+    client = lea.clients.BigQuery(
+        credentials=service_account.Credentials.from_service_account_info(
+            json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
+        ),
+        project_id="carbonfact-gsheet",
+        dataset_name="archive",
+        username=None,
+    )
+
+    view = {(view.schema, view.name): view for view in lea.views.load_views(views_dir)}[
+        schema, view_name
+    ]
+
+    today = dt.date.today()
+    archive_view = lea.views.GenericSQLView(
+        schema="",
+        name=f"kaya__{view.schema}__{view.name}__{today.strftime('%Y_%m_%d')}",
+        query=f"SELECT * FROM kaya.{view.schema}__{view.name}",  # HACK
+    )
+    client.create(archive_view)
 
 
 @app.command()

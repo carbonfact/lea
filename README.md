@@ -1,0 +1,22 @@
+lea is an oppinionated alternative to [dbt](https://www.getdbt.com/) and [Dataform](https://cloud.google.com/dataform).
+
+- [x] Automatic DAG construction
+- [x] CLI
+- [x] Singular testing
+- [x] DAG selection
+- [x] Checkpointing
+- [x] Schema and sub-schema handling
+- [x] Dry runs
+- [x] Write in Python and/or SQL
+- [x] Jinja templating
+- [x] Development schemas
+- [ ] Expansion (works, but hacky)
+- [x] Documentation
+- [x] Mermaid visualization
+- [x] Asynchronous running
+- [x] Incremental reruns
+- [ ] Linting
+- [ ] Data lineage
+- [ ] Importable as a library
+- [ ] Multi-engine support (only BigQuery for now)
+- [x] Historization

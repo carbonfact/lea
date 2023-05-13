@@ -1,5 +1,4 @@
 import abc
-from google.cloud import bigquery
 
 from . import views
 
@@ -48,6 +47,8 @@ class Client(abc.ABC):
 
 class BigQuery(Client):
     def __init__(self, credentials, project_id, dataset_name, username):
+        from google.cloud import bigquery
+
         self.project_id = project_id
         self.client = bigquery.Client(credentials=credentials)
         self._dataset_name = dataset_name
@@ -82,6 +83,8 @@ class BigQuery(Client):
         job.result()
 
     def _create_python(self, view: views.PythonView):
+        from google.cloud import bigquery
+
         output = self._load_python(view)
 
         job_config = bigquery.LoadJobConfig(
