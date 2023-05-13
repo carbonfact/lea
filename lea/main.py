@@ -328,10 +328,14 @@ def docs(views_dir: str, output_dir: str = "docs"):
 
     # List all the relevant views
     views = lea.views.load_views(views_dir)
+    views = [view for view in views if view.schema not in {"tests", "funcs"}]
     console.log(f"Found {len(views):,d} views")
 
     # Organize the views into a directed acyclic graph
     dag = lea.dag.DAGOfViews(views)
+
+    # A client is necessary for getting the top 5 rows of each view
+    client = _make_client(None)
 
     # Now we can generate the docs for each schema and view therein
     readme_content = io.StringIO()
@@ -349,10 +353,25 @@ def docs(views_dir: str, output_dir: str = "docs"):
 
         # Write down the views
         content.write("## Views\n\n")
-        for view in sorted(dag.values()):
+        for view in sorted(dag.values(), key=lambda view: view.name):
             if view.schema != schema:
                 continue
             content.write(f"### `{view.name}`\n\n")
+            if view.description:
+                content.write(f"{view.description}\n\n")
+
+            # HACK
+            head_view = lea.views.GenericSQLView(
+                schema="kaya",
+                name=f"{view.schema}__{view.name}__head",
+                query=f"SELECT * FROM ({view.query}) LIMIT 5",
+            )
+            head = client.load(head_view)
+            head_md = head.to_markdown(index=False)
+            content.write(head_md)
+            content.write("\n\n")
+            client.delete(head_view)
+            break
 
         # Write the schema README
         schema_readme = output_dir / schema / "README.md"

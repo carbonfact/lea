@@ -104,6 +104,15 @@ class SQLView(View):
             return {("core", "materials")}
         return self._parse_dependencies(self.query)
 
+    @property
+    def description(self):
+        return " ".join(
+            line.lstrip("-").strip()
+            for line in itertools.takewhile(
+                lambda l: l.startswith("--"), self.query.strip().splitlines()
+            )
+        )
+
 
 class GenericSQLView(SQLView):
     def __init__(self, schema, name, query):
