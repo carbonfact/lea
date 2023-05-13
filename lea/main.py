@@ -19,6 +19,7 @@ import pickle
 import time
 
 import dotenv
+import jinja2
 import typer
 import rich.console
 import rich.live
@@ -71,14 +72,15 @@ def run(
         only = [tuple(v.split(".")) for v in only]
 
     # Determine the username, who will be the author of this run
-    username = None if (production or test) else os.environ.get("USER", getpass.getuser())
+    username = None if production else os.environ.get("USER", getpass.getuser())
 
     # The client determines where the views will be written
     # TODO: move this to a config file
     client = _make_client(username)
 
-    # List all the relevant views
+    # List the relevant views
     views = lea.views.load_views(views_dir)
+    views = [view for view in views if view.schema not in {"tests", "funcs"}]
     console.log(f"Found {len(views):,d} views")
 
     # Organize the views into a directed acyclic graph
@@ -90,7 +92,7 @@ def run(
             continue
         console.log(f"Removing {schema}.{table}")
         if not dry:
-            client.delete(schema, table)
+            client.delete(views[schema, table])
         console.log(f"Removed {schema}.{table}")
 
     # Determine which views need to be run
@@ -106,7 +108,6 @@ def run(
         table.add_column("status")
         table.add_column("duration")
 
-        # Only show the last 20 jobs, so as to not clutter the screen
         for i, (schema, view_name) in list(enumerate(order, start=1))[-show:]:
             status = SUCCESS if (schema, view_name) in jobs_ended_at else RUNNING
             status = ERROR if (schema, view_name) in exceptions else status
@@ -124,7 +125,7 @@ def run(
 
         return table
 
-    threads = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
     jobs = {}
     order = []
     jobs_started_at = {}
@@ -161,7 +162,7 @@ def run(
                     dag.done(node)
                     continue
 
-                jobs[node] = threads.submit(
+                jobs[node] = executor.submit(
                     _do_nothing
                     if dry or node in cache
                     else functools.partial(client.create, view=dag[node])
@@ -224,35 +225,36 @@ def export(self, views_dir: str):
 
 
 @app.command()
-def test(views_dir: str):
+def test(views_dir: str, threads: int = 8, production: bool = False):
+    # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
-    dotenv.load_dotenv()
 
-    # # Test views
-    # if test:
-    #     tests = [
-    #         View.from_path(path)
-    #         for path in map(pathlib.Path, glob.glob(f"{views_dir}/tests/**"))
-    #         if not path.name.startswith("_") and path.suffix in {".py", ".sql"}
-    #     ]
-    #     for test in tests:
-    #         console.log(test)
-    #         if dry:
-    #             console.log(str(test))
-    #             continue
-    #         try:
-    #             conflicts = client.load(test)
-    #         except Exception as e:
-    #             console.log(f"Failed running {test}")
-    #             raise e
-    #         conflicts = client.load(test)
-    #         if not conflicts.empty:
-    #             console.log(str(test))
-    #             console.log(conflicts)
-    #         else:
-    #             console.log(str(test))
-    #         client.delete(view_name=f"tests__{test.name}")
-    #     return
+    # List the test views
+    views = lea.views.load_views(views_dir)
+    tests = [view for view in views if view.schema == "tests"]
+    console.log(f"Found {len(tests):,d} tests")
+
+    # A client is necessary for running tests, because each test is a query
+    username = None if production else os.environ.get("USER", getpass.getuser())
+    client = _make_client(username)
+
+    def test_and_delete(test):
+        # Each test leaves behind a table, so we delete it afterwards, because tests should
+        # have no side-effects.
+        # TODO: there's probably a way to run tests without leaving behind tables
+        conflicts = client.load(test)
+        client.delete(test)
+        return conflicts
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        jobs = {executor.submit(test_and_delete, test): test for test in tests}
+        for job in concurrent.futures.as_completed(jobs):
+            test = jobs[job]
+            try:
+                conflicts = job.result()
+                console.log(str(test), style="bold green" if conflicts.empty else "bold red")
+            except Exception as exc:
+                console.log(f"Failed running {test}", style="bold magenta")
 
 
 @app.command()

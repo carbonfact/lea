@@ -7,6 +7,7 @@ import pathlib
 import jinja2
 import sqlglot
 
+
 @dataclasses.dataclass
 class View(abc.ABC):
     origin: pathlib.Path
@@ -51,9 +52,9 @@ class SQLView(View):
     def query(self):
         text = self.path.read_text().rstrip().rstrip(";")
         if text.startswith("{% extends"):
-            views_dir = list(self.path.parents)[-2]
-            environment = jinja2.Environment(loader=jinja2.FileSystemLoader(views_dir))
-            template = environment.get_template(str(self.path.relative_to(views_dir)))
+            loader = jinja2.FileSystemLoader(self.origin)
+            environment = jinja2.Environment(loader=loader)
+            template = environment.get_template(str(self.relative_path))
             return template.render()
         return text
 
@@ -127,7 +128,6 @@ class PythonView(View):
     @property
     def dependencies(self):
         def _dependencies():
-
             code = self.path.read_text()
             for node in ast.walk(ast.parse(code)):
                 # pd.read_gbq
@@ -143,9 +143,7 @@ class PythonView(View):
 
                 # .query
                 try:
-                    if isinstance(node, ast.Call) and node.func.attr.startswith(
-                        "query"
-                    ):
+                    if isinstance(node, ast.Call) and node.func.attr.startswith("query"):
                         yield from SQLView._parse_dependencies(node.args[0].value)
                 except AttributeError:
                     pass
@@ -155,12 +153,11 @@ class PythonView(View):
 
 def load_views(views_dir: pathlib.Path) -> list[View]:
     return [
-        view
+        View.from_path(path, origin=views_dir)
         for schema_dir in (d for d in views_dir.iterdir() if d.is_dir())
         for path in schema_dir.rglob("*")
         if not path.is_dir()
         and not path.name.startswith("_")
         and path.suffix in {".py", ".sql"}
         and path.stat().st_size > 0
-        and (view := View.from_path(path, origin=views_dir)).schema not in {"tests", "stale", "funcs"}
     ]
