@@ -1,3 +1,5 @@
+# lea
+
 lea is an oppinionated alternative to [dbt](https://www.getdbt.com/) and [Dataform](https://cloud.google.com/dataform).
 
 - [x] Automatic DAG construction
@@ -20,3 +22,37 @@ lea is an oppinionated alternative to [dbt](https://www.getdbt.com/) and [Datafo
 - [ ] Importable as a library
 - [ ] Multi-engine support (only BigQuery for now)
 - [x] Historization
+
+## Usage
+
+### `lea run`
+
+```sh
+lea run ./views
+lea run ./views --dry
+lea run ./views --only core.measure_carbonverses
+```
+
+### `lea test`
+
+```sh
+lea test ./views
+```
+
+### `lea export`
+
+```sh
+lea export ./views
+```
+
+### `lea archive`
+
+```sh
+lea archive ./views kpis.all
+```
+
+### `lea docs`
+
+```sh
+lea docs ./views --output-dir ./docs
+```
