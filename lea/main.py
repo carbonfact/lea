@@ -351,6 +351,14 @@ def docs(views_dir: str, output_dir: str = "docs"):
         else:
             content.write(f"# `{schema}`\n\n")
 
+        # Write down table of contents
+        content.write("## Table of contents\n\n")
+        for view in sorted(dag.values(), key=lambda view: view.name):
+            if view.schema != schema:
+                continue
+            content.write(f"- [`{view.name}`](#{view.name})\n")
+        content.write("\n")
+
         # Write down the views
         content.write("## Views\n\n")
         for view in sorted(dag.values(), key=lambda view: view.name):
@@ -360,23 +368,24 @@ def docs(views_dir: str, output_dir: str = "docs"):
             if view.description:
                 content.write(f"{view.description}\n\n")
 
-            # HACK
+            # HACK: this whole block is a hack
+            console.log(f"Getting preview for {view.schema}.{view.name}")
             head_view = lea.views.GenericSQLView(
                 schema="kaya",
                 name=f"{view.schema}__{view.name}__head",
-                query=f"SELECT * FROM ({view.query}) LIMIT 5",
+                query=f"SELECT * FROM kaya.{view.schema}__{view.name} LIMIT 5",  # HACK
             )
             head = client.load(head_view)
             head_md = head.to_markdown(index=False)
             content.write(head_md)
             content.write("\n\n")
             client.delete(head_view)
-            break
 
         # Write the schema README
         schema_readme = output_dir / schema / "README.md"
         schema_readme.parent.mkdir(parents=True, exist_ok=True)
         schema_readme.write_text(content.getvalue())
+        console.log(f"Wrote {schema_readme}", style="bold green")
     else:
         readme_content.write("\n")
 
