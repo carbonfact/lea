@@ -32,41 +32,6 @@ app = typer.Typer()
 console = rich.console.Console()
 
 
-@dataclasses.dataclass
-class Step:
-    n_errors: int = 0
-    time_taken: dt.timedelta | None = None
-
-    @property
-    def done(self):
-        return self.time_taken is not None
-
-
-@dataclasses.dataclass
-class Run:
-    started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
-    ended_at: dt.datetime = None
-    steps: dict[str, Step] = dataclasses.field(default_factory=dict)
-
-    def __getitem__(self, view_name: str):
-        if step := self.steps.get(view_name):
-            return step
-        self.steps[view_name] = Step()
-        return self.steps[view_name]
-
-    def dump(self):
-        pathlib.Path(".run.pkl").write_bytes(pickle.dumps(self))
-
-    @classmethod
-    def load(cls, fresh):
-        if fresh or not (path := pathlib.Path(".run.pkl")).exists():
-            return cls()
-        return pickle.loads(path.read_bytes())
-
-    def clear(self):
-        pathlib.Path(".run.pkl").unlink(missing_ok=True)
-
-
 def _make_client(username):
     from google.oauth2 import service_account
 
@@ -84,13 +49,21 @@ def _do_nothing():
     """This is a dummy function for dry runs"""
 
 
+SUCCESS = "[green]SUCCESS"
+RUNNING = "[yellow]RUNNING"
+ERROR = "[red]ERROR"
+SKIPPED = "[blue]SKIPPED"
+
+
 @app.command()
 def run(
     views_dir: str,
     only: list[str] = typer.Option(None),
     dry: bool = False,
-    rerun: bool = False,
+    fresh: bool = False,
     production: bool = False,
+    threads: int = 8,
+    show: int = 20,
 ):
     # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
@@ -117,7 +90,7 @@ def run(
             continue
         console.log(f"Removing {schema}.{table}")
         if not dry:
-            client.delete(view_name=name)
+            client.delete(schema, table)
         console.log(f"Removed {schema}.{table}")
 
     # Determine which views need to be run
@@ -127,26 +100,40 @@ def run(
 
     def display_progress() -> rich.table.Table:
         table = rich.table.Table()
+        table.add_column("#")
         table.add_column("schema")
         table.add_column("view")
         table.add_column("status")
         table.add_column("duration")
 
-        for schema, view_name in jobs:
-            status = "[yellow]RUNNING" if (schema, view_name) in jobs_started_at else "[green]DONE"
+        # Only show the last 20 jobs, so as to not clutter the screen
+        for i, (schema, view_name) in list(enumerate(order, start=1))[-show:]:
+            status = SUCCESS if (schema, view_name) in jobs_ended_at else RUNNING
+            status = ERROR if (schema, view_name) in exceptions else status
+            status = SKIPPED if (schema, view_name) in skipped else status
             duration = (
-                jobs_ended_at.get((schema, view_name), dt.datetime.now())
-                - jobs_started_at[(schema, view_name)]
+                (
+                    jobs_ended_at.get((schema, view_name), dt.datetime.now())
+                    - jobs_started_at[(schema, view_name)]
+                )
+                if (schema, view_name) in jobs_started_at
+                else dt.timedelta(seconds=0)
             )
             rounded_seconds = round(duration.total_seconds(), 1)
-            table.add_row(schema, view_name, status, f"{rounded_seconds}s")
+            table.add_row(str(i), schema, view_name, status, f"{rounded_seconds}s")
 
         return table
 
-    threads = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+    threads = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
     jobs = {}
+    order = []
     jobs_started_at = {}
     jobs_ended_at = {}
+    exceptions = {}
+    skipped = set()
+    cache_path = pathlib.Path(".cache.pkl")
+    cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
+    tic = time.time()
 
     with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
         dag.prepare()
@@ -155,19 +142,29 @@ def run(
             # If so, we submit a job to create them
             # We record the job in a dict, so that we can check when it's done
             for node in dag.get_ready():
-                # Some nodes in the graph are not part of the views, they're external dependencies,
-                # so we skip them
-                if node not in dag:
+                if (
+                    # Some nodes in the graph are not part of the views, they're external dependencies,
+                    # so we skip them
+                    node not in dag
+                    # Some nodes are blacklisted, so we skip them
+                    or node in blacklist
+                ):
                     dag.done(node)
                     continue
-                # Some nodes are blacklisted, so we skip them
-                if node in blacklist:
+
+                order.append(node)
+
+                # A node can only be computed if all its dependencies have been computed
+                # If all the dependencies have not been computed succesfully, we skip the node
+                if any(dep in skipped or dep in exceptions for dep in dag[node].dependencies):
+                    skipped.add(node)
                     dag.done(node)
                     continue
+
                 jobs[node] = threads.submit(
-                    functools.partial(client.create, view=dag[node])
-                    if not dry
-                    else functools.partial(_do_nothing)
+                    _do_nothing
+                    if dry or node in cache
+                    else functools.partial(client.create, view=dag[node])
                 )
                 jobs_started_at[node] = dt.datetime.now()
             # We check if any jobs are done
@@ -176,7 +173,38 @@ def run(
                 if node not in jobs_ended_at and jobs[node].done():
                     dag.done(node)
                     jobs_ended_at[node] = dt.datetime.now()
+                    # Determine whether the job succeeded or not
+                    if exception := jobs[node].exception():
+                        exceptions[node] = exception
+                    else:
+                        cache.add(node)
             live.update(display_progress())
+
+    # Save the cache
+    all_done = not exceptions and not skipped
+    cache = set() if all_done else cache
+    cache_path.write_bytes(pickle.dumps(cache))
+
+    # Summary statistics
+    console.log(f"Finished in {round(time.time() - tic)}s")
+    summary = rich.table.Table()
+    summary.add_column("status")
+    summary.add_column("count")
+    summary.add_row(SUCCESS, f"{len(jobs_ended_at) - len(exceptions):,d}")
+    summary.add_row(ERROR, f"{len(exceptions):,d}")
+    summary.add_row(SKIPPED, f"{len(skipped):,d}")
+    console.print(summary)
+
+    # Summary of errors
+    if exceptions:
+        for (schema, view_name), exception in exceptions.items():
+            console.print(f"{schema}.{view_name}", style="bold red")
+            console.print(exception)
+
+
+@app.command()
+def export(self, views_dir: str):
+    ...
 
     # HACK
     # if production:
@@ -193,48 +221,6 @@ def run(
     #         .read_text()
     #         .splitlines()
     #     }
-
-    # # Load/create a run
-    # run = Run.load(fresh=rerun)
-
-    # # Determine the execution order
-    # order = determine_execution_order(dag, views, start, end, only, inclusive)
-
-    # # Run views
-    # for view_key in order:
-    #     if not dry:
-    #         tic = dt.datetime.now()
-    #         try:
-    #             if view.schema == "export":
-    #                 if production:
-    #                     for account in account_clients:
-    #                         account_view = GenericSQLView(
-    #                             schema="",
-    #                             name=view.name,
-    #                             query=f"SELECT * FROM (\n{view.query}\n)\nWHERE account = '{account}'",
-    #                         )
-    #                         console.log(f"Creating {view} for {account}")
-    #                         account_clients[account].create(account_view)
-    #                 else:
-    #                     console.log(f"Skipping {view}")
-    #             else:
-    #                 console.log(f"Creating {view}")
-    #                 client.create(view)
-    #             toc = dt.datetime.now()
-    #             run[view_key].time_taken = toc - tic
-    #         except Exception as e:
-    #             console.log(f"Failed creating {view}")
-    #             run[view_key].n_errors += 1
-    #             run.dump()
-    #             raise RuntimeError(view_key) from e
-    #     console.log(f"Created {view}")
-
-    # # End the run
-    # if dry:
-    #     return
-    # run.ended_at = dt.datetime.now()
-    # # TODO: pretty print summary
-    # run.clear()
 
 
 @app.command()

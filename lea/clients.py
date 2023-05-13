@@ -105,5 +105,5 @@ class BigQuery(Client):
             table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
         ]
 
-    def delete(self, view_name: str):
-        self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{view_name}")
+    def delete(self, schema: str, view_name: str):
+        self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{schema}__{view_name}")
