@@ -17,7 +17,9 @@ import rich.live
 import rich.table
 import typer
 
-import lea
+import lea.clients
+import lea.dag
+import lea.views
 
 dotenv.load_dotenv()
 app = typer.Typer()
