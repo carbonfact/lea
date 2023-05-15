@@ -1,6 +1,6 @@
 # lea
 
-lea is an oppinionated alternative to [dbt](https://www.getdbt.com/) and [Dataform](https://cloud.google.com/dataform).
+lea is an oppinionated alternative to [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Dataform](https://cloud.google.com/dataform).
 
 - [x] Automatic DAG construction
 - [x] CLI

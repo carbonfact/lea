@@ -101,12 +101,12 @@ def run(
         blacklist = set(dag.keys()).difference(only)
 
     def display_progress() -> rich.table.Table:
-        table = rich.table.Table()
-        table.add_column("#")
-        table.add_column("schema")
-        table.add_column("view")
-        table.add_column("status")
-        table.add_column("duration")
+        table = rich.table.Table(box=None)
+        table.add_column("#", header_style="italic")
+        table.add_column("schema", header_style="italic")
+        table.add_column("view", header_style="italic")
+        table.add_column("status", header_style="italic")
+        table.add_column("duration", header_style="italic")
 
         for i, (schema, view_name) in list(enumerate(order, start=1))[-show:]:
             status = SUCCESS if (schema, view_name) in jobs_ended_at else RUNNING
