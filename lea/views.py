@@ -29,7 +29,9 @@ class View(abc.ABC):
 
     @property
     def name(self):
-        name_parts = itertools.chain(self.relative_path.parts[1:-1], [self.relative_path.stem])
+        name_parts = itertools.chain(
+            self.relative_path.parts[1:-1], [self.relative_path.stem]
+        )
         return "__".join(name_parts)
 
     def __repr__(self):
@@ -154,7 +156,9 @@ class PythonView(View):
 
                 # .query
                 try:
-                    if isinstance(node, ast.Call) and node.func.attr.startswith("query"):
+                    if isinstance(node, ast.Call) and node.func.attr.startswith(
+                        "query"
+                    ):
                         yield from SQLView._parse_dependencies(node.args[0].value)
                 except AttributeError:
                     pass

@@ -10,9 +10,13 @@ import lea
 
 class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
     def __init__(self, views: list[lea.views.View]):
-        view_to_dependencies = {(view.schema, view.name): view.dependencies for view in views}
+        view_to_dependencies = {
+            (view.schema, view.name): view.dependencies for view in views
+        }
         graphlib.TopologicalSorter.__init__(self, view_to_dependencies)
-        collections.UserDict.__init__(self, {(view.schema, view.name): view for view in views})
+        collections.UserDict.__init__(
+            self, {(view.schema, view.name): view for view in views}
+        )
         self.dependencies = view_to_dependencies
 
     @property
