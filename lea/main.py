@@ -81,7 +81,7 @@ def run(
     # List the relevant views
     views = lea.views.load_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
-    console.log(f"Found {len(views):,d} views")
+    console.log(f"{len(views):,d} views found")
 
     # Organize the views into a directed acyclic graph
     dag = lea.dag.DAGOfViews(views)
@@ -108,7 +108,8 @@ def run(
         table.add_column("status", header_style="italic")
         table.add_column("duration", header_style="italic")
 
-        for i, (schema, view_name) in list(enumerate(order, start=1))[-show:]:
+        order_not_done = [node for node in order if node not in cache]
+        for i, (schema, view_name) in list(enumerate(order_not_done, start=1))[-show:]:
             status = SUCCESS if (schema, view_name) in jobs_ended_at else RUNNING
             status = ERROR if (schema, view_name) in exceptions else status
             status = SKIPPED if (schema, view_name) in skipped else status
@@ -135,6 +136,8 @@ def run(
     cache_path = pathlib.Path(".cache.pkl")
     cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
     tic = time.time()
+
+    console.log(f"{len(cache):,d} views already done")
 
     with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
         dag.prepare()
@@ -177,20 +180,18 @@ def run(
                     # Determine whether the job succeeded or not
                     if exception := jobs[node].exception():
                         exceptions[node] = exception
-                    else:
-                        cache.add(node)
             live.update(display_progress())
 
     # Save the cache
     all_done = not exceptions and not skipped
-    cache = set() if all_done else cache
+    cache = set() if all_done else cache | {node for node in order if node not in exceptions and node not in skipped}
     if cache:
         cache_path.write_bytes(pickle.dumps(cache))
     else:
         cache_path.unlink(missing_ok=True)
 
     # Summary statistics
-    console.log(f"Finished in {round(time.time() - tic)}s")
+    console.log(f"Took {round(time.time() - tic)}s")
     summary = rich.table.Table()
     summary.add_column("status")
     summary.add_column("count")
