@@ -1,17 +1,10 @@
 from __future__ import annotations
 
-import abc
-import ast
-import collections
 import concurrent.futures
-import dataclasses
 import datetime as dt
 import functools
 import getpass
-import glob
-import importlib
 import io
-import itertools
 import json
 import os
 import pathlib
@@ -19,13 +12,12 @@ import pickle
 import time
 
 import dotenv
-import typer
 import rich.console
 import rich.live
 import rich.table
+import typer
 
 import lea
-
 
 dotenv.load_dotenv()
 app = typer.Typer()
@@ -134,7 +126,11 @@ def run(
     exceptions = {}
     skipped = set()
     cache_path = pathlib.Path(".cache.pkl")
-    cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
+    cache = (
+        set()
+        if fresh or not cache_path.exists()
+        else pickle.loads(cache_path.read_bytes())
+    )
     tic = time.time()
 
     console.log(f"{len(cache):,d} views already done")
@@ -160,7 +156,10 @@ def run(
 
                 # A node can only be computed if all its dependencies have been computed
                 # If all the dependencies have not been computed succesfully, we skip the node
-                if any(dep in skipped or dep in exceptions for dep in dag[node].dependencies):
+                if any(
+                    dep in skipped or dep in exceptions
+                    for dep in dag[node].dependencies
+                ):
                     skipped.add(node)
                     dag.done(node)
                     continue
@@ -184,7 +183,12 @@ def run(
 
     # Save the cache
     all_done = not exceptions and not skipped
-    cache = set() if all_done else cache | {node for node in order if node not in exceptions and node not in skipped}
+    cache = (
+        set()
+        if all_done
+        else cache
+        | {node for node in order if node not in exceptions and node not in skipped}
+    )
     if cache:
         cache_path.write_bytes(pickle.dumps(cache))
     else:
@@ -227,11 +231,13 @@ def export(views_dir: str):
     console.log(f"Found {len(views):,d} views")
 
     # List the accounts for which to produce exports
-    accounts = pathlib.Path(views_dir / "export" / "accounts.txt").read_text().splitlines()
+    accounts = (
+        pathlib.Path(views_dir / "export" / "accounts.txt").read_text().splitlines()
+    )
     console.log(f"Found {len(accounts):,d} accounts")
 
     production = True
-    username = None if production else os.environ.get("USER", getpass.getuser())
+    None if production else os.environ.get("USER", getpass.getuser())
 
     from google.oauth2 import service_account
 
@@ -286,8 +292,10 @@ def test(views_dir: str, threads: int = 8, production: bool = False):
             test = jobs[job]
             try:
                 conflicts = job.result()
-                console.log(str(test), style="bold green" if conflicts.empty else "bold red")
-            except Exception as exc:
+                console.log(
+                    str(test), style="bold green" if conflicts.empty else "bold red"
+                )
+            except Exception:
                 console.log(f"Failed running {test}", style="bold magenta")
 
 

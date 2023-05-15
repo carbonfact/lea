@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import ast
 import dataclasses
@@ -109,7 +111,7 @@ class SQLView(View):
         return " ".join(
             line.lstrip("-").strip()
             for line in itertools.takewhile(
-                lambda l: l.startswith("--"), self.query.strip().splitlines()
+                lambda line: line.startswith("--"), self.query.strip().splitlines()
             )
         )
 

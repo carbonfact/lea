@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import collections
 import graphlib
 import io
 import itertools
+
 import lea
 
 
