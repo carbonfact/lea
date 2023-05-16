@@ -86,11 +86,7 @@ def run(
             continue
         console.log(f"Removing {schema}.{table}")
         if not dry:
-            delete_view = lea.views.GenericSQLView(
-                schema=schema,
-                name=table,
-                query=""
-            )
+            delete_view = lea.views.GenericSQLView(schema=schema, name=table, query="")
             client.delete(delete_view)
         console.log(f"Removed {schema}.{table}")
 
