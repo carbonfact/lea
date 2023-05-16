@@ -22,6 +22,7 @@ lea is an opinionated alternative to [dbt](https://www.getdbt.com/), [SQLMesh](h
 - [ ] Importable as a library
 - [ ] Multi-engine support (only BigQuery for now)
 - [x] Historization
+- [ ] Only refresh what changed, based on git
 
 ## Usage
 
