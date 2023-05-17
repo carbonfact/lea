@@ -75,10 +75,16 @@ def run(
     # List the relevant views
     views = lea.views.load_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
-    console.log(f"{len(views):,d} views found")
+    console.log(f"{len(views):,d} view(s) exist in total")
 
     # Organize the views into a directed acyclic graph
     dag = lea.dag.DAGOfViews(views)
+
+    # Determine which views need to be run
+    blacklist = set()
+    if only:
+        blacklist = set(dag.keys()).difference(only)
+    console.log(f"{len(views) - len(blacklist):,d} view(s) are selected")
 
     # Remove orphan views
     for schema, table in client.list_existing():
@@ -89,11 +95,6 @@ def run(
             delete_view = lea.views.GenericSQLView(schema=schema, name=table, query="")
             client.delete(delete_view)
         console.log(f"Removed {schema}.{table}")
-
-    # Determine which views need to be run
-    blacklist = set()
-    if only:
-        blacklist = set(dag.keys()).difference(only)
 
     def display_progress() -> rich.table.Table:
         table = rich.table.Table(box=None)
@@ -136,7 +137,7 @@ def run(
     )
     tic = time.time()
 
-    console.log(f"{len(cache):,d} views already done")
+    console.log(f"{len(cache):,d} view(s) are already done")
 
     with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
         dag.prepare()
