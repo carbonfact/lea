@@ -106,6 +106,8 @@ class SQLView(View):
             return {("posthog", "events")}
         if self.schema == "core" and self.name == "modifiers":
             return {("core", "materials")}
+        if self.schema == "core" and self.name == "parsing_rules":
+            return {("niklas", "parsing_rules")}
         return self._parse_dependencies(self.query)
 
     @property

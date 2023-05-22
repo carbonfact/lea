@@ -75,7 +75,7 @@ def run(
     # List the relevant views
     views = lea.views.load_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
-    console.log(f"{len(views):,d} view(s) exist in total")
+    console.log(f"{len(views):,d} view(s) in total")
 
     # Organize the views into a directed acyclic graph
     dag = lea.dag.DAGOfViews(views)
@@ -84,7 +84,7 @@ def run(
     blacklist = set()
     if only:
         blacklist = set(dag.keys()).difference(only)
-    console.log(f"{len(views) - len(blacklist):,d} view(s) are selected")
+    console.log(f"{len(views) - len(blacklist):,d} view(s) selected")
 
     # Remove orphan views
     for schema, table in client.list_existing():
@@ -137,7 +137,7 @@ def run(
     )
     tic = time.time()
 
-    console.log(f"{len(cache):,d} view(s) are already done")
+    console.log(f"{len(cache):,d} view(s) already done")
 
     with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
         dag.prepare()
