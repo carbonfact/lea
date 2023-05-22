@@ -62,8 +62,7 @@ def run(
 ):
     # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
-    if only:
-        only = [tuple(v.split(".")) for v in only]
+    only = [tuple(v.split(".")) for v in only] if only else None
 
     # Determine the username, who will be the author of this run
     username = None if production else os.environ.get("USER", getpass.getuser())
@@ -81,9 +80,7 @@ def run(
     dag = lea.dag.DAGOfViews(views)
 
     # Determine which views need to be run
-    blacklist = set()
-    if only:
-        blacklist = set(dag.keys()).difference(only)
+    blacklist = set(dag.keys()).difference(only) if only else set()
     console.log(f"{len(views) - len(blacklist):,d} view(s) selected")
 
     # Remove orphan views
@@ -219,7 +216,7 @@ def run(
 
 
 @app.command()
-def export(views_dir: str):
+def export(views_dir: str, threads: int = 8):
     """
 
     HACK: this is too bespoke for Carbonfact
@@ -232,13 +229,13 @@ def export(views_dir: str):
     # List the export views
     views = lea.views.load_views(views_dir)
     views = [view for view in views if view.schema == "export"]
-    console.log(f"Found {len(views):,d} views")
+    console.log(f"{len(views):,d} view(s) in total")
 
     # List the accounts for which to produce exports
     accounts = (
         pathlib.Path(views_dir / "export" / "accounts.txt").read_text().splitlines()
     )
-    console.log(f"Found {len(accounts):,d} accounts")
+    console.log(f"{len(accounts):,d} account(s) in total")
 
     production = True
     None if production else os.environ.get("USER", getpass.getuser())
@@ -257,15 +254,36 @@ def export(views_dir: str):
         for account in accounts
     }
 
-    for account in account_clients:
-        for view in views:
-            account_view = lea.views.GenericSQLView(
-                schema="",
-                name=view.name,
-                query=f"SELECT * FROM (\n{view.query}\n)\nWHERE account = '{account}'",
+    def export_view_for_account(view, account):
+        account_export = lea.views.GenericSQLView(
+            schema="",
+            name=view.name,
+            query=f"""
+            SELECT * EXCEPT (account_slug)
+            FROM (
+                {view.query}
             )
-            account_clients[account].create(account_view)
-            console.log(f"Created {view} for {account}")
+            WHERE account_slug = '{account}'
+            """,
+        )
+        account_clients[account].create(account_export)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        jobs = {
+            executor.submit(functools.partial(export_view_for_account, view=view, account=account)): (view, account)
+            for view in views
+            for account in account_clients
+        }
+        for job in concurrent.futures.as_completed(jobs):
+            view, account = jobs[job]
+            if exc := job.exception():
+                console.log(f"Failed exporting {view} for {account}", style="bold red")
+                console.log(exc, style="bold magenta")
+            else:
+                console.log(
+                    f"Exported {view.name} for {account}", style="bold green"
+                )
+
 
 
 @app.command()
