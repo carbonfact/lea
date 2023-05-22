@@ -270,7 +270,9 @@ def export(views_dir: str, threads: int = 8):
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         jobs = {
-            executor.submit(functools.partial(export_view_for_account, view=view, account=account)): (view, account)
+            executor.submit(
+                functools.partial(export_view_for_account, view=view, account=account)
+            ): (view, account)
             for view in views
             for account in account_clients
         }
@@ -280,10 +282,7 @@ def export(views_dir: str, threads: int = 8):
                 console.log(f"Failed exporting {view} for {account}", style="bold red")
                 console.log(exc, style="bold magenta")
             else:
-                console.log(
-                    f"Exported {view.name} for {account}", style="bold green"
-                )
-
+                console.log(f"Exported {view.name} for {account}", style="bold green")
 
 
 @app.command()
