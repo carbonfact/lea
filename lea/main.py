@@ -202,9 +202,12 @@ def run(
     summary = rich.table.Table()
     summary.add_column("status")
     summary.add_column("count")
-    summary.add_row(SUCCESS, f"{len(jobs_ended_at) - len(exceptions):,d}")
-    summary.add_row(ERROR, f"{len(exceptions):,d}")
-    summary.add_row(SKIPPED, f"{len(skipped):,d}")
+    if n := len(jobs_ended_at) - len(exceptions):
+        summary.add_row(SUCCESS, f"{n:,d}")
+    if n := len(exceptions):
+        summary.add_row(ERROR, f"{n:,d}")
+    if n := len(skipped):
+        summary.add_row(SKIPPED, f"{n:,d}")
     console.print(summary)
 
     # Summary of errors
