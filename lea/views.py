@@ -88,16 +88,15 @@ class SQLView(View):
             query = self.query
             for dataset in ["kaya", "niklas", "posthog"]:
                 for match in re.finditer(
-                    fr"{dataset}\.(?P<view>\w+)", query, re.IGNORECASE
+                    rf"{dataset}\.(?P<view>\w+)", query, re.IGNORECASE
                 ):
                     schema, view_name = (
-                        match.group("view").split('__', 1)
+                        match.group("view").split("__", 1)
                         if dataset == "kaya"
                         else (dataset, match.group("view"))
                     )
                     dependencies.add((schema, view_name))
             return dependencies
-
 
     @property
     def description(self):
