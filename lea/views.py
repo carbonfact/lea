@@ -5,6 +5,7 @@ import ast
 import dataclasses
 import itertools
 import pathlib
+import re
 
 import jinja2
 import sqlglot
@@ -79,36 +80,24 @@ class SQLView(View):
 
     @property
     def dependencies(self):
-        # HACK: sqlglot can't parse these views
-        # TODO: allow specifying these dependencies in a config file
-        if self.schema == "core" and self.name == "transport_steps":
-            return {("core", "measured_carbonverses")}
-        if self.schema == "core" and self.name == "measured_carbonverses_measurements":
-            return {("core", "measured_carbonverses"), ("core", "indicators")}
-        if self.schema == "core" and self.name == "carbonverses":
-            return {("core", "measured_carbonverses")}
-        if self.schema == "core" and self.name == "components":
-            return {("core", "measured_carbonverses")}
-        if self.schema == "core" and self.name == "materials":
-            return {("core", "components")}
-        if self.schema == "core" and self.name == "emission_factors":
-            return {("niklas", "emission_factor_snapshot_records")}
-        if self.schema == "collect" and self.name == "material_funnel":
-            return {
-                ("core", "measured_carbonverses"),
-                ("core", "products"),
-                ("core", "footprints"),
-                ("core", "materials_measurements"),
-            }
-        if self.schema == "core" and self.name == "transport_steps":
-            return {("core", "measured_carbonverses")}
-        if self.schema == "platform" and self.name == "events":
-            return {("posthog", "events")}
-        if self.schema == "core" and self.name == "modifiers":
-            return {("core", "materials")}
-        if self.schema == "core" and self.name == "parsing_rules":
-            return {("niklas", "parsing_rules")}
-        return self._parse_dependencies(self.query)
+        try:
+            return self._parse_dependencies(self.query)
+        except sqlglot.errors.ParseError:
+            # HACK If SQLGlot can't parse the query, we do it the old-fashioned way
+            dependencies = set()
+            query = self.query
+            for dataset in ["kaya", "niklas", "posthog"]:
+                for match in re.finditer(
+                    fr"{dataset}\.(?P<view>\w+)", query, re.IGNORECASE
+                ):
+                    schema, view_name = (
+                        match.group("view").split('__', 1)
+                        if dataset == "kaya"
+                        else (dataset, match.group("view"))
+                    )
+                    dependencies.add((schema, view_name))
+            return dependencies
+
 
     @property
     def description(self):
