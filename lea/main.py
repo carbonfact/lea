@@ -136,7 +136,7 @@ def run(
 
     console.log(f"{len(cache):,d} view(s) already done")
 
-    with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
+    with rich.live.Live(display_progress(), vertical_overflow="visible", refresh_per_second=6) as live:
         dag.prepare()
         while dag.is_active():
             # We check if new views have been unlocked
