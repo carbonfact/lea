@@ -341,9 +341,10 @@ def test(views_dir: str, threads: int = 8, production: bool = False):
             test = jobs[job]
             try:
                 conflicts = job.result()
-                console.log(
-                    str(test), style="bold green" if conflicts.empty else "bold red"
-                )
+                if conflicts.empty:
+                    console.log(f"SUCCESS {test}", style="bold green")
+                else:
+                    console.log(f"FAILURE {test}", style="bold red")
             except Exception:
                 console.log(f"Failed running {test}", style="bold magenta")
 
