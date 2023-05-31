@@ -71,7 +71,7 @@ class SQLView(View):
         table_names = {
             (table.sql().split(".")[0], table.name)
             if "__" not in table.name and "." in table.sql()
-            else (table.name.split("__")[0], table.name.split("__")[1])
+            else (table.name.split("__")[0], table.name.split("__", 1)[1])
             if "__" in table.name
             else (None, table.name)
             for table in parse.find_all(sqlglot.exp.Table)

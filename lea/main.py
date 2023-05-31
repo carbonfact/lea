@@ -33,6 +33,7 @@ def _make_client(username):
         credentials=service_account.Credentials.from_service_account_info(
             json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
         ),
+        location="EU",
         project_id="carbonfact-gsheet",
         dataset_name=os.environ["SCHEMA"],
         username=username,
@@ -52,6 +53,25 @@ SKIPPED = "[blue]SKIPPED"
 def _get_lea_user():
     # Default to who
     return str(os.environ.get("LEA_USER", getpass.getuser()))
+
+
+@app.command()
+def create_dataset(production: bool = False):
+    """
+
+    HACK: this is just for Carbonfact
+
+    """
+
+    # Determine the username, who will be the author of this run
+    username = None if production else _get_lea_user()
+
+    # The client determines where the views will be written
+    # TODO: move this to a config file
+    client = _make_client(username)
+
+    # Create the dataset
+    client.create_dataset()
 
 
 @app.command()

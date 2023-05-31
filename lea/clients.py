@@ -49,10 +49,11 @@ class Client(abc.ABC):
 
 
 class BigQuery(Client):
-    def __init__(self, credentials, project_id, dataset_name, username):
+    def __init__(self, credentials, location, project_id, dataset_name, username):
         from google.cloud import bigquery
 
         self.project_id = project_id
+        self.location = location
         self.client = bigquery.Client(credentials=credentials)
         self._dataset_name = dataset_name
         self.username = username
@@ -64,6 +65,14 @@ class BigQuery(Client):
             if self.username
             else self._dataset_name
         )
+
+    def create_dataset(self):
+        from google.cloud import bigquery
+
+        dataset_ref = self.client.dataset(self.dataset_name)
+        dataset = bigquery.Dataset(dataset_ref)
+        dataset.location = self.location
+        self.client.create_dataset(dataset, exists_ok=True)
 
     def _make_job(self, view: views.SQLView):
         query = view.query
