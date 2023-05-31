@@ -242,9 +242,6 @@ def export(views_dir: str, threads: int = 8):
     )
     console.log(f"{len(accounts):,d} account(s) in total")
 
-    production = True
-    None if production else os.environ.get("USER", getpass.getuser())
-
     from google.oauth2 import service_account
 
     account_clients = {
