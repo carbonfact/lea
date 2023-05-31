@@ -65,7 +65,7 @@ def run(
     only = [tuple(v.split(".")) for v in only] if only else None
 
     # Determine the username, who will be the author of this run
-    username = None if production else os.environ.get("USER", getpass.getuser())
+    username = None if production else os.environ.get("LEA_USER", getpass.getuser())
 
     # The client determines where the views will be written
     # TODO: move this to a config file
@@ -298,7 +298,7 @@ def test(views_dir: str, threads: int = 8, production: bool = False):
     console.log(f"Found {len(tests):,d} tests")
 
     # A client is necessary for running tests, because each test is a query
-    username = None if production else os.environ.get("USER", getpass.getuser())
+    username = None if production else os.environ.get("LEA_USER", getpass.getuser())
     client = _make_client(username)
 
     def test_and_delete(test):
