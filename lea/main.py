@@ -76,6 +76,26 @@ def create_dataset(production: bool = False):
 
 
 @app.command()
+def delete_dataset(production: bool = False):
+    """
+
+    HACK: this is just for Carbonfact
+    TODO: maybe pass dataset name as an argument? That way it's actually useful
+
+    """
+
+    # Determine the username, who will be the author of this run
+    username = None if production else _get_lea_user()
+
+    # The client determines where the views will be written
+    # TODO: move this to a config file
+    client = _make_client(username)
+
+    # Create the dataset
+    client.delete_dataset()
+
+
+@app.command()
 def run(
     views_dir: str,
     only: list[str] = typer.Option(None),
@@ -349,6 +369,7 @@ def test(
                 console.log(f"SUCCESS {test}", style="bold green")
             else:
                 console.log(f"FAILURE {test}", style="bold red")
+                console.log(conflicts.head())
                 if raise_exceptions:
                     raise RuntimeError(f"Test {test} failed")
 

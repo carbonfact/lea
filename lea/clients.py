@@ -74,6 +74,14 @@ class BigQuery(Client):
         dataset.location = self.location
         self.client.create_dataset(dataset, exists_ok=True)
 
+    def create_dataset(self):
+        from google.cloud import bigquery
+
+        dataset_ref = self.client.dataset(self.dataset_name)
+        dataset = bigquery.Dataset(dataset_ref)
+        dataset.location = self.location
+        self.client.delete_dataset(dataset, not_found_ok=True)
+
     def _make_job(self, view: views.SQLView):
         query = view.query
         if self.username:
