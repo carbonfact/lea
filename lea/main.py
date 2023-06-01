@@ -314,7 +314,7 @@ def export(views_dir: str, threads: int = 8):
 
 
 @app.command()
-def test(views_dir: str, threads: int = 8, production: bool = False):
+def test(views_dir: str, threads: int = 8, production: bool = False, raise_exceptions: bool = False):
     # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
 
@@ -339,14 +339,13 @@ def test(views_dir: str, threads: int = 8, production: bool = False):
         jobs = {executor.submit(test_and_delete, test): test for test in tests}
         for job in concurrent.futures.as_completed(jobs):
             test = jobs[job]
-            try:
-                conflicts = job.result()
-                if conflicts.empty:
-                    console.log(f"SUCCESS {test}", style="bold green")
-                else:
-                    console.log(f"FAILURE {test}", style="bold red")
-            except Exception:
-                console.log(f"Failed running {test}", style="bold magenta")
+            conflicts = job.result()
+            if conflicts.empty:
+                console.log(f"SUCCESS {test}", style="bold green")
+            else:
+                console.log(f"FAILURE {test}", style="bold red")
+                if raise_exceptions:
+                    raise RuntimeError(f"Test {test} failed")
 
 
 @app.command()
