@@ -80,7 +80,7 @@ class BigQuery(Client):
         dataset_ref = self.client.dataset(self.dataset_name)
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
-        self.client.delete_dataset(dataset, not_found_ok=True)
+        self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
 
     def _make_job(self, view: views.SQLView):
         query = view.query
