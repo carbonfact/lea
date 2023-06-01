@@ -296,6 +296,7 @@ def export(views_dir: str, threads: int = 8):
                 json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
             ),
             project_id="carbonfact-gsheet",
+            location="EU",
             dataset_name=f"export_{account.replace('-', '_')}",
             username=None,
         )
@@ -387,6 +388,7 @@ def archive(views_dir: str, view: str):
             json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
         ),
         project_id="carbonfact-gsheet",
+        location="EU",
         dataset_name="archive",
         username=None,
     )
