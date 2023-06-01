@@ -314,7 +314,12 @@ def export(views_dir: str, threads: int = 8):
 
 
 @app.command()
-def test(views_dir: str, threads: int = 8, production: bool = False, raise_exceptions: bool = False):
+def test(
+    views_dir: str,
+    threads: int = 8,
+    production: bool = False,
+    raise_exceptions: bool = False,
+):
     # Massage CLI inputs
     views_dir = pathlib.Path(views_dir)
 
