@@ -485,3 +485,12 @@ def docs(views_dir: str, output_dir: str = "docs"):
     readme = output_dir / "README.md"
     readme.parent.mkdir(parents=True, exist_ok=True)
     readme.write_text(readme_content.getvalue())
+
+
+@app.command()
+def diff(origin: str, destination: str):
+
+    # A client is necessary for getting the top 5 rows of each view
+    client = _make_client(None)
+
+    print(client.list_schema())

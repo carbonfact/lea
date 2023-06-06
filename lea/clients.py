@@ -137,3 +137,14 @@ class BigQuery(Client):
         self.client.delete_table(
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
         )
+
+    def list_schema(self):
+        view = views.GenericSQLView(
+            schema=None,
+            name=None,
+            query="""
+            SELECT table_name, column_name
+            FROM kaya.INFORMATION_SCHEMA.COLUMNS
+            """
+        )
+        return self._load_sql(view)
