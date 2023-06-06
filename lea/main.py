@@ -492,7 +492,6 @@ def diff(origin: str, destination: str):
     # A client is necessary for getting the top 5 rows of each view
     client = _make_client(None)
 
-
     diff_table = client.get_diff_summary(
         origin_dataset=origin, destination_dataset=destination
     )
