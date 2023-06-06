@@ -519,9 +519,9 @@ def diff(origin: str, destination: str):
         else:
             print_(f"  {table}")
         for removed in columns[columns.diff_kind == "REMOVED"].column_name:
-            print_(f"- {table}.{removed}")
+            print_(f"- {removed}")
         for added in columns[columns.diff_kind == "ADDED"].column_name:
-            print_(f"+ {table}.{added}")
+            print_(f"+ {added}")
         print_()
 
     print(buffer.getvalue())
