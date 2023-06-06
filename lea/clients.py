@@ -149,11 +149,11 @@ class BigQuery(Client):
                     table_name, column_name, 'REMOVED' AS diff_kind
                 FROM (
                     SELECT table_name, column_name
-                    FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
                     EXCEPT
                     DISTINCT
                     SELECT table_name, column_name
-                    FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
                 )
 
                 UNION ALL
@@ -162,10 +162,10 @@ class BigQuery(Client):
                     table_name, NULL AS column_name, 'REMOVED' AS diff_kind
                 FROM (
                     SELECT table_name
-                    FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
                     EXCEPT DISTINCT
                     SELECT table_name
-                    FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
                 )
 
                 UNION ALL
@@ -174,10 +174,10 @@ class BigQuery(Client):
                     table_name, column_name, 'ADDED' AS diff_kind
                 FROM (
                     SELECT table_name, column_name
-                    FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
                     EXCEPT DISTINCT
                     SELECT table_name, column_name
-                    FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
                 )
 
                 UNION ALL
@@ -186,10 +186,10 @@ class BigQuery(Client):
                     table_name, NULL AS column_name, 'ADDED' AS diff_kind
                 FROM (
                     SELECT table_name
-                    FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
                     EXCEPT DISTINCT
                     SELECT table_name
-                    FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
                 )
             )
             WHERE table_name != 'None__None'
