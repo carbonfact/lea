@@ -143,56 +143,56 @@ class BigQuery(Client):
             schema=None,
             name=None,
             query=f"""
-            SELECT
-                table_name, column_name, 'REMOVED' AS diff_kind
+            SELECT *
             FROM (
-                SELECT table_name, column_name
-                FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
-                WHERE table_name != 'None__None'
-                EXCEPT
-                DISTINCT
-                SELECT table_name, column_name
-                FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
+                SELECT
+                    table_name, column_name, 'REMOVED' AS diff_kind
+                FROM (
+                    SELECT table_name, column_name
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
+                    EXCEPT
+                    DISTINCT
+                    SELECT table_name, column_name
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
+                )
+
+                UNION ALL
+
+                SELECT
+                    table_name, NULL AS column_name, 'REMOVED' AS diff_kind
+                FROM (
+                    SELECT table_name
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
+                    EXCEPT DISTINCT
+                    SELECT table_name
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
+                )
+
+                UNION ALL
+
+                SELECT
+                    table_name, column_name, 'ADDED' AS diff_kind
+                FROM (
+                    SELECT table_name, column_name
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
+                    EXCEPT DISTINCT
+                    SELECT table_name, column_name
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
+                )
+
+                UNION ALL
+
+                SELECT
+                    table_name, NULL AS column_name, 'ADDED' AS diff_kind
+                FROM (
+                    SELECT table_name
+                    FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
+                    EXCEPT DISTINCT
+                    SELECT table_name
+                    FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
+                )
             )
-
-            UNION ALL
-
-            SELECT
-                table_name, NULL AS column_name, 'REMOVED' AS diff_kind
-            FROM (
-                SELECT table_name
-                FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
-                WHERE table_name != 'None__None'
-                EXCEPT DISTINCT
-                SELECT table_name
-                FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
-            )
-
-            UNION ALL
-
-            SELECT
-                table_name, column_name, 'ADDED' AS diff_kind
-            FROM (
-                SELECT table_name, column_name
-                FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
-                EXCEPT DISTINCT
-                SELECT table_name, column_name
-                FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
-                WHERE table_name != 'None__None'
-            )
-
-            UNION ALL
-
-            SELECT
-                table_name, NULL AS column_name, 'ADDED' AS diff_kind
-            FROM (
-                SELECT table_name
-                FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
-                WHERE table_name != 'None__None'
-                EXCEPT DISTINCT
-                SELECT table_name
-                FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
-            )
+            WHERE table_name != 'None__None'
             """,
         )
         return self._load_sql(view)

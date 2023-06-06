@@ -524,4 +524,4 @@ def diff(origin: str, destination: str):
             print_(f"+ {table}.{added}")
         print_()
 
-    print(buffer.getvalue().strip())
+    print(buffer.getvalue())
