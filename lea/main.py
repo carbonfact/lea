@@ -492,12 +492,13 @@ def diff(origin: str, destination: str):
     # A client is necessary for getting the top 5 rows of each view
     client = _make_client(None)
 
-    buffer = io.StringIO()
-    print_ = functools.partial(print, file=buffer)
 
     diff_table = client.get_diff_summary(
         origin_dataset=origin, destination_dataset=destination
     )
+    if diff_table.empty:
+        return "No field additions or removals detected"
+
     removed_tables = set(
         diff_table[
             diff_table.column_name.isnull() & (diff_table.diff_kind == "REMOVED")
@@ -509,6 +510,8 @@ def diff(origin: str, destination: str):
         ].table_name
     )
 
+    buffer = io.StringIO()
+    print_ = functools.partial(print, file=buffer)
     for table, columns in diff_table[diff_table.column_name.notnull()].groupby(
         "table_name"
     ):
