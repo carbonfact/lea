@@ -138,13 +138,61 @@ class BigQuery(Client):
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
         )
 
-    def list_schema(self):
+    def get_diff_summary(self, origin_dataset: str, destination_dataset: str):
         view = views.GenericSQLView(
             schema=None,
             name=None,
-            query="""
-            SELECT table_name, column_name
-            FROM kaya.INFORMATION_SCHEMA.COLUMNS
+            query=f"""
+            SELECT
+                table_name, column_name, 'REMOVED' AS diff_kind
+            FROM (
+                SELECT table_name, column_name
+                FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
+                WHERE table_name != 'None__None'
+                EXCEPT
+                DISTINCT
+                SELECT table_name, column_name
+                FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
+            )
+
+            UNION ALL
+
+            SELECT
+                table_name, NULL AS column_name, 'REMOVED' AS diff_kind
+            FROM (
+                SELECT table_name
+                FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
+                WHERE table_name != 'None__None'
+                EXCEPT DISTINCT
+                SELECT table_name
+                FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
+            )
+
+            UNION ALL
+
+            SELECT
+                table_name, column_name, 'ADDED' AS diff_kind
+            FROM (
+                SELECT table_name, column_name
+                FROM {destination_dataset}.INFORMATION_SCHEMA.COLUMNS
+                EXCEPT DISTINCT
+                SELECT table_name, column_name
+                FROM {origin_dataset}.INFORMATION_SCHEMA.COLUMNS
+                WHERE table_name != 'None__None'
+            )
+
+            UNION ALL
+
+            SELECT
+                table_name, NULL AS column_name, 'ADDED' AS diff_kind
+            FROM (
+                SELECT table_name
+                FROM {destination_dataset}.INFORMATION_SCHEMA.TABLES
+                WHERE table_name != 'None__None'
+                EXCEPT DISTINCT
+                SELECT table_name
+                FROM {origin_dataset}.INFORMATION_SCHEMA.TABLES
+            )
             """,
         )
         return self._load_sql(view)
