@@ -145,6 +145,6 @@ class BigQuery(Client):
             query="""
             SELECT table_name, column_name
             FROM kaya.INFORMATION_SCHEMA.COLUMNS
-            """
+            """,
         )
         return self._load_sql(view)
