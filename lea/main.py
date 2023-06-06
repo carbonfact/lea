@@ -496,7 +496,7 @@ def diff(origin: str, destination: str):
         origin_dataset=origin, destination_dataset=destination
     )
     if diff_table.empty:
-        return "No field additions or removals detected"
+        print("No field additions or removals detected")
 
     removed_tables = set(
         diff_table[
