@@ -139,6 +139,7 @@ class BigQuery(Client):
         )
 
     def get_diff_summary(self, origin_dataset: str, destination_dataset: str):
+        # TODO: this is creating a view, whereas it should just provide a result
         view = views.GenericSQLView(
             schema=None,
             name=None,
