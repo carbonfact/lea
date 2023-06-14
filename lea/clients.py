@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import importlib
+import pandas as pd
 
 from . import views
 
@@ -123,9 +124,11 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _load_sql(self, view: views.SQLView):
-        job = self._make_job(view)
-        return job.to_dataframe()
+    def _load_sql(self, view: views.SQLView) -> pd.DataFrame:
+        return pd.read_gbq(
+            view.query,
+            credentials=self.client._credentials
+        )
 
     def list_existing(self):
         return [

@@ -353,16 +353,8 @@ def test(
     username = None if production else _get_lea_user()
     client = _make_client(username)
 
-    def test_and_delete(test):
-        # Each test leaves behind a table, so we delete it afterwards, because tests should
-        # have no side-effects.
-        # TODO: there's probably a way to run tests without leaving behind tables
-        conflicts = client.load(test)
-        client.delete(test)
-        return conflicts
-
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        jobs = {executor.submit(test_and_delete, test): test for test in tests}
+        jobs = {executor.submit(client.load, test): test for test in tests}
         for job in concurrent.futures.as_completed(jobs):
             test = jobs[job]
             conflicts = job.result()
