@@ -125,10 +125,7 @@ class BigQuery(Client):
         job.result()
 
     def _load_sql(self, view: views.SQLView) -> pd.DataFrame:
-        return pd.read_gbq(
-            view.query,
-            credentials=self.client._credentials
-        )
+        return pd.read_gbq(view.query, credentials=self.client._credentials)
 
     def list_existing(self):
         return [
