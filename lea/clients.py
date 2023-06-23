@@ -107,8 +107,8 @@ class BigQuery(Client):
                     "job_schema": view.schema,
                     "job_table": f"{view.schema}__{view.name}".lstrip("_"),
                     "job_username": self.username,
-                    "job_is_github_actions": "GITHUB_ACTIONS" in os.environ
-                }
+                    "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
+                },
             }
         )
 
