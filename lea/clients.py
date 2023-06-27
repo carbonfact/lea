@@ -75,7 +75,8 @@ class BigQuery(Client):
         dataset_ref = self.client.dataset(self.dataset_name)
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
-        self.client.create_dataset(dataset, exists_ok=True)
+        dataset = self.client.create_dataset(dataset, exists_ok=True)
+        print(f"Created dataset {dataset.dataset_id}")
 
     def delete_dataset(self):
         from google.cloud import bigquery
