@@ -156,7 +156,9 @@ class PythonView(View):
         return set(_dependencies())
 
 
-def load_views(views_dir: pathlib.Path) -> list[View]:
+def load_views(views_dir: pathlib.Path | str) -> list[View]:
+    if isinstance(views_dir, str):
+        views_dir = pathlib.Path(views_dir)
     return [
         View.from_path(path, origin=views_dir)
         for schema_dir in (d for d in views_dir.iterdir() if d.is_dir())
