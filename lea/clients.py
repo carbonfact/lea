@@ -227,7 +227,7 @@ class BigQuery(Client):
         )
         return self._load_sql(view)
 
-    def yield_unit_tests(self, columns: list[str], view: lea.views.View):
+    def yield_unit_tests(self, columns: list[str], view: views.View):
         column_comments = view.extract_comments(
             columns=columns, dialect=self.sqlglot_dialect
         )
