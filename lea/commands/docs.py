@@ -47,7 +47,7 @@ def docs(
         for view in sorted(dag.values(), key=lambda view: view.name):
             if view.schema != schema:
                 continue
-            content.write(f"- [`{view.name}`](#{view.name})\n")
+            content.write(f"- [`{view.name}`](#`{view.name}`)\n")
         content.write("\n")
 
         # Write down the views
@@ -85,7 +85,6 @@ def docs(
         schema_readme = output_dir / schema / "README.md"
         schema_readme.parent.mkdir(parents=True, exist_ok=True)
         schema_readme.write_text(content.getvalue())
-        schema_readme.write("\n")
         console.log(f"Wrote {schema_readme}", style="bold green")
     else:
         readme_content.write("\n")
