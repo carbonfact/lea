@@ -26,11 +26,12 @@ class BigQuery(Client):
 
     @property
     def dataset_name(self):
-        return (
+        base_dataset = (
             f"{self._dataset_name}_{self.username}"
             if self.username
             else self._dataset_name
         )
+        return f"{base_dataset}_stable" if os.environ.get("STABLE_CARBONVERSES", "false") == "true" else base_dataset
 
     def create_dataset(self):
         from google.cloud import bigquery
