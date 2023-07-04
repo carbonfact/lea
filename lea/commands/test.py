@@ -14,7 +14,6 @@ def test(
     raise_exceptions: bool,
     console: rich.console.Console,
 ):
-
     # List all the columns
     columns = client.get_columns()
 
@@ -26,13 +25,18 @@ def test(
 
     generic_tests = []
     for view in views:
-        view_columns = columns.query(f"table == '{view.schema}__{view.name}'")["column"].tolist()
+        view_columns = columns.query(f"table == '{view.schema}__{view.name}'")[
+            "column"
+        ].tolist()
         for generic_test in client.yield_unit_tests(view_columns, view):
             generic_tests.append(generic_test)
     console.log(f"Found {len(generic_tests):,d} generic tests")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        jobs = {executor.submit(client.load, test): test for test in singular_tests + generic_tests}
+        jobs = {
+            executor.submit(client.load, test): test
+            for test in singular_tests + generic_tests
+        }
         for job in concurrent.futures.as_completed(jobs):
             test = jobs[job]
             conflicts = job.result()

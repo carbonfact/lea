@@ -229,8 +229,7 @@ class BigQuery(Client):
 
     def yield_unit_tests(self, columns: list[str], view: lea.views.View):
         column_comments = view.extract_comments(
-            columns=columns,
-            dialect=self.sqlglot_dialect
+            columns=columns, dialect=self.sqlglot_dialect
         )
 
         for column, comment_block in column_comments.items():
@@ -240,13 +239,14 @@ class BigQuery(Client):
                         yield views.GenericSQLView(
                             schema="tests",
                             name=f"{view.schema}.{view.name}.{column}@UNIQUE",
-                            query=textwrap.dedent(f"""
+                            query=textwrap.dedent(
+                                f"""
                                 SELECT {column}, COUNT(*) AS n
                                 FROM {self.dataset_name}.{view.schema}__{view.name}
                                 GROUP BY {column}
                                 HAVING n > 1
                                 """
-                            )
+                            ),
                         )
                     else:
                         raise ValueError(f"Unhandled tag: {comment.text}")
