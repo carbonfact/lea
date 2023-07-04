@@ -47,7 +47,7 @@ def docs(
         for view in sorted(dag.values(), key=lambda view: view.name):
             if view.schema != schema:
                 continue
-            content.write(f"- [`{view.name}`](#{view.name})\n")
+            content.write(f"- [{view.name}](#{view.name})\n")
         content.write("\n")
 
         # Write down the views
@@ -58,6 +58,15 @@ def docs(
             content.write(f"### {view.name}\n\n")
             if view.description:
                 content.write(f"{view.description}\n\n")
+
+            # Write down the query
+            # HACK
+            content.write(
+                "```sql\n"
+                "SELECT *\n"
+                f"FROM {client.dataset_name}.{schema}__{view.name}\n"
+                "```\n\n"
+            )
 
             # Write down the columns
             view_columns = columns.query(f"table == '{schema}__{view.name}'")[
