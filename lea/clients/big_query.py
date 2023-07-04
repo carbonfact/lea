@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import abc
-import importlib
 import os
 import textwrap
 
@@ -125,7 +123,9 @@ class BigQuery(Client):
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
-        return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
+        return self._load_sql(
+            lea.views.GenericSQLView(schema=None, name=None, query=query)
+        )
 
     def get_diff_summary(self, origin_dataset: str, destination_dataset: str):
         # TODO: this could leverage get_columns
