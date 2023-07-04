@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import datetime as dt
+import functools
 import pathlib
 import pickle
-import functools
 import time
 
 import rich.console

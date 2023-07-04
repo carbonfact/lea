@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import io
 import functools
+import io
 
 import lea
 
