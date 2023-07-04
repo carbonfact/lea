@@ -1,15 +1,12 @@
-import functools
-import datetime as dt
-import pathlib
-import time
+from __future__ import annotations
 
-import concurrent.futures
+import io
+import functools
 
 import lea
-import rich.console
+
 
 def calculate_diff(origin: str, destination: str, client: lea.clients.Client) -> str:
-
     diff_table = client.get_diff_summary(
         origin_dataset=origin, destination_dataset=destination
     )

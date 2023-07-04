@@ -63,7 +63,7 @@ class BigQuery(Client):
 
     @property
     def sqlglot_dialect(self):
-        return 'bigquery'
+        return "bigquery"
 
     @property
     def dataset_name(self):

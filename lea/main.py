@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-import datetime as dt
-import functools
 import getpass
-import io
 import json
 import os
-import pathlib
-import pickle
-import time
 
 import dotenv
 import rich.console
@@ -133,7 +127,6 @@ def export(views_dir: str, threads: int = 8):
     export(views_dir=views_dir, threads=threads, client=client, console=console)
 
 
-
 @app.command()
 def test(
     views_dir: str,
@@ -155,9 +148,9 @@ def test(
         console=console,
     )
 
+
 @app.command()
 def archive(views_dir: str, view: str):
-
     from lea.commands.archive import archive
 
     # Massage CLI inputs
@@ -166,6 +159,7 @@ def archive(views_dir: str, view: str):
     archive(
         views_dir=views_dir,
         schema=schema,
+        view_name=view_name,
     )
 
 
@@ -180,7 +174,6 @@ def docs(views_dir: str, output_dir: str = "docs"):
 
 @app.command()
 def diff(origin: str, destination: str):
-
     from lea.commands.diff import calculate_diff
 
     # A client is necessary for getting the top 5 rows of each view

@@ -1,11 +1,11 @@
-import datetime as dt
-import pathlib
-import time
+from __future__ import annotations
 
 import concurrent.futures
 
-import lea
 import rich.console
+
+import lea
+
 
 def test(
     client: lea.clients.Client,
@@ -14,7 +14,6 @@ def test(
     raise_exceptions: bool,
     console: rich.console.Console,
 ):
-
     # The client determines where the views will be written
     # List the test views
     views = lea.views.load_views(views_dir)

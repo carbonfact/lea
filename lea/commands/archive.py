@@ -1,18 +1,14 @@
-import datetime as dt
-import pathlib
-import time
+from __future__ import annotations
 
-import concurrent.futures
+import json
+import os
+
+import datetime as dt
 
 import lea
-import rich.console
 
 
-def archive(
-    views_dir: str,
-    view: str
-):
-
+def archive(views_dir: str, schema: str, view_name: str):
     from google.oauth2 import service_account
 
     client = lea.clients.BigQuery(

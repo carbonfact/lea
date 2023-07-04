@@ -1,17 +1,19 @@
-import datetime as dt
+from __future__ import annotations
+
 import io
 import pathlib
-import time
 
-import concurrent.futures
-
-import lea
 import rich.console
 
+import lea
 
 
-def docs(views_dir: str, output_dir: str, client: lea.clients.Client, console: rich.console.Console):
-
+def docs(
+    views_dir: str,
+    output_dir: str,
+    client: lea.clients.Client,
+    console: rich.console.Console,
+):
     views_dir = pathlib.Path(views_dir)
     output_dir = pathlib.Path(output_dir)
 
@@ -58,21 +60,32 @@ def docs(views_dir: str, output_dir: str, client: lea.clients.Client, console: r
                 content.write(f"{view.description}\n\n")
 
             # Write down the columns
-            view_columns = columns.query(f"table == '{schema}__{view.name}'")[["column", "type"]]
-            view_comments = view.extract_comments(columns=view_columns["column"].tolist(), dialect=client.sqlglot_dialect)
+            view_columns = columns.query(f"table == '{schema}__{view.name}'")[
+                ["column", "type"]
+            ]
+            view_comments = view.extract_comments(
+                columns=view_columns["column"].tolist(), dialect=client.sqlglot_dialect
+            )
             view_comments = {
                 column: " ".join(comment.text for comment in comment_block)
                 for column, comment_block in view_comments.items()
             }
-            view_columns["Description"] = view_columns["column"].map(view_comments).fillna("")
-            view_columns["column"] = view_columns["column"].apply(lambda x: f"`{x}`").rename("Column")
-            view_columns["type"] = view_columns["type"].apply(lambda x: f"`{x}`").rename("Type")
+            view_columns["Description"] = (
+                view_columns["column"].map(view_comments).fillna("")
+            )
+            view_columns["column"] = (
+                view_columns["column"].apply(lambda x: f"`{x}`").rename("Column")
+            )
+            view_columns["type"] = (
+                view_columns["type"].apply(lambda x: f"`{x}`").rename("Type")
+            )
             content.write(view_columns.to_markdown(index=False) + "\n\n")
 
         # Write the schema README
         schema_readme = output_dir / schema / "README.md"
         schema_readme.parent.mkdir(parents=True, exist_ok=True)
         schema_readme.write_text(content.getvalue())
+        schema_readme.write("\n")
         console.log(f"Wrote {schema_readme}", style="bold green")
     else:
         readme_content.write("\n")

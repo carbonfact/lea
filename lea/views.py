@@ -31,7 +31,6 @@ class CommentBlock(collections.UserList):
         return self[-1].line
 
 
-
 @dataclasses.dataclass
 class View(abc.ABC):
     origin: pathlib.Path
@@ -128,15 +127,17 @@ class SQLView(View):
             )
         )
 
-    def extract_comments(self, columns: list[str], dialect: str) -> dict[str, CommentBlock]:
+    def extract_comments(
+        self, columns: list[str], dialect: str
+    ) -> dict[str, CommentBlock]:
         dialect = sqlglot.Dialect.get_or_raise(dialect)()
         tokens = dialect.tokenizer.tokenize(self.query)
 
         # Extract comments, which are lines that start with --
         comments = [
-            Comment(line=line, text=comment.replace('--', '').strip())
+            Comment(line=line, text=comment.replace("--", "").strip())
             for line, comment in enumerate(self.query.splitlines(), start=1)
-            if comment.strip().startswith('--')
+            if comment.strip().startswith("--")
         ]
 
         # Pack comments into CommentBlock objects
@@ -150,7 +151,7 @@ class SQLView(View):
                         for cb in comment_blocks
                         if cb.first_line == comment_block.last_line + 1
                     ),
-                    None
+                    None,
                 )
                 if next_comment_block:
                     comment_block.extend(next_comment_block)
@@ -164,18 +165,17 @@ class SQLView(View):
         var_tokens = [
             token
             for token in tokens
-            if token.token_type.value == 'VAR'
-            and token.text in columns
+            if token.token_type.value == "VAR" and token.text in columns
         ]
 
         def is_var_line(line):
-            line_tokens = [t for t in tokens if t.line == line and t.token_type.value != 'COMMA']
-            return line_tokens[-1].token_type.value == 'VAR'
+            line_tokens = [
+                t for t in tokens if t.line == line and t.token_type.value != "COMMA"
+            ]
+            return line_tokens[-1].token_type.value == "VAR"
 
         last_var_per_line = {
-            token.line: token.text
-            for token in var_tokens
-            if is_var_line(token.line)
+            token.line: token.text for token in var_tokens if is_var_line(token.line)
         }
 
         # Now assign each comment block to a variable
@@ -184,11 +184,10 @@ class SQLView(View):
             adjacent_var = next(
                 (
                     var
-                    for line, var
-                    in last_var_per_line.items()
+                    for line, var in last_var_per_line.items()
                     if comment_block.last_line == line - 1
                 ),
-                None
+                None,
             )
             if adjacent_var:
                 var_comments[adjacent_var] = comment_block
