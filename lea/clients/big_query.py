@@ -7,49 +7,9 @@ import textwrap
 
 import pandas as pd
 
-from . import views
+import lea
 
-
-class Client(abc.ABC):
-    @abc.abstractmethod
-    def _create_sql(self, view: views.SQLView):
-        ...
-
-    @abc.abstractmethod
-    def _create_python(self, view: views.PythonView):
-        ...
-
-    def create(self, view: views.View):
-        if isinstance(view, views.SQLView):
-            return self._create_sql(view)
-        elif isinstance(view, views.PythonView):
-            return self._create_python(view)
-        raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
-
-    @abc.abstractmethod
-    def _load_sql(self, view: views.SQLView):
-        ...
-
-    def _load_python(self, view: views.PythonView):
-        # HACK
-        mod = importlib.import_module("views")
-        output = getattr(mod, view.name).main()
-        return output
-
-    def load(self, view: views.View):
-        if isinstance(view, views.SQLView):
-            return self._load_sql(view)
-        elif isinstance(view, views.PythonView):
-            return self._load_python(view)
-        raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
-
-    @abc.abstractmethod
-    def list_existing(self, schema: str) -> list[str]:
-        ...
-
-    @abc.abstractmethod
-    def delete(self, view_name: str):
-        ...
+from .base import Client
 
 
 class BigQuery(Client):
@@ -91,7 +51,7 @@ class BigQuery(Client):
         dataset.location = self.location
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
 
-    def _make_job(self, view: views.SQLView):
+    def _make_job(self, view: lea.views.SQLView):
         query = view.query
         if self.username:
             query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
@@ -118,11 +78,11 @@ class BigQuery(Client):
             }
         )
 
-    def _create_sql(self, view: views.SQLView):
+    def _create_sql(self, view: lea.views.SQLView):
         job = self._make_job(view)
         job.result()
 
-    def _create_python(self, view: views.PythonView):
+    def _create_python(self, view: lea.views.PythonView):
         from google.cloud import bigquery
 
         output = self._load_python(view)
@@ -139,7 +99,7 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _load_sql(self, view: views.SQLView) -> pd.DataFrame:
+    def _load_sql(self, view: lea.views.SQLView) -> pd.DataFrame:
         query = view.query
         if self.username:
             query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
@@ -151,7 +111,7 @@ class BigQuery(Client):
             for table in self.client.list_tables(self.dataset_name)
         ]
 
-    def delete(self, view: views.View):
+    def delete(self, view: lea.views.View):
         self.client.delete_table(
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
         )
@@ -165,11 +125,11 @@ class BigQuery(Client):
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
-        return self._load_sql(views.GenericSQLView(schema=None, name=None, query=query))
+        return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
 
     def get_diff_summary(self, origin_dataset: str, destination_dataset: str):
         # TODO: this could leverage get_columns
-        view = views.GenericSQLView(
+        view = lea.views.GenericSQLView(
             schema=None,
             name=None,
             query=f"""
@@ -227,7 +187,7 @@ class BigQuery(Client):
         )
         return self._load_sql(view)
 
-    def yield_unit_tests(self, columns: list[str], view: views.View):
+    def yield_unit_tests(self, columns: list[str], view: lea.views.View):
         column_comments = view.extract_comments(
             columns=columns, dialect=self.sqlglot_dialect
         )
@@ -236,7 +196,7 @@ class BigQuery(Client):
             for comment in comment_block:
                 if "@" in comment.text:
                     if comment.text == "@UNIQUE":
-                        yield views.GenericSQLView(
+                        yield lea.views.GenericSQLView(
                             schema="tests",
                             name=f"{view.schema}.{view.name}.{column}@UNIQUE",
                             query=textwrap.dedent(
