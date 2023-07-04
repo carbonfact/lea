@@ -142,8 +142,11 @@ class SQLView(View):
 
         # Pack comments into CommentBlock objects
         comment_blocks = [CommentBlock([comment]) for comment in comments]
-        no_change = False
-        while not no_change:
+        comment_blocks = sorted(comment_blocks, key=lambda cb: cb.first_line)
+
+        change = True
+        while change:
+            change = False
             for comment_block in comment_blocks:
                 next_comment_block = next(
                     (
@@ -155,10 +158,10 @@ class SQLView(View):
                 )
                 if next_comment_block:
                     comment_block.extend(next_comment_block)
-                    comment_blocks = [cb for cb in comment_blocks]
+                    next_comment_block.clear()
+                    comment_blocks = [cb for cb in comment_blocks if cb]
+                    change = True
                     break
-            else:
-                no_change = True
 
         # We assume the tokens are stored. Therefore, by looping over them and building a dictionary,
         # each key will be unique and the last value will be the last variable in the line.

@@ -40,7 +40,7 @@ def docs(
         if (existing_readme := views_dir / schema / "README.md").exists():
             content.write(existing_readme.read_text() + "\n")
         else:
-            content.write(f"# `{schema}`\n\n")
+            content.write(f"# {schema}\n\n")
 
         # Write down table of contents
         content.write("## Table of contents\n\n")
@@ -67,7 +67,6 @@ def docs(
                 f"FROM {client.dataset_name}.{schema}__{view.name}\n"
                 "```\n\n"
             )
-
             # Write down the columns
             view_columns = columns.query(f"table == '{schema}__{view.name}'")[
                 ["column", "type"]
@@ -75,19 +74,19 @@ def docs(
             view_comments = view.extract_comments(
                 columns=view_columns["column"].tolist(), dialect=client.sqlglot_dialect
             )
-            view_comments = {
-                column: " ".join(comment.text for comment in comment_block)
+            view_columns["Description"] = view_columns["column"].map({
+                column: " ".join(comment.text for comment in comment_block if not comment.text.startswith("@"))
                 for column, comment_block in view_comments.items()
-            }
-            view_columns["Description"] = (
-                view_columns["column"].map(view_comments).fillna("")
-            )
-            view_columns["column"] = (
-                view_columns["column"].apply(lambda x: f"`{x}`").rename("Column")
-            )
+            }).fillna("")
+            view_columns["Unique"] = view_columns["column"].map({
+                column: "✅" if any(comment.text == "@UNIQUE" for comment in comment_block) else ""
+                for column, comment_block in view_comments.items()
+            }).fillna("")
             view_columns["type"] = (
-                view_columns["type"].apply(lambda x: f"`{x}`").rename("Type")
+                view_columns["type"].apply(lambda x: f"`{x}`")
             )
+            view_columns = view_columns.rename(columns={"column": "Column", "type": "Type"})
+            view_columns = view_columns.sort_values("Column")
             content.write(view_columns.to_markdown(index=False) + "\n\n")
 
         # Write the schema README
