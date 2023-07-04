@@ -62,6 +62,10 @@ class BigQuery(Client):
         self.username = username
 
     @property
+    def sqlglot_dialect(self):
+        return 'bigquery'
+
+    @property
     def dataset_name(self):
         return (
             f"{self._dataset_name}_{self.username}"
@@ -151,8 +155,19 @@ class BigQuery(Client):
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
         )
 
+    def get_columns(self) -> pd.DataFrame:
+        query = f"""
+        SELECT
+            table_schema AS schema,
+            table_name AS table,
+            column_name AS column,
+            data_type AS type
+        FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
+        """
+        return self._load_sql(views.GenericSQLView(schema=None, name=None, query=query))
+
     def get_diff_summary(self, origin_dataset: str, destination_dataset: str):
-        # TODO: this is creating a view, whereas it should just provide a result
+        # TODO: this could leverage get_columns
         view = views.GenericSQLView(
             schema=None,
             name=None,

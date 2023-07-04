@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import ast
+import collections
 import dataclasses
 import itertools
 import pathlib
@@ -9,6 +10,26 @@ import re
 
 import jinja2
 import sqlglot
+
+
+@dataclasses.dataclass
+class Comment:
+    line: int
+    text: str
+
+
+class CommentBlock(collections.UserList):
+    def __init__(self, comments: list[Comment]):
+        super().__init__(sorted(comments, key=lambda c: c.line))
+
+    @property
+    def first_line(self):
+        return self[0].line
+
+    @property
+    def last_line(self):
+        return self[-1].line
+
 
 
 @dataclasses.dataclass
@@ -106,6 +127,73 @@ class SQLView(View):
                 lambda line: line.startswith("--"), self.query.strip().splitlines()
             )
         )
+
+    def extract_comments(self, columns: list[str], dialect: str) -> dict[str, CommentBlock]:
+        dialect = sqlglot.Dialect.get_or_raise(dialect)()
+        tokens = dialect.tokenizer.tokenize(self.query)
+
+        # Extract comments, which are lines that start with --
+        comments = [
+            Comment(line=line, text=comment.replace('--', '').strip())
+            for line, comment in enumerate(self.query.splitlines(), start=1)
+            if comment.strip().startswith('--')
+        ]
+
+        # Pack comments into CommentBlock objects
+        comment_blocks = [CommentBlock([comment]) for comment in comments]
+        no_change = False
+        while not no_change:
+            for comment_block in comment_blocks:
+                next_comment_block = next(
+                    (
+                        cb
+                        for cb in comment_blocks
+                        if cb.first_line == comment_block.last_line + 1
+                    ),
+                    None
+                )
+                if next_comment_block:
+                    comment_block.extend(next_comment_block)
+                    comment_blocks = [cb for cb in comment_blocks]
+                    break
+            else:
+                no_change = True
+
+        # We assume the tokens are stored. Therefore, by looping over them and building a dictionary,
+        # each key will be unique and the last value will be the last variable in the line.
+        var_tokens = [
+            token
+            for token in tokens
+            if token.token_type.value == 'VAR'
+            and token.text in columns
+        ]
+
+        def is_var_line(line):
+            line_tokens = [t for t in tokens if t.line == line and t.token_type.value != 'COMMA']
+            return line_tokens[-1].token_type.value == 'VAR'
+
+        last_var_per_line = {
+            token.line: token.text
+            for token in var_tokens
+            if is_var_line(token.line)
+        }
+
+        # Now assign each comment block to a variable
+        var_comments = {}
+        for comment_block in comment_blocks:
+            adjacent_var = next(
+                (
+                    var
+                    for line, var
+                    in last_var_per_line.items()
+                    if comment_block.last_line == line - 1
+                ),
+                None
+            )
+            if adjacent_var:
+                var_comments[adjacent_var] = comment_block
+
+        return var_comments
 
 
 class GenericSQLView(SQLView):
