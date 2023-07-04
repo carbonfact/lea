@@ -74,18 +74,36 @@ def docs(
             view_comments = view.extract_comments(
                 columns=view_columns["column"].tolist(), dialect=client.sqlglot_dialect
             )
-            view_columns["Description"] = view_columns["column"].map({
-                column: " ".join(comment.text for comment in comment_block if not comment.text.startswith("@"))
-                for column, comment_block in view_comments.items()
-            }).fillna("")
-            view_columns["Unique"] = view_columns["column"].map({
-                column: "✅" if any(comment.text == "@UNIQUE" for comment in comment_block) else ""
-                for column, comment_block in view_comments.items()
-            }).fillna("")
-            view_columns["type"] = (
-                view_columns["type"].apply(lambda x: f"`{x}`")
+            view_columns["Description"] = (
+                view_columns["column"]
+                .map(
+                    {
+                        column: " ".join(
+                            comment.text
+                            for comment in comment_block
+                            if not comment.text.startswith("@")
+                        )
+                        for column, comment_block in view_comments.items()
+                    }
+                )
+                .fillna("")
             )
-            view_columns = view_columns.rename(columns={"column": "Column", "type": "Type"})
+            view_columns["Unique"] = (
+                view_columns["column"]
+                .map(
+                    {
+                        column: "✅"
+                        if any(comment.text == "@UNIQUE" for comment in comment_block)
+                        else ""
+                        for column, comment_block in view_comments.items()
+                    }
+                )
+                .fillna("")
+            )
+            view_columns["type"] = view_columns["type"].apply(lambda x: f"`{x}`")
+            view_columns = view_columns.rename(
+                columns={"column": "Column", "type": "Type"}
+            )
             view_columns = view_columns.sort_values("Column")
             content.write(view_columns.to_markdown(index=False) + "\n\n")
 
