@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import importlib
 import os
+import textwrap
 
 import pandas as pd
 
@@ -225,3 +226,27 @@ class BigQuery(Client):
             """,
         )
         return self._load_sql(view)
+
+    def yield_unit_tests(self, columns: list[str], view: lea.views.View):
+        column_comments = view.extract_comments(
+            columns=columns,
+            dialect=self.sqlglot_dialect
+        )
+
+        for column, comment_block in column_comments.items():
+            for comment in comment_block:
+                if "@" in comment.text:
+                    if comment.text == "@UNIQUE":
+                        yield views.GenericSQLView(
+                            schema="tests",
+                            name=f"{view.schema}.{view.name}.{column}@UNIQUE",
+                            query=textwrap.dedent(f"""
+                                SELECT {column}, COUNT(*) AS n
+                                FROM {self.dataset_name}.{view.schema}__{view.name}
+                                GROUP BY {column}
+                                HAVING n > 1
+                                """
+                            )
+                        )
+                    else:
+                        raise ValueError(f"Unhandled tag: {comment.text}")
