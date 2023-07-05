@@ -12,7 +12,7 @@ import typer
 
 import lea
 
-dotenv.load_dotenv()
+dotenv.load_dotenv(verbose=True)
 app = typer.Typer()
 console = rich.console.Console()
 
