@@ -77,11 +77,14 @@ class SQLView(View):
     @property
     def query(self):
         text = self.path.read_text().rstrip().rstrip(";")
-        if (self.path.suffixes == [".sql", ".jinja"]):
+        if self.path.suffixes == [".sql", ".jinja"]:
             loader = jinja2.FileSystemLoader(self.origin)
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(self.relative_path))
-            return template.render(live_carbonverses=os.environ.get("STABLE_CARBONVERSES", "false") == "true")
+            return template.render(
+                live_carbonverses=os.environ.get("STABLE_CARBONVERSES", "false")
+                == "true"
+            )
         return text
 
     @classmethod
