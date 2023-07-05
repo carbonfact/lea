@@ -33,7 +33,7 @@ class BigQuery(Client):
         )
         return (
             f"{base_dataset}_stable"
-            if os.environ.get("STABLE_CARBONVERSES", "false") == "true"
+            if os.environ.get("STABLE_CARBONVERSES", "false").lower() == "true"
             else base_dataset
         )
 

@@ -82,7 +82,7 @@ class SQLView(View):
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(self.relative_path))
             return template.render(
-                live_carbonverses=os.environ.get("STABLE_CARBONVERSES", "false")
+                live_carbonverses=os.environ.get("STABLE_CARBONVERSES", "false").lower()
                 == "true"
             )
         return text
