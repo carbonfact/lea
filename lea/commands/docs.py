@@ -68,7 +68,9 @@ def docs(
                 "```\n\n"
             )
             # Write down the columns
-            view_columns = columns.query(f"table == '{schema}__{view.name}'")[["column", "type"]]
+            view_columns = columns.query(f"table == '{schema}__{view.name}'")[
+                ["column", "type"]
+            ]
             view_comments = view.extract_comments(
                 columns=view_columns["column"].tolist(), dialect=client.sqlglot_dialect
             )
@@ -99,7 +101,9 @@ def docs(
                 .fillna("")
             )
             view_columns["type"] = view_columns["type"].apply(lambda x: f"`{x}`")
-            view_columns = view_columns.rename(columns={"column": "Column", "type": "Type"})
+            view_columns = view_columns.rename(
+                columns={"column": "Column", "type": "Type"}
+            )
             view_columns = view_columns.sort_values("Column")
             content.write(view_columns.to_markdown(index=False) + "\n\n")
 
