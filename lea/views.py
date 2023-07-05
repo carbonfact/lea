@@ -52,7 +52,7 @@ class View(abc.ABC):
     @property
     def name(self):
         name_parts = itertools.chain(
-            self.relative_path.parts[1:-1], [self.relative_path.stem]
+            self.relative_path.parts[1:-1], [self.relative_path.name.split(".")[0]]
         )
         return "__".join(name_parts)
 
@@ -64,7 +64,7 @@ class View(abc.ABC):
         relative_path = path.relative_to(origin)
         if path.suffix == ".py":
             return PythonView(origin, relative_path)
-        if path.suffix == ".sql":
+        if path.suffix == ".sql" or path.suffixes == [".sql", ".jinja"]:
             return SQLView(origin, relative_path)
 
     @property
@@ -77,7 +77,7 @@ class SQLView(View):
     @property
     def query(self):
         text = self.path.read_text().rstrip().rstrip(";")
-        if (text.startswith("{% extends") or ("{%" in text)):
+        if (self.path.suffixes == [".sql", ".jinja"]):
             loader = jinja2.FileSystemLoader(self.origin)
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(self.relative_path))
@@ -258,6 +258,6 @@ def load_views(views_dir: pathlib.Path | str) -> list[View]:
         for path in schema_dir.rglob("*")
         if not path.is_dir()
         and not path.name.startswith("_")
-        and path.suffix in {".py", ".sql"}
+        and (path.suffix in {".py", ".sql"} or path.suffixes == [".sql", ".jinja"])
         and path.stat().st_size > 0
     ]
