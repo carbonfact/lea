@@ -110,8 +110,7 @@ class BigQuery(Client):
 
     def list_existing(self):
         return [
-            table.table_id.split("__", 1)
-            for table in self.client.list_tables(self.dataset_name)
+            table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
         ]
 
     def delete(self, view: lea.views.View):
@@ -128,9 +127,7 @@ class BigQuery(Client):
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
-        return self._load_sql(
-            lea.views.GenericSQLView(schema=None, name=None, query=query)
-        )
+        return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
 
     def get_diff_summary(self, origin_dataset: str, destination_dataset: str):
         # TODO: this could leverage get_columns
@@ -193,9 +190,7 @@ class BigQuery(Client):
         return self._load_sql(view)
 
     def yield_unit_tests(self, columns: list[str], view: lea.views.View):
-        column_comments = view.extract_comments(
-            columns=columns, dialect=self.sqlglot_dialect
-        )
+        column_comments = view.extract_comments(columns=columns, dialect=self.sqlglot_dialect)
 
         for column, comment_block in column_comments.items():
             for comment in comment_block:
