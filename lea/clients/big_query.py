@@ -55,9 +55,7 @@ class BigQuery(Client):
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
 
     def _make_job(self, view: lea.views.SQLView):
-        query = view.query
-        if self.username:
-            query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
+        query = view.query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
 
         return self.client.create_job(
             {
