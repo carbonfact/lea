@@ -82,7 +82,7 @@ class SQLView(View):
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(self.relative_path))
             return template.render(
-                frozen_data=os.environ.get("FREEZE_RELEASES", "false").lower() == "true"
+                freeze_releases=os.environ.get("FREEZE_RELEASES", "false").lower() == "true"
             )
         return text
 
