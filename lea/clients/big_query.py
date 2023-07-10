@@ -64,15 +64,17 @@ class BigQuery(Client):
                     "destinationTable": {
                         "projectId": self.project_id,
                         "datasetId": self.dataset_name,
-                        "tableId": f"{view.schema}__{view.name}".lstrip("_"),
+                        "tableId": f"{view.schema}__{view.name}" if view.schema else view.name,
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
                     "writeDisposition": "WRITE_TRUNCATE",
+                    # HACK: doesn't work, but would be nice
+                    # 'clustering': {'fields': ['account_slug']} if view.name == "measured_carbonverses" else None,
                 },
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": view.schema,
-                    "job_table": f"{view.schema}__{view.name}".lstrip("_"),
+                    "job_table": f"{view.schema}__{view.name}" if view.schema else view.name,
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
