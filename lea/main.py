@@ -174,7 +174,7 @@ def docs(views_dir: str, output_dir: str = "docs"):
 
 @app.command()
 def diff(origin: str, destination: str):
-    from lea.commands.diff import calculate_diff
+    from lea.diff import calculate_diff
 
     # A client is necessary for getting the top 5 rows of each view
     client = _make_client(None)
