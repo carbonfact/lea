@@ -11,7 +11,7 @@ from .base import Client
 
 
 class BigQuery(Client):
-    def __init__(self, credentials, location, project_id, dataset_name, username, console):
+    def __init__(self, credentials, location, project_id, dataset_name, username):
         from google.cloud import bigquery
 
         self.project_id = project_id
@@ -19,10 +19,10 @@ class BigQuery(Client):
         self.client = bigquery.Client(credentials=credentials)
         self._dataset_name = dataset_name
         self.username = username
-        self.console = console
 
-    def prepare(self):
-        self.create_dataset()
+    def prepare(self, console):
+        dataset = self.create_dataset()
+        console.log(f"Created dataset {dataset.dataset_id}")
 
     @property
     def sqlglot_dialect(self):
@@ -48,7 +48,7 @@ class BigQuery(Client):
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset = self.client.create_dataset(dataset, exists_ok=True)
-        self.console.log(f"Created dataset {dataset.dataset_id}")
+        return dataset
 
     def delete_dataset(self):
         from google.cloud import bigquery

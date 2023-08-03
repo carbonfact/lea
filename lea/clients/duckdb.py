@@ -9,11 +9,10 @@ from .base import Client
 
 class DuckDB(Client):
 
-    def __init__(self, path: str, schema: str, username: str, console):
+    def __init__(self, path: str, schema: str, username: str):
         self.path = path
         self._schema = schema
         self.username = username
-        self.console = console
         self.con = duckdb.connect(self.path)
 
     @property
@@ -28,9 +27,9 @@ class DuckDB(Client):
             else self._schema
         )
 
-    def prepare(self):
+    def prepare(self, console):
         self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema}")
-        self.console.log(f"Created schema {self.schema}")
+        console.log(f"Created schema {self.schema}")
 
     def _create_python(self, view: views.PythonView):
         self._load_python(view)
