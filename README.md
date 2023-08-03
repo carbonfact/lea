@@ -27,6 +27,33 @@ lea is an opinionated alternative to [dbt](https://www.getdbt.com/), [SQLMesh](h
 
 ## Usage
 
+### Environment variables
+
+lea is configured by setting environment variables. The following variables are available:
+
+```sh
+# General configuration
+LEA_SCHEMA=kaya
+LEA_USERNAME=max
+LEA_WAREHOUSE=bigquery
+
+# DuckDB
+LEA_DUCKDB_PATH=duckdb.db
+
+# BigQuery
+LEA_BQ_LOCATION=EU
+LEA_BQ_PROJECT_ID=carbonfact-gsheet
+LEA_BQ_SERVICE_ACCOUNT=<a JSON dump of the service account file>
+```
+
+### `lea prepare`
+
+This has to be run once to create whatever needs creating. For instance, when working with BigQuery, a dataset has to be created.
+
+```sh
+lea prepare
+```
+
 ### `lea run`
 
 ```sh

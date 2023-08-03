@@ -20,6 +20,9 @@ class BigQuery(Client):
         self._dataset_name = dataset_name
         self.username = username
 
+    def prepare(self):
+        self.create_dataset()
+
     @property
     def sqlglot_dialect(self):
         return "bigquery"

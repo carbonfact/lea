@@ -7,6 +7,20 @@ from lea import views
 
 
 class Client(abc.ABC):
+    """
+
+    This is the base class for all clients. It defines the interface that all clients must
+    implement. It is not meant to be used directly. Instead, use one of the subclasses.
+
+    """
+
+    def prepare(self):
+        ...
+
+    @abc.abstractproperty
+    def sqlglot_dialect(self):
+        ...
+
     @abc.abstractmethod
     def _create_sql(self, view: views.SQLView):
         ...

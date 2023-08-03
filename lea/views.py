@@ -90,7 +90,6 @@ class SQLView(View):
     def _parse_dependencies(cls, sql):
         parse = sqlglot.parse_one(sql)
         cte_names = {(None, cte.alias) for cte in parse.find_all(sqlglot.exp.CTE)}
-        # HACK: can be fixed once we have one dataset per schema
         table_names = {
             (table.sql().split(".")[0], table.name)
             if "__" not in table.name and "." in table.sql()

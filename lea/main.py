@@ -17,43 +17,41 @@ app = typer.Typer()
 console = rich.console.Console()
 
 
-def _make_client(username):
-    from google.oauth2 import service_account
-
-    return lea.clients.BigQuery(
-        credentials=service_account.Credentials.from_service_account_info(
-            json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
-        ),
-        location="EU",
-        project_id="carbonfact-gsheet",
-        dataset_name=os.environ["SCHEMA"],
-        username=username,
-    )
-
-
-def _get_lea_user():
+def _get_username():
     # Default to who
-    return str(os.environ.get("LEA_USER", getpass.getuser()))
+    return str(os.environ.get("LEA_USERNAME", getpass.getuser()))
+
+
+def _make_client(production: bool):
+
+    warehouse = os.environ["LEA_WAREHOUSE"]
+    username = None if production else str(os.environ.get("LEA_USERNAME", getpass.getuser()))
+
+    if warehouse == "bigquery":
+        # Do imports here to avoid loading them all the time
+        from google.oauth2 import service_account
+        from lea.clients.bigquery import BigQuery
+
+        return BigQuery(
+            credentials=service_account.Credentials.from_service_account_info(
+                json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"])
+            ),
+            location=os.environ["LEA_BQ_LOCATION"],
+            project_id=os.environ["LEA_BQ_PROJECT_ID"],
+            dataset_name=os.environ["LEA_SCHEMA"],
+            username=username,
+        )
+    else:
+        raise ValueError(f"Unsupported warehouse: {warehouse}")
 
 
 @app.command()
-def create_dataset(production: bool = False):
+def prepare(production: bool = False):
     """
 
-    HACK: this is just for Carbonfact
-    TODO: maybe pass dataset name as an argument? That way it's actually useful
-
     """
-
-    # Determine the username, who will be the author of this run
-    username = None if production else _get_lea_user()
-
-    # The client determines where the views will be written
-    # TODO: move this to a config file
-    client = _make_client(username)
-
-    # Create the dataset
-    client.create_dataset()
+    client = _make_client(production)
+    client.prepare()
 
 
 @app.command()
@@ -65,12 +63,12 @@ def delete_dataset(production: bool = False):
 
     """
 
-    # Determine the username, who will be the author of this run
-    username = None if production else _get_lea_user()
+    if production:
+        raise ValueError("This is a dangerous operation, so it is not allowed in production.")
 
     # The client determines where the views will be written
     # TODO: move this to a config file
-    client = _make_client(username)
+    client = _make_client(production)
 
     # Create the dataset
     client.delete_dataset()
@@ -92,12 +90,9 @@ def run(
     # Massage CLI inputs
     only = [tuple(v.split(".")) for v in only] if only else None
 
-    # Determine the username, who will be the author of this run
-    username = None if production else _get_lea_user()
-
     # The client determines where the views will be written
     # TODO: move this to a config file
-    client = _make_client(username)
+    client = _make_client(production)
 
     run(
         client=client,
@@ -122,7 +117,7 @@ def export(views_dir: str, threads: int = 8):
     from lea.commands.export import export
 
     # Massage CLI inputs
-    client = _make_client(None)
+    client = _make_client(production=True)
 
     export(views_dir=views_dir, threads=threads, client=client, console=console)
 
@@ -137,8 +132,7 @@ def test(
     from lea.commands.test import test
 
     # A client is necessary for running tests, because each test is a query
-    username = None if production else _get_lea_user()
-    client = _make_client(username)
+    client = _make_client(production)
 
     test(
         client=client,
@@ -167,7 +161,7 @@ def archive(views_dir: str, view: str):
 def docs(views_dir: str, output_dir: str = "docs"):
     from lea.commands.docs import docs
 
-    client = _make_client(None)
+    client = _make_client(production=True)
 
     docs(views_dir=views_dir, output_dir=output_dir, client=client, console=console)
 
@@ -177,7 +171,7 @@ def diff(origin: str, destination: str):
     from lea.diff import calculate_diff
 
     # A client is necessary for getting the top 5 rows of each view
-    client = _make_client(None)
+    client = _make_client(production=True)
 
     diff = calculate_diff(
         origin=origin,
