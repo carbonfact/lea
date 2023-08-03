@@ -8,6 +8,7 @@ import pickle
 import time
 
 import rich.console
+import rich.live
 
 import lea
 
@@ -45,7 +46,7 @@ def run(
     console.log(f"{len(views) - len(blacklist):,d} view(s) selected")
 
     # Remove orphan views
-    for schema, table in client.list_existing():
+    for schema, table in client.list_existing_view_names():
         if (schema, table) in dag:
             continue
         console.log(f"Removing {schema}.{table}")

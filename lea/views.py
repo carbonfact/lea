@@ -56,6 +56,10 @@ class View(abc.ABC):
         )
         return "__".join(name_parts)
 
+    @property
+    def dunder_name(self):
+        return f"{self.schema}__{self.name}"
+
     def __repr__(self):
         return f"{self.schema}.{self.name}"
 
@@ -255,8 +259,7 @@ def load_views(views_dir: pathlib.Path | str) -> list[View]:
         views_dir = pathlib.Path(views_dir)
     return [
         View.from_path(path, origin=views_dir)
-        for schema_dir in (d for d in views_dir.iterdir() if d.is_dir())
-        for path in schema_dir.rglob("*")
+        for path in views_dir.rglob("*")
         if not path.is_dir()
         and not path.name.startswith("_")
         and (path.suffix in {".py", ".sql"} or path.suffixes == [".sql", ".jinja"])

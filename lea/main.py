@@ -38,14 +38,29 @@ def _make_client(production: bool):
             project_id=os.environ["LEA_BQ_PROJECT_ID"],
             dataset_name=os.environ["LEA_SCHEMA"],
             username=username,
+            console=console
+        )
+    elif warehouse == "duckdb":
+        from lea.clients.duckdb import DuckDB
+        return DuckDB(
+            path=os.environ["LEA_DUCKDB_PATH"],
+            schema=os.environ["LEA_SCHEMA"],
+            username=username,
+            console=console
         )
     else:
         raise ValueError(f"Unsupported warehouse: {warehouse}")
 
 
 def env_validate_callback(env_path: str | None):
+    """
+
+    If a path to .env file is provided, we check that it exists. In any case, we use dotenv
+    to load the environment variables.
+
+    """
     if env_path is not None and not pathlib.Path(env_path).exists():
-        raise typer.BadParameter(f"File not found: {path}")
+        raise typer.BadParameter(f"File not found: {env_path}")
     dotenv.load_dotenv(env_path, verbose=True)
 
 
@@ -62,7 +77,7 @@ def prepare(production: bool = False, env: str = EnvPath):
 
 
 @app.command()
-def delete_dataset(production: bool = False):
+def delete_dataset(production: bool = False, env: str = EnvPath):
     """
 
     HACK: this is just for Carbonfact
@@ -73,8 +88,6 @@ def delete_dataset(production: bool = False):
     if production:
         raise ValueError("This is a dangerous operation, so it is not allowed in production.")
 
-    # The client determines where the views will be written
-    # TODO: move this to a config file
     client = _make_client(production)
 
     # Create the dataset
@@ -99,7 +112,6 @@ def run(
     only = [tuple(v.split(".")) for v in only] if only else None
 
     # The client determines where the views will be written
-    # TODO: move this to a config file
     client = _make_client(production)
 
     run(

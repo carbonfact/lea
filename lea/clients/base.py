@@ -42,9 +42,20 @@ class Client(abc.ABC):
 
     def _load_python(self, view: views.PythonView):
         # HACK
-        mod = importlib.import_module("views")
-        output = getattr(mod, view.name).main()
-        return output
+        # mod = importlib.import_module("views")
+        # output = getattr(mod, view.name).main()
+        # return output
+
+        module_name = view.path.stem
+        spec = importlib.util.spec_from_file_location(module_name, view.path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Step 2: Retrieve the variable from the module's namespace
+        dataframe = getattr(module, view.name, None)
+        if dataframe is None:
+            raise ValueError(f"Could not find variable {view.name} in {view.path}")
+        return dataframe
 
     def load(self, view: views.View):
         if isinstance(view, views.SQLView):
@@ -54,9 +65,14 @@ class Client(abc.ABC):
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
-    def list_existing(self, schema: str) -> list[str]:
+    def delete_view(self, view: views.View):
+        ...
+
+
+    @abc.abstractmethod
+    def list_existing_view_names(self) -> list[tuple[str, str]]:
         ...
 
     @abc.abstractmethod
-    def delete(self, view_name: str):
+    def get_diff_summary(self, origin: str, destination: str):
         ...

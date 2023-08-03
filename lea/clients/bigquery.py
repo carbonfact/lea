@@ -11,7 +11,7 @@ from .base import Client
 
 
 class BigQuery(Client):
-    def __init__(self, credentials, location, project_id, dataset_name, username):
+    def __init__(self, credentials, location, project_id, dataset_name, username, console):
         from google.cloud import bigquery
 
         self.project_id = project_id
@@ -19,6 +19,7 @@ class BigQuery(Client):
         self.client = bigquery.Client(credentials=credentials)
         self._dataset_name = dataset_name
         self.username = username
+        self.console = console
 
     def prepare(self):
         self.create_dataset()
@@ -47,7 +48,7 @@ class BigQuery(Client):
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset = self.client.create_dataset(dataset, exists_ok=True)
-        print(f"Created dataset {dataset.dataset_id}")
+        self.console.log(f"Created dataset {dataset.dataset_id}")
 
     def delete_dataset(self):
         from google.cloud import bigquery
@@ -88,10 +89,10 @@ class BigQuery(Client):
         job = self._make_job(view)
         job.result()
 
-    def _create_python(self, view: lea.views.PythonView):
+    def _create_python(self, dataframe: pd.DataFrame):
         from google.cloud import bigquery
 
-        output = self._load_python(view)
+        dataframe = self._load_python(view)
 
         job_config = bigquery.LoadJobConfig(
             schema=[],
@@ -99,7 +100,7 @@ class BigQuery(Client):
         )
 
         job = self.client.load_table_from_dataframe(
-            output,
+            dataframe,
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}",
             job_config=job_config,
         )
@@ -111,29 +112,30 @@ class BigQuery(Client):
             query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
         return pd.read_gbq(query, credentials=self.client._credentials)
 
-    def list_existing(self):
+    def list_existing_view_names(self):
         return [
             table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
         ]
 
-    def delete(self, view: lea.views.View):
+    def delete_view(self, view: lea.views.View):
         self.client.delete_table(
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
         )
 
-    def get_columns(self) -> pd.DataFrame:
-        query = f"""
-        SELECT
-            table_schema AS schema,
-            table_name AS table,
-            column_name AS column,
-            data_type AS type
-        FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
-        """
-        return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
-
-    def get_diff_summary(self, origin_dataset: str, destination_dataset: str):
+    def get_diff_summary(self, origin: str, destination: str):
         # TODO: this could leverage get_columns
+
+        # def get_columns(self) -> pd.DataFrame:
+        #     query = f"""
+        #     SELECT
+        #         table_schema AS schema,
+        #         table_name AS table,
+        #         column_name AS column,
+        #         data_type AS type
+        #     FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
+        #     """
+        #     return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
+
         view = lea.views.GenericSQLView(
             schema=None,
             name=None,
