@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import pathlib
+
 import pandas as pd
 
 here = pathlib.Path(__file__).parent

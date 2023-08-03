@@ -9,8 +9,6 @@ import dotenv
 import rich.console
 import typer
 
-import lea
-
 app = typer.Typer()
 console = rich.console.Console()
 
@@ -28,6 +26,7 @@ def _make_client(production: bool):
     if warehouse == "bigquery":
         # Do imports here to avoid loading them all the time
         from google.oauth2 import service_account
+
         from lea.clients.bigquery import BigQuery
 
         return BigQuery(

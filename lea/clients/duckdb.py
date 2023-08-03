@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import duckdb
-import pandas as pd
 
 from lea import views
 
 from .base import Client
+
 
 class DuckDB(Client):
 
@@ -31,7 +33,7 @@ class DuckDB(Client):
         self.console.log(f"Created schema {self.schema}")
 
     def _create_python(self, view: views.PythonView):
-        dataframe = self._load_python(view)
+        self._load_python(view)
         self.con.sql(f"CREATE OR REPLACE TABLE {self.schema}.{view.dunder_name} AS SELECT * FROM dataframe")
 
     def _create_sql(self, view: views.SQLView):
