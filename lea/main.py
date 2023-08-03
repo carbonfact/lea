@@ -3,16 +3,14 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import pathlib
 
 import dotenv
 import rich.console
-import rich.live
-import rich.table
 import typer
 
 import lea
 
-dotenv.load_dotenv(verbose=True)
 app = typer.Typer()
 console = rich.console.Console()
 
@@ -45,8 +43,17 @@ def _make_client(production: bool):
         raise ValueError(f"Unsupported warehouse: {warehouse}")
 
 
+def env_validate_callback(env_path: str | None):
+    if env_path is not None and not pathlib.Path(env_path).exists():
+        raise typer.BadParameter(f"File not found: {path}")
+    dotenv.load_dotenv(env_path, verbose=True)
+
+
+EnvPath = typer.Option(None, callback=env_validate_callback)
+
+
 @app.command()
-def prepare(production: bool = False):
+def prepare(production: bool = False, env: str = EnvPath):
     """
 
     """
@@ -84,6 +91,7 @@ def run(
     threads: int = 8,
     show: int = 20,
     raise_exceptions: bool = False,
+    env: str = EnvPath
 ):
     from lea.commands.run import run
 
@@ -108,7 +116,7 @@ def run(
 
 
 @app.command()
-def export(views_dir: str, threads: int = 8):
+def export(views_dir: str, threads: int = 8, env: str = EnvPath):
     """
 
     HACK: this is too bespoke for Carbonfact
@@ -128,6 +136,7 @@ def test(
     threads: int = 8,
     production: bool = False,
     raise_exceptions: bool = False,
+    env: str = EnvPath
 ):
     from lea.commands.test import test
 
@@ -144,7 +153,7 @@ def test(
 
 
 @app.command()
-def archive(views_dir: str, view: str):
+def archive(views_dir: str, view: str, env: str = EnvPath):
     from lea.commands.archive import archive
 
     # Massage CLI inputs
@@ -158,7 +167,7 @@ def archive(views_dir: str, view: str):
 
 
 @app.command()
-def docs(views_dir: str, output_dir: str = "docs"):
+def docs(views_dir: str, output_dir: str = "docs", env: str = EnvPath):
     from lea.commands.docs import docs
 
     client = _make_client(production=True)
@@ -167,7 +176,7 @@ def docs(views_dir: str, output_dir: str = "docs"):
 
 
 @app.command()
-def diff(origin: str, destination: str):
+def diff(origin: str, destination: str, env: str = EnvPath):
     from lea.diff import calculate_diff
 
     # A client is necessary for getting the top 5 rows of each view
