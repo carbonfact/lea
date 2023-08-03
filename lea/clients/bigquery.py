@@ -30,15 +30,10 @@ class BigQuery(Client):
 
     @property
     def dataset_name(self):
-        base_dataset = (
+        return (
             f"{self._dataset_name}_{self.username}"
             if self.username
             else self._dataset_name
-        )
-        return (
-            f"{base_dataset}_stable"
-            if os.environ.get("FREEZE_RELEASES", "false").lower() == "true"
-            else base_dataset
         )
 
     def create_dataset(self):
