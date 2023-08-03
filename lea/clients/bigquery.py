@@ -117,19 +117,19 @@ class BigQuery(Client):
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
         )
 
+    def get_columns(self) -> pd.DataFrame:
+        query = f"""
+        SELECT
+            table_schema AS schema,
+            table_name AS table,
+            column_name AS column,
+            data_type AS type
+        FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
+        """
+        return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
+
     def get_diff_summary(self, origin: str, destination: str):
         # TODO: this could leverage get_columns
-
-        # def get_columns(self) -> pd.DataFrame:
-        #     query = f"""
-        #     SELECT
-        #         table_schema AS schema,
-        #         table_name AS table,
-        #         column_name AS column,
-        #         data_type AS type
-        #     FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
-        #     """
-        #     return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
 
         view = lea.views.GenericSQLView(
             schema=None,
