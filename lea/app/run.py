@@ -51,8 +51,8 @@ def run(
             continue
         console.log(f"Removing {schema}.{table}")
         if not dry:
-            delete_view = lea.views.GenericSQLView(schema=schema, name=table, query="")
-            client.delete(delete_view)
+            view_to_delete = lea.views.GenericSQLView(schema=schema, name=table, query="")
+            client.delete_view(view=view_to_delete)
         console.log(f"Removed {schema}.{table}")
 
     def display_progress() -> rich.table.Table:
