@@ -33,7 +33,7 @@ class DuckDB(Client):
         console.log(f"Created schema {self.schema}")
 
     def _create_python(self, view: views.PythonView):
-        dataframe = self._load_python(view)
+        dataframe = self._load_python(view)  # type: ignore[F841]
         self.con.sql(f"CREATE OR REPLACE TABLE {self.schema}.{view.dunder_name} AS SELECT * FROM dataframe")
 
     def _create_sql(self, view: views.SQLView):

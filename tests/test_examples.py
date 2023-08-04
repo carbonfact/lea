@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import pathlib
+
 import duckdb
 from typer.testing import CliRunner
+
 from lea.app import make_app
 from lea.main import _make_client
-
 
 runner = CliRunner()
 
