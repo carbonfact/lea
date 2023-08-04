@@ -32,6 +32,7 @@ def export(
     console.log(f"{len(accounts):,d} account(s) in total")
 
     from google.oauth2 import service_account
+
     from lea.clients.bigquery import BigQuery
 
     account_clients = {
