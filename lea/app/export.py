@@ -32,9 +32,10 @@ def export(
     console.log(f"{len(accounts):,d} account(s) in total")
 
     from google.oauth2 import service_account
+    from lea.clients.bigquery import BigQuery
 
     account_clients = {
-        account: lea.clients.BigQuery(
+        account: BigQuery(
             credentials=service_account.Credentials.from_service_account_info(
                 json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
             ),
