@@ -38,7 +38,7 @@ def export(
     account_clients = {
         account: BigQuery(
             credentials=service_account.Credentials.from_service_account_info(
-                json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
+                json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"])
             ),
             project_id="carbonfact-gsheet",
             location="EU",

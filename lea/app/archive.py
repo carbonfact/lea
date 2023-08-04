@@ -9,10 +9,11 @@ import lea
 
 def archive(views_dir: str, schema: str, view_name: str):
     from google.oauth2 import service_account
+    from lea.clients.bigquery import BigQuery
 
-    client = lea.clients.BigQuery(
+    client = BigQuery(
         credentials=service_account.Credentials.from_service_account_info(
-            json.loads(os.environ["CARBONFACT_SERVICE_ACCOUNT"])
+            json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"])
         ),
         project_id="carbonfact-gsheet",
         location="EU",
