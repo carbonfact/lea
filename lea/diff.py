@@ -8,26 +8,26 @@ import lea
 
 def calculate_diff(origin: str, destination: str, client: lea.clients.Client) -> str:
     diff_table = client.get_diff_summary(
-        origin_dataset=origin, destination_dataset=destination
+        origin=origin, destination=destination
     )
     if diff_table.empty:
         return "No field additions or removals detected"
 
     removed_tables = set(
         diff_table[
-            diff_table.column_name.isnull() & (diff_table.diff_kind == "REMOVED")
-        ].table_name
+            diff_table.column.isnull() & (diff_table.diff_kind == "REMOVED")
+        ].table
     )
     added_tables = set(
         diff_table[
-            diff_table.column_name.isnull() & (diff_table.diff_kind == "ADDED")
-        ].table_name
+            diff_table.column.isnull() & (diff_table.diff_kind == "ADDED")
+        ].table
     )
 
     buffer = io.StringIO()
     print_ = functools.partial(print, file=buffer)
-    for table, columns in diff_table[diff_table.column_name.notnull()].groupby(
-        "table_name"
+    for table, columns in diff_table[diff_table.column.notnull()].groupby(
+        "table"
     ):
         if table in removed_tables:
             print_(f"- {table}")
@@ -35,10 +35,10 @@ def calculate_diff(origin: str, destination: str, client: lea.clients.Client) ->
             print_(f"+ {table}")
         else:
             print_(f"  {table}")
-        for removed in columns[columns.diff_kind == "REMOVED"].column_name:
+        for removed in columns[columns.diff_kind == "REMOVED"].column:
             print_(f"- {removed}")
-        for added in columns[columns.diff_kind == "ADDED"].column_name:
+        for added in columns[columns.diff_kind == "ADDED"].column:
             print_(f"+ {added}")
         print_()
 
-    return buffer.getvalue()
+    return buffer.getvalue().rstrip()

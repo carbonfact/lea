@@ -117,80 +117,19 @@ class BigQuery(Client):
             f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
         )
 
-    def get_columns(self) -> pd.DataFrame:
+    def get_columns(self, schema=None) -> pd.DataFrame:
+        schema = schema or self.dataset_name
         query = f"""
         SELECT
-            table_schema AS schema,
             table_name AS table,
             column_name AS column,
             data_type AS type
-        FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
+        FROM {schema}.INFORMATION_SCHEMA.COLUMNS
         """
         return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
 
-    def get_diff_summary(self, origin: str, destination: str):
-        # TODO: this could leverage get_columns
-
-        view = lea.views.GenericSQLView(
-            schema=None,
-            name=None,
-            query=f"""
-            SELECT *
-            FROM (
-                SELECT
-                    table_name, column_name, 'REMOVED' AS diff_kind
-                FROM (
-                    SELECT table_name, column_name
-                    FROM {destination}.INFORMATION_SCHEMA.COLUMNS
-                    EXCEPT
-                    DISTINCT
-                    SELECT table_name, column_name
-                    FROM {origin}.INFORMATION_SCHEMA.COLUMNS
-                )
-
-                UNION ALL
-
-                SELECT
-                    table_name, NULL AS column_name, 'REMOVED' AS diff_kind
-                FROM (
-                    SELECT table_name
-                    FROM {destination}.INFORMATION_SCHEMA.TABLES
-                    EXCEPT DISTINCT
-                    SELECT table_name
-                    FROM {origin}.INFORMATION_SCHEMA.TABLES
-                )
-
-                UNION ALL
-
-                SELECT
-                    table_name, column_name, 'ADDED' AS diff_kind
-                FROM (
-                    SELECT table_name, column_name
-                    FROM {origin}.INFORMATION_SCHEMA.COLUMNS
-                    EXCEPT DISTINCT
-                    SELECT table_name, column_name
-                    FROM {destination}.INFORMATION_SCHEMA.COLUMNS
-                )
-
-                UNION ALL
-
-                SELECT
-                    table_name, NULL AS column_name, 'ADDED' AS diff_kind
-                FROM (
-                    SELECT table_name
-                    FROM {origin}.INFORMATION_SCHEMA.TABLES
-                    EXCEPT DISTINCT
-                    SELECT table_name
-                    FROM {destination}.INFORMATION_SCHEMA.TABLES
-                )
-            )
-            WHERE table_name != 'None__None'
-            """,
-        )
-        return self._load_sql(view)
-
-    def yield_unit_tests(self, columns: list[str], view: lea.views.View):
-        column_comments = view.extract_comments(columns=columns, dialect=self.sqlglot_dialect)
+    def yield_unit_tests(self, view, view_columns):
+        column_comments = view.extract_comments(columns=view_columns, dialect=self.sqlglot_dialect)
 
         for column, comment_block in column_comments.items():
             for comment in comment_block:

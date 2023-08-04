@@ -40,10 +40,13 @@ class DuckDB(Client):
         self.con.sql(f"CREATE OR REPLACE TABLE {self.schema}.{view.dunder_name} AS ({query})")
 
     def _load_sql(self, view: views.SQLView):
-        raise NotImplementedError()
+        query = view.query
+        if self.username:
+            query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
+        return self.con.sql(query).df()
 
     def delete_view(self, view: views.View):
-        raise NotImplementedError()
+        self.con.sql(f"DROP TABLE IF EXISTS {self.schema}.{view.dunder_name}")
 
     def list_existing_view_names(self) -> list[tuple[str, str]]:
         results = duckdb.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
@@ -52,5 +55,17 @@ class DuckDB(Client):
             for r in results.to_dict(orient="records")
         ]
 
-    def get_diff_summary(self, origin: str, destination: str):
-        raise NotImplementedError()
+    def get_columns(self, schema=None) -> pd.DataFrame:
+        schema = schema or self.schema
+        query = f"""
+        SELECT
+            table_name AS table,
+            column_name AS column,
+            data_type AS type
+        FROM information_schema.columns
+        WHERE table_schema = '{schema}'
+        """
+        return self.con.sql(query).df()
+
+    def yield_unit_tests(self, view, view_columns):
+        raise NotImplementedError

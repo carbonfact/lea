@@ -28,7 +28,7 @@ def test(
         view_columns = columns.query(f"table == '{view.schema}__{view.name}'")[
             "column"
         ].tolist()
-        for generic_test in client.yield_unit_tests(view_columns, view):
+        for generic_test in client.yield_unit_tests(view=view, view_columns=view_columns):
             generic_tests.append(generic_test)
     console.log(f"Found {len(generic_tests):,d} generic tests")
 

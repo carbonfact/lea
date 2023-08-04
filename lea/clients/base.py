@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import importlib
+import pandas as pd
 
 from lea import views
 
@@ -68,11 +69,54 @@ class Client(abc.ABC):
     def delete_view(self, view: views.View):
         ...
 
-
     @abc.abstractmethod
     def list_existing_view_names(self) -> list[tuple[str, str]]:
         ...
 
     @abc.abstractmethod
-    def get_diff_summary(self, origin: str, destination: str):
+    def get_columns(self, schema: str) -> pd.DataFrame:
         ...
+
+    @abc.abstractmethod
+    def yield_unit_tests(self, view: lea.views.View, view_columns: list[str]) -> typing.Iterator[lea.views.GenericSQLView]:
+        ...
+
+    def get_diff_summary(self, origin: str, destination: str) -> pd.DataFrame:
+
+        origin_columns = set(map(tuple, self.get_columns(origin)[["table", "column"]].values.tolist()))
+        destination_columns = set(map(tuple, self.get_columns(destination)[["table", "column"]].values.tolist()))
+
+        return pd.DataFrame(
+            [
+                {
+                    "table": table,
+                    "column": None,
+                    "diff_kind": "ADDED",
+                }
+                for table in {t for t, _ in origin_columns} -  {t for t, _ in destination_columns}
+            ] +
+            [
+                {
+                    "table": table,
+                    "column": column,
+                    "diff_kind": "ADDED",
+                }
+                for table, column in origin_columns - destination_columns
+            ] +
+            [
+                {
+                    "table": table,
+                    "column": None,
+                    "diff_kind": "REMOVED",
+                }
+                for table in {t for t, _ in destination_columns } -  {t for t, _ in origin_columns}
+            ] +
+            [
+                {
+                    "table": table,
+                    "column": column,
+                    "diff_kind": "REMOVED",
+                }
+                for table, column in destination_columns - origin_columns
+            ]
+        )
