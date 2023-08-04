@@ -9,6 +9,7 @@ import lea
 
 def archive(views_dir: str, schema: str, view_name: str):
     from google.oauth2 import service_account
+
     from lea.clients.bigquery import BigQuery
 
     client = BigQuery(
