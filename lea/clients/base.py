@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import abc
 import importlib
+import typing
+
 import pandas as pd
 
 from lea import views
@@ -78,7 +80,7 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def yield_unit_tests(self, view: lea.views.View, view_columns: list[str]) -> typing.Iterator[lea.views.GenericSQLView]:
+    def yield_unit_tests(self, view: views.View, view_columns: list[str]) -> typing.Iterator[views.GenericSQLView]:
         ...
 
     def get_diff_summary(self, origin: str, destination: str) -> pd.DataFrame:
