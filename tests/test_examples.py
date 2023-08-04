@@ -17,6 +17,15 @@ def test_jaffle_shop():
     env_path = str((here.parent / "examples" / "jaffle_shop" / ".env").absolute())
     views_path = str((here.parent / "examples" / "jaffle_shop" / "views").absolute())
 
+    # Write .env file
+    with open(env_path, "w") as f:
+        f.write(
+            "LEA_SCHEMA=jaffle_shop\n"
+            "LEA_USERNAME=max\n"
+            "LEA_WAREHOUSE=duckdb\n"
+            "LEA_DUCKDB_PATH=duckdb.db\n"
+        )
+
     # Prepare
     result = runner.invoke(app, ["prepare", "--env", env_path])
     assert result.exit_code == 0
