@@ -85,6 +85,7 @@ class SQLView(View):
             loader = jinja2.FileSystemLoader(self.origin)
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(self.relative_path))
+            # TODO: this is specific to Carbonfact
             return template.render(
                 freeze_releases=os.environ.get("FREEZE_RELEASES", "false").lower() == "true"
             )
@@ -112,6 +113,7 @@ class SQLView(View):
             # HACK If SQLGlot can't parse the query, we do it the old-fashioned way
             dependencies = set()
             query = self.query
+            # TODO: this is specific to Carbonfact
             for dataset in ["kaya", "niklas", "posthog"]:
                 for match in re.finditer(
                     rf"{dataset}\.(?P<view>\w+)", query, re.IGNORECASE

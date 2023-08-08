@@ -7,11 +7,6 @@ import os
 from lea.app import make_app
 
 
-def _get_username():
-    # Default to who
-    return str(os.environ.get("LEA_USERNAME", getpass.getuser()))
-
-
 def _make_client(production: bool):
 
     warehouse = os.environ["LEA_WAREHOUSE"]
