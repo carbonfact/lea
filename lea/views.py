@@ -85,6 +85,7 @@ class SQLView(View):
             loader = jinja2.FileSystemLoader(self.origin)
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(self.relative_path))
+            print(freeze_releases=os.environ.get("FREEZE_RELEASES", "false").lower() == "true")
             return template.render(
                 freeze_releases=os.environ.get("FREEZE_RELEASES", "false").lower() == "true"
             )
