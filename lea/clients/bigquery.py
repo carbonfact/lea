@@ -66,9 +66,7 @@ class BigQuery(Client):
                         "tableId": f"{view.schema}__{view.name}" if view.schema else view.name,
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
-                    "writeDisposition": "WRITE_TRUNCATE",
-                    # HACK: doesn't work, but would be nice
-                    # 'clustering': {'fields': ['account_slug']} if view.name == "measured_carbonverses" else None,
+                    "writeDisposition": "WRITE_TRUNCATE"
                 },
                 "labels": {
                     "job_dataset": self.dataset_name,
