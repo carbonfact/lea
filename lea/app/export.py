@@ -48,6 +48,10 @@ def export(
         for account in accounts
     }
 
+    # Need to create datasets first
+    for account in account_clients:
+        account_clients[account].prepare(console)
+
     def export_view_for_account(view, account):
         account_export = lea.views.GenericSQLView(
             schema="",
