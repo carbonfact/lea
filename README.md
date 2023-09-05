@@ -24,6 +24,7 @@ lea is an opinionated alternative to [dbt](https://www.getdbt.com/), [SQLMesh](h
 - [x] Historization
 - [ ] Only refresh what changed, based on git
 - [x] Diff summary in pull requests
+- [ ] Splitting a query into CTEs
 
 ## Usage
 
