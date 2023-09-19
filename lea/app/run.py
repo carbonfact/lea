@@ -14,7 +14,7 @@ import lea
 
 SUCCESS = "[green]SUCCESS"
 RUNNING = "[yellow]RUNNING"
-ERROR = "[red]ERROR"
+ERRORED = "[red]ERRORED"
 SKIPPED = "[blue]SKIPPED"
 
 
@@ -66,7 +66,7 @@ def run(
         order_not_done = [node for node in order if node not in cache]
         for i, (schema, view_name) in list(enumerate(order_not_done, start=1))[-show:]:
             status = SUCCESS if (schema, view_name) in jobs_ended_at else RUNNING
-            status = ERROR if (schema, view_name) in exceptions else status
+            status = ERRORED if (schema, view_name) in exceptions else status
             status = SKIPPED if (schema, view_name) in skipped else status
             duration = (
                 (
@@ -167,7 +167,7 @@ def run(
     if n := len(jobs_ended_at) - len(exceptions):
         summary.add_row(SUCCESS, f"{n:,d}")
     if n := len(exceptions):
-        summary.add_row(ERROR, f"{n:,d}")
+        summary.add_row(ERRORED, f"{n:,d}")
     if n := len(skipped):
         summary.add_row(SKIPPED, f"{n:,d}")
     console.print(summary)
