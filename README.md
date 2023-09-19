@@ -28,7 +28,7 @@ lea is an opinionated alternative to [dbt](https://www.getdbt.com/), [SQLMesh](h
 
 ## Usage
 
-### Environment variables
+### Picking a database
 
 lea is configured by setting environment variables. The following variables are available:
 
@@ -86,3 +86,7 @@ lea archive ./views kpis.all
 ```sh
 lea docs ./views --output-dir ./docs
 ```
+
+### Jinja templating
+
+You have access to an `env` variable. This is simply an access point to `os.environ`.
