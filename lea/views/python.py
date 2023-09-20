@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import ast
+
 from .base import View
 from .sql import SQLView
+
 
 class PythonView(View):
     @property

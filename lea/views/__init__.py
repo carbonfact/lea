@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import pathlib
+
 from .base import View
-from .python import PythonView
-from .sql import SQLView, GenericSQLView
 from .dag import DAGOfViews
+from .python import PythonView
+from .sql import GenericSQLView, SQLView
 
 
 def load_views(views_dir: pathlib.Path | str) -> list[View]:
