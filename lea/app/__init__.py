@@ -35,11 +35,8 @@ def prepare(production: bool = False, env: str = EnvPath):
 
 
 @app.command()
-def delete_dataset(production: bool = False, env: str = EnvPath):
+def teardown(production: bool = False, env: str = EnvPath):
     """
-
-    HACK: this is just for Carbonfact
-    TODO: maybe pass dataset name as an argument? That way it's actually useful
 
     """
 
@@ -49,7 +46,7 @@ def delete_dataset(production: bool = False, env: str = EnvPath):
     client = _make_client(production)
 
     # Create the dataset
-    client.delete_dataset()
+    client.teardown()
 
 
 @app.command()
@@ -86,21 +83,6 @@ def run(
 
 
 @app.command()
-def export(views_dir: str, threads: int = 8, env: str = EnvPath):
-    """
-
-    HACK: this is too bespoke for Carbonfact
-
-    """
-    from lea.app.export import export
-
-    # Massage CLI inputs
-    client = _make_client(production=True)
-
-    export(views_dir=views_dir, threads=threads, client=client, console=console)
-
-
-@app.command()
 def test(
     views_dir: str,
     threads: int = 8,
@@ -123,20 +105,6 @@ def test(
 
 
 @app.command()
-def archive(views_dir: str, view: str, env: str = EnvPath):
-    from lea.app.archive import archive
-
-    # Massage CLI inputs
-    schema, view_name = tuple(view.split("."))
-
-    archive(
-        views_dir=views_dir,
-        schema=schema,
-        view_name=view_name,
-    )
-
-
-@app.command()
 def docs(views_dir: str, output_dir: str = "docs", env: str = EnvPath):
     from lea.app.docs import docs
 
@@ -145,9 +113,10 @@ def docs(views_dir: str, output_dir: str = "docs", env: str = EnvPath):
     docs(views_dir=views_dir, output_dir=output_dir, client=client, console=console)
 
 
+
 @app.command()
 def diff(origin: str, destination: str, env: str = EnvPath):
-    from lea.diff import calculate_diff
+    from lea.app.diff import calculate_diff
 
     # A client is necessary for getting the top 5 rows of each view
     client = _make_client(production=True)

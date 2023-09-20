@@ -39,7 +39,7 @@ def run(
     console.log(f"{len(views):,d} view(s) in total")
 
     # Organize the views into a directed acyclic graph
-    dag = lea.dag.DAGOfViews(views)
+    dag = lea.views.DAGOfViews(views)
 
     # Determine which views need to be run
     blacklist = set(dag.keys()).difference(only) if only else set()

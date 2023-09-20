@@ -38,20 +38,19 @@ class BigQuery(Client):
 
     def create_dataset(self):
         from google.cloud import bigquery
-
-        dataset_ref = self.client.dataset(self.dataset_name)
+        dataset_ref = bigquery.DatasetReference(project=self.project_id, dataset_id=self.dataset_name)
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset = self.client.create_dataset(dataset, exists_ok=True)
         return dataset
 
-    def delete_dataset(self):
+    def teardown(self):
         from google.cloud import bigquery
 
         dataset_ref = self.client.dataset(self.dataset_name)
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
-        self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
+        self.client.teardown(dataset, delete_contents=True, not_found_ok=True)
 
     def _make_job(self, view: lea.views.SQLView):
         query = view.query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")

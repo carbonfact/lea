@@ -23,7 +23,7 @@ def docs(
     console.log(f"Found {len(views):,d} views")
 
     # Organize the views into a directed acyclic graph
-    dag = lea.dag.DAGOfViews(views)
+    dag = lea.views.DAGOfViews(views)
 
     # List all the columns
     columns = client.get_columns()
