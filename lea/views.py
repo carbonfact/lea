@@ -137,7 +137,6 @@ class SQLView(View):
     def extract_comments(
         self, columns: list[str], dialect: str
     ) -> dict[str, CommentBlock]:
-        # TODO: we shouldn't have to pass comments
 
         dialect = sqlglot.Dialect.get_or_raise(dialect)()
         tokens = dialect.tokenizer.tokenize(self.query)
