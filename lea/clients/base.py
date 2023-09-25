@@ -44,10 +44,6 @@ class Client(abc.ABC):
         ...
 
     def _load_python(self, view: views.PythonView):
-        # HACK
-        # mod = importlib.import_module("views")
-        # output = getattr(mod, view.name).main()
-        # return output
 
         module_name = view.path.stem
         spec = importlib.util.spec_from_file_location(module_name, view.path)
