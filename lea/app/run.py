@@ -34,7 +34,7 @@ def run(
     console: rich.console.Console,
 ):
     # List the relevant views
-    views = lea.views.load_views(views_dir)
+    views = lea.views.load_views(views_dir, sql_dialect=client.dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
     console.log(f"{len(views):,d} view(s) in total")
 
@@ -101,7 +101,6 @@ def run(
     with rich.live.Live(
         display_progress(), vertical_overflow="visible", refresh_per_second=6
     ) as live:
-        dag.prepare()
         while dag.is_active():
             # We check if new views have been unlocked
             # If so, we submit a job to create them

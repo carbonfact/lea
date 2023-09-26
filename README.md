@@ -15,6 +15,7 @@ lea is designed to be simple and easy to extend. We use it every day at Carbonfa
   - [Development schema](#development-schema)
   - [Jinja templating](#jinja-templating)
   - [Python scripts](#python-scripts)
+  - [Using `lea` as a library](#using-lea-as-a-library)
 - [Roadmap](#roadmap)
 
 ## Example
@@ -131,6 +132,32 @@ users = pd.DataFrame(
         {"id": 2, "name": "Angie"},
     ]
 )
+```
+
+### Using `lea` as a library
+
+lea is meant to be used as a CLI. But you can use it as a library too.
+
+**Parsing a directory of queries**
+
+```py
+from lea import views
+
+views = views.load_views('views', sql_dialect='bigquery')
+for view in views:
+    print(view)
+    print(view.dependencies)
+```
+
+**Organizing queries into a DAG**
+
+```py
+from lea import views
+
+views = views.load_views('views', sql_dialect='bigquery')
+dag = views.DAGOfViews(views)
+for schema, table in dag.get_ready():
+    print(schema, table)
 ```
 
 ## Roadmap

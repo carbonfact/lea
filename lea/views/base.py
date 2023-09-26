@@ -34,9 +34,6 @@ class View(abc.ABC):
     def dunder_name(self):
         return f"{self.schema}__{self.name}"
 
-    def __repr__(self):
-        return f"{self.schema}.{self.name}"
-
     @property
     @abc.abstractmethod
     def dependencies(self) -> set[str]:

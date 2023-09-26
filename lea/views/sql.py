@@ -4,6 +4,8 @@ import collections
 import dataclasses
 import itertools
 import os
+import re
+import warnings
 
 import jinja2
 import sqlglot
@@ -29,7 +31,13 @@ class CommentBlock(collections.UserList):
     def last_line(self):
         return self[-1].line
 
+
+@dataclasses.dataclass
 class SQLView(View):
+    dialect: sqlglot.Dialect
+
+    def __repr__(self):
+        return f"{self.schema}.{self.name}"
 
     @property
     def query(self):
@@ -43,9 +51,8 @@ class SQLView(View):
             )
         return text
 
-    @classmethod
-    def parse_dependencies(cls, query):
-        parse = sqlglot.parse_one(query)  # TODO: allow providing dialect?
+    def parse_dependencies(self, query):
+        parse = sqlglot.parse_one(query, dialect=self.dialect)
         cte_names = {(None, cte.alias) for cte in parse.find_all(sqlglot.exp.CTE)}
         table_names = {
             (table.sql().split(".")[0], table.name)
@@ -59,7 +66,21 @@ class SQLView(View):
 
     @property
     def dependencies(self):
-        return self.parse_dependencies(self.query)
+        try:
+            return self.parse_dependencies(self.query)
+        except sqlglot.errors.ParseError:
+            warnings.warn(f"SQLGlot couldn't parse {self.path} with dialect {self.dialect}. Falling back to regex.")
+            dependencies = set()
+            for match in re.finditer(
+                r"(JOIN|FROM)\s+(?P<schema>[a-z][a-z_]+[a-z])\.(?P<view>[a-z][a-z_]+[a-z])", self.query, re.IGNORECASE
+            ):
+                schema, view_name = (
+                    (match.group("view").split("__")[0], match.group("view").split("__", 1)[1])
+                    if "__" in match.group("view")
+                    else (match.group("schema"), match.group("view"))
+                )
+                dependencies.add((schema, view_name))
+            return dependencies
 
     @property
     def description(self):
@@ -71,10 +92,10 @@ class SQLView(View):
         )
 
     def extract_comments(
-        self, columns: list[str], dialect: str
+        self, columns: list[str]
     ) -> dict[str, CommentBlock]:
 
-        dialect = sqlglot.Dialect.get_or_raise(dialect)()
+        dialect = sqlglot.Dialect.get_or_raise(self.dialect)()
         tokens = dialect.tokenizer.tokenize(self.query)
 
         # Extract comments, which are lines that start with --

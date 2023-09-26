@@ -18,7 +18,7 @@ def docs(
     output_dir = pathlib.Path(output_dir)
 
     # List all the relevant views
-    views = lea.views.load_views(views_dir)
+    views = lea.views.load_views(views_dir, sql_dialect=client.sqlglot_dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
     console.log(f"Found {len(views):,d} views")
 
@@ -70,7 +70,7 @@ def docs(
             # Write down the columns
             view_columns = columns.query(f"table == '{schema}__{view.name}'")[["column", "type"]]
             view_comments = view.extract_comments(
-                columns=view_columns["column"].tolist(), dialect=client.sqlglot_dialect
+                columns=view_columns["column"].tolist()
             )
             view_columns["Description"] = (
                 view_columns["column"]
@@ -111,11 +111,17 @@ def docs(
     else:
         readme_content.write("\n")
 
+    # Schema flowchart
+    mermaid = dag.to_mermaid(schemas_only=True)
+    mermaid = mermaid.replace("style", "style_")  # HACK
+    readme_content.write("## Schema flowchart\n\n")
+    readme_content.write(f"```mermaid\n{mermaid}```\n\n")
+
     # Flowchart
     mermaid = dag.to_mermaid()
     mermaid = mermaid.replace("style", "style_")  # HACK
     readme_content.write("## Flowchart\n\n")
-    readme_content.write(f"```mermaid\n{mermaid}```\n")
+    readme_content.write(f"```mermaid\n{mermaid}```\n\n")
 
     # Write the root README
     readme = output_dir / "README.md"

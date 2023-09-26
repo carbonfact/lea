@@ -18,12 +18,20 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             self, {(view.schema, view.name): view for view in views}
         )
         self.dependencies = view_to_dependencies
+        self.prepare()
 
     @property
     def schemas(self):
         return sorted(set(schema for schema, _ in self))
 
-    def to_mermaid(self):
+    @property
+    def schema_dependencies(self):
+        deps = collections.defaultdict(set)
+        for (src_schema, _), dsts in self.dependencies.items():
+            deps[src_schema].update([schema for schema, _ in dsts if schema != src_schema])
+        return deps
+
+    def _to_mermaid_views(self):
         out = io.StringIO()
         out.write('%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%\n')
         out.write("flowchart TB\n")
@@ -42,3 +50,23 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
                 src = ".".join(src)
                 out.write(f"    {src} --> {dst}\n")
         return out.getvalue()
+
+    def _to_mermaid_schemas(self):
+        out = io.StringIO()
+        out.write('%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%\n')
+        out.write("flowchart TB\n")
+        schema_dependencies = self.schema_dependencies
+        nodes = set(node for deps in schema_dependencies.values() for node in deps) | set(
+            schema_dependencies.keys()
+        )
+        for node in nodes:
+            out.write(f"    {node}({node})\n")
+        for dst, srcs in schema_dependencies.items():
+            for src in srcs:
+                out.write(f"    {src} --> {dst}\n")
+        return out.getvalue()
+
+    def to_mermaid(self, schemas_only=False):
+        if schemas_only:
+            return self._to_mermaid_schemas()
+        return self._to_mermaid_views()
