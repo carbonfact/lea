@@ -6,13 +6,13 @@ import duckdb
 from typer.testing import CliRunner
 
 from lea.app import make_app
-from lea.main import _make_client
+from lea.clients import make_client
 
 runner = CliRunner()
 
 def test_jaffle_shop():
 
-    app = make_app(make_client=_make_client)
+    app = make_app(make_client=make_client)
     here = pathlib.Path(__file__).parent
     env_path = str((here.parent / "examples" / "jaffle_shop" / ".env").absolute())
     views_path = str((here.parent / "examples" / "jaffle_shop" / "views").absolute())
