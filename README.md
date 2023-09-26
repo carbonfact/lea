@@ -143,7 +143,7 @@ lea is meant to be used as a CLI. But you can use it as a library too.
 ```py
 from lea import views
 
-views = views.load_views('views', sql_dialect='bigquery')
+views = views.load_views('views', sqlglot_dialect='bigquery')
 for view in views:
     print(view)
     print(view.dependencies)
@@ -154,7 +154,7 @@ for view in views:
 ```py
 from lea import views
 
-views = views.load_views('views', sql_dialect='bigquery')
+views = views.load_views('views', sqlglot_dialect='bigquery')
 dag = views.DAGOfViews(views)
 for schema, table in dag.get_ready():
     print(schema, table)

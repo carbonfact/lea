@@ -34,7 +34,7 @@ def run(
     console: rich.console.Console,
 ):
     # List the relevant views
-    views = lea.views.load_views(views_dir, sql_dialect=client.dialect)
+    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
     console.log(f"{len(views):,d} view(s) in total")
 

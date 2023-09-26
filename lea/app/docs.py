@@ -18,7 +18,7 @@ def docs(
     output_dir = pathlib.Path(output_dir)
 
     # List all the relevant views
-    views = lea.views.load_views(views_dir, sql_dialect=client.sqlglot_dialect)
+    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
     console.log(f"Found {len(views):,d} views")
 
