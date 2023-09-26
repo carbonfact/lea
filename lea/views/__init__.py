@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pathlib
 
+import sqlglot
+
 from .base import View
 from .dag import DAGOfViews
 from .python import PythonView
