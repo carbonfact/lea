@@ -10,8 +10,8 @@
 ```mermaid
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart TB
-    core(core)
     staging(staging)
+    core(core)
     staging --> core
 ```
 

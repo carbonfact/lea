@@ -14,6 +14,7 @@ def docs(
     client: lea.clients.Client,
     console: rich.console.Console,
 ):
+
     views_dir = pathlib.Path(views_dir)
     output_dir = pathlib.Path(output_dir)
 

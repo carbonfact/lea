@@ -1,10 +1,10 @@
 <h1>lea</h1>
 
-<img src="https://github.com/carbonfact/kaya/assets/8095957/9938db74-0d54-4ab7-8307-d008af0844aa" width="25%" align="right" />
+<img src="https://github.com/carbonfact/kaya/assets/8095957/9938db74-0d54-4ab7-8307-d008af0844aa" width="33%" align="right" />
 
-lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Dataform](https://cloud.google.com/dataform).
+lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Google's Dataform](https://cloud.google.com/dataform).
 
-lea is intended to be simple, opinionated, while offering the ability to be extended. We use it every day at Carbonfact to manage our data warehouse.
+lea aims to be simple and opinionated, while offering the possibility to be extended. We happily use it every day at Carbonfact to manage our data warehouse.
 
 - [Example](#example)
 - [Usage](#usage)
@@ -25,7 +25,7 @@ lea is intended to be simple, opinionated, while offering the ability to be exte
 
 ## Example
 
-See [examples](examples).
+- [Jaffle shop 🥪](examples/jaffle_shop/)
 
 ## Usage
 
@@ -78,7 +78,7 @@ views/
 
 #### Development vs. production
 
-By default, lea appends a `_<user>` suffix to schema names. This way you can have a development schema and a production schema. To disable this behavior, use the `--production` flag.
+By default, lea appends a `_<user>` suffix to schema names. This way you can have a development schema and a production schema. Use the `--production` flag to disable this behavior.
 
 ```sh
 lea run --production
@@ -127,7 +127,7 @@ lea run --fresh
 The `--raise-exceptions` flag can be used to immediately stop if a query fails:
 
 ```sh
-lea --raise-exceptions
+lea run --raise-exceptions
 ```
 
 For debugging purposes, it is possible to print out a query and copy it to the clipboard:
@@ -159,7 +159,7 @@ lea docs views
     --output-dir docs  # where to put the generated files
 ```
 
-This will also create a Mermaid diagram in the `docs` directory. This diagram is a visualization of the DAG.
+This will also create a Mermaid diagram in the `docs` directory. This diagram is a visualization of the DAG. See [here](https://github.com/carbonfact/kaya/tree/main/lea/examples/jaffle_shop/docs) for an example.
 
 ### `lea diff`
 
@@ -167,7 +167,33 @@ This will also create a Mermaid diagram in the `docs` directory. This diagram is
 lea diff origin destination
 ```
 
-This prints out a summary of the difference between two schemas in terms of structure. This is handy in pull requests.
+This prints out a summary of the difference between two schemas in terms of structure. This is handy in pull requests. For instance, at Carbonfact we often compare our development schemas with our production schema:
+
+```sh
+lea diff kaya_max kaya
+```
+
+Here is an example:
+
+```diff
+  core__accounts
++ trends_dimensions
++ filter_dimensions
+
+- core__product_models
+- n_skus
+- product_model
+- account_slug
+- has_aggregation_key
+
+  core__product_taxonomy
+- latest_measured_carbonverse_id
++ is_account_taxonomy
++ measured_carbonverse_id
+
+  core__products
+- has_aggregation_key
+```
 
 ### `lea teardown`
 
@@ -175,7 +201,7 @@ This prints out a summary of the difference between two schemas in terms of stru
 lea teardown
 ```
 
-This deletes the schema created by `lea prepare`. This is handy during continuous integration.
+This deletes the schema created by `lea prepare`. This is handy during continuous integration. For example, you might create a temporary schema named in a branch. You then may want to delete it after testing is finished and/or when the branch is merged.
 
 ### Jinja templating
 
@@ -237,4 +263,4 @@ for schema, table in dag.get_ready():
 - Metric layer
 - Shell auto-completion
 
-Some of these features already exist at Carbonfact. We just don't feel they're polished enough for public consumption just yet. Feel free to reach out if you want to know more and/or contribute 😊
+Some of these features already exist at Carbonfact. We just don't feel they're polished enough for public consumption. Feel free to reach out if you want to know more and/or contribute 😊

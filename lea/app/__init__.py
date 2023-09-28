@@ -110,10 +110,10 @@ def test(
 
 
 @app.command()
-def docs(views_dir: str = ViewsDir, output_dir: str = "docs", env: str = EnvPath):
+def docs(views_dir: str = ViewsDir, output_dir: str = "docs", production: bool = False, env: str = EnvPath):
     from lea.app.docs import docs
 
-    client = _make_client(production=True)
+    client = _make_client(production=production)
 
     docs(views_dir=views_dir, output_dir=output_dir, client=client, console=console)
 
