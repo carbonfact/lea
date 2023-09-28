@@ -70,8 +70,10 @@ A `.cache.pkl` file is created during the run. This file is a checkpoint contain
 
 ```sh
 lea test ./views
-    --threads 4         # run 4 queries concurrently
-    --raise-exceptions  # raise exceptions instead of skipping
+    --production                   # don't append a suffix to the schema name
+    --only check_kpis_make_sense   # only run this test
+    --threads 4                    # run 4 queries concurrently
+    --raise-exceptions             # raise exceptions instead of skipping
 ```
 
 There are two types of tests:

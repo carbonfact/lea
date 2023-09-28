@@ -85,6 +85,7 @@ def run(
 @app.command()
 def test(
     views_dir: str,
+    only: list[str] = typer.Option(None),
     threads: int = 8,
     production: bool = False,
     raise_exceptions: bool = False,
@@ -98,6 +99,7 @@ def test(
     test(
         client=client,
         views_dir=views_dir,
+        only=only,
         threads=threads,
         raise_exceptions=raise_exceptions,
         console=console,

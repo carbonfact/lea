@@ -10,6 +10,7 @@ import lea
 def test(
     client: lea.clients.Client,
     views_dir: str,
+    only: list[str],
     threads: int,
     raise_exceptions: bool,
     console: rich.console.Console,
@@ -32,10 +33,16 @@ def test(
             generic_tests.append(generic_test)
     console.log(f"Found {len(generic_tests):,d} generic tests")
 
+    # Determine which tests need to be run
+    tests = singular_tests + generic_tests
+    blacklist = set(t.name for t in tests).difference(only) if only else set()
+    console.log(f"{len(tests) - len(blacklist):,d} test(s) selected")
+    tests = [test for test in tests if test.name not in blacklist]
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         jobs = {
             executor.submit(client.load, test): test
-            for test in singular_tests + generic_tests
+            for test in tests
         }
         for job in concurrent.futures.as_completed(jobs):
             test = jobs[job]
