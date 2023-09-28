@@ -4,7 +4,9 @@
 
 lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Google's Dataform](https://cloud.google.com/dataform).
 
-lea aims to be simple and opinionated, while offering the possibility to be extended. We happily use it every day at Carbonfact to manage our data warehouse.
+lea aims to be simple and opinionated, while offering the possibility to be extended. We happily use it every day at [Carbonfact](https://www.carbonfact.com/) to manage our data warehouse. We will actively maintain it and add features, while welcoming contributions.
+
+Right now lea supports BigQuery (used at Carbonfact) and DuckDB (quack quack).
 
 - [Example](#example)
 - [Usage](#usage)
@@ -20,7 +22,7 @@ lea aims to be simple and opinionated, while offering the possibility to be exte
   - [`lea teardown`](#lea-teardown)
   - [Jinja templating](#jinja-templating)
   - [Python scripts](#python-scripts)
-  - [Import `lea` as a library](#import-lea-as-a-library)
+  - [Import `lea` as a Python module](#import-lea-as-a-python-module)
 - [Roadmap](#roadmap)
 
 ## Example
@@ -201,9 +203,9 @@ This deletes the schema created by `lea prepare`. This is handy during continuou
 
 ### Jinja templating
 
-SQL queries can be templated with Jinja. A `.sql.jinja` extension for lea to recognise them.
+SQL queries can be templated with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/). A `.sql.jinja` extension is necessary for lea to recognise them.
 
-You have access to an `env` variable, which is simply an access point to `os.environ`.
+You have access to an `env` variable within the template context, which is simply an access point to `os.environ`.
 
 ### Python scripts
 
@@ -220,7 +222,7 @@ users = pd.DataFrame(
 )
 ```
 
-### Import `lea` as a library
+### Import `lea` as a Python module
 
 lea is meant to be used as a CLI. But you can use it as a library too.
 
