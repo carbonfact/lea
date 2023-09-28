@@ -1,5 +1,7 @@
 <h1>lea</h1>
 
+<img src="https://github.com/carbonfact/kaya/assets/8095957/9938db74-0d54-4ab7-8307-d008af0844aa" width="25%" align="right" />
+
 lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Dataform](https://cloud.google.com/dataform).
 
 lea is intended to be simple, opinionated, while offering the ability to be extended. We use it every day at Carbonfact to manage our data warehouse.
