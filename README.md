@@ -176,23 +176,19 @@ lea diff kaya_max kaya
 Here is an example:
 
 ```diff
-  core__accounts
-+ trends_dimensions
-+ filter_dimensions
+  core__users
++ age
++ email
 
-- core__product_models
-- n_skus
-- product_model
-- account_slug
+- core__coupons
+- coupon_id
+- amount
+- user_id
 - has_aggregation_key
 
-  core__product_taxonomy
-- latest_measured_carbonverse_id
-+ is_account_taxonomy
-+ measured_carbonverse_id
-
-  core__products
-- has_aggregation_key
+  core__orders
+- discount
++ supplier
 ```
 
 ### `lea teardown`
