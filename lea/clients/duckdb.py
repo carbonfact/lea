@@ -68,7 +68,7 @@ class DuckDB(Client):
         """
         return self.con.sql(query).df()
 
-    def _make_view_path(self, view: View) -> str:
+    def _make_view_path(self, view: views.View) -> str:
         return f"{self.schema}.{view.dunder_name}"
 
     def make_test_unique_column(self, view: views.View, column: str) -> str:

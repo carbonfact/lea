@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import os
-import textwrap
 
 import pandas as pd
 
-import lea
+from lea import views
 
 from .base import Client
 
@@ -52,7 +51,7 @@ class BigQuery(Client):
         dataset.location = self.location
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
 
-    def _make_job(self, view: lea.views.SQLView):
+    def _make_job(self, view: views.SQLView):
         query = view.query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
 
         return self.client.create_job(
@@ -77,11 +76,11 @@ class BigQuery(Client):
             }
         )
 
-    def _create_sql(self, view: lea.views.SQLView):
+    def _create_sql(self, view: views.SQLView):
         job = self._make_job(view)
         job.result()
 
-    def _create_python(self, view: lea.views.PythonView):
+    def _create_python(self, view: views.PythonView):
         from google.cloud import bigquery
 
         dataframe = self._load_python(view)
@@ -98,7 +97,7 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _load_sql(self, view: lea.views.SQLView) -> pd.DataFrame:
+    def _load_sql(self, view: views.SQLView) -> pd.DataFrame:
         query = view.query
         if self.username:
             query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
@@ -109,7 +108,7 @@ class BigQuery(Client):
             table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
         ]
 
-    def delete_view(self, view: lea.views.View):
+    def delete_view(self, view: views.View):
         self.client.delete_table(
             f"{self.project_id}.{self._make_view_path(view)}"
         )
@@ -123,9 +122,9 @@ class BigQuery(Client):
             data_type AS type
         FROM {schema}.INFORMATION_SCHEMA.COLUMNS
         """
-        return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
+        return self._load_sql(views.GenericSQLView(schema=None, name=None, query=query))
 
-    def _make_view_path(self, view: View) -> str:
+    def _make_view_path(self, view: views.View) -> str:
         return f"{self.dataset_name}.{view.schema}__{view.name}"
 
     def make_test_unique_column(self, view: views.View, column: str) -> str:
