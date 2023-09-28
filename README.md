@@ -4,9 +4,9 @@
 
 lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Google's Dataform](https://cloud.google.com/dataform).
 
-lea aims to be simple and opinionated, while offering the possibility to be extended. We happily use it every day at [Carbonfact](https://www.carbonfact.com/) to manage our data warehouse. We will actively maintain it and add features, while welcoming contributions.
+lea aims to be simple and opinionated, and yet offers the possibility to be extended. We happily use it every day at [Carbonfact](https://www.carbonfact.com/) to manage our data warehouse. We will actively maintain it and add features, while welcoming contributions.
 
-Right now lea supports BigQuery (used at Carbonfact) and DuckDB (quack quack).
+Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack quack).
 
 - [Example](#example)
 - [Usage](#usage)
@@ -22,7 +22,7 @@ Right now lea supports BigQuery (used at Carbonfact) and DuckDB (quack quack).
   - [`lea teardown`](#lea-teardown)
   - [Jinja templating](#jinja-templating)
   - [Python scripts](#python-scripts)
-  - [Import `lea` as a Python module](#import-lea-as-a-python-module)
+  - [Import lea as a Python module](#import-lea-as-a-python-module)
 - [Roadmap](#roadmap)
 
 ## Example
@@ -222,7 +222,7 @@ users = pd.DataFrame(
 )
 ```
 
-### Import `lea` as a Python module
+### Import lea as a Python module
 
 lea is meant to be used as a CLI. But you can use it as a library too.
 
