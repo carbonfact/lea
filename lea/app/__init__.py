@@ -10,7 +10,7 @@ app = typer.Typer()
 console = rich.console.Console()
 
 
-def env_validate_callback(env_path: str | None):
+def env_validate_callback(env_path: str | None = ".env"):
     """
 
     If a path to .env file is provided, we check that it exists. In any case, we use dotenv
@@ -22,7 +22,8 @@ def env_validate_callback(env_path: str | None):
     dotenv.load_dotenv(env_path, verbose=True)
 
 
-EnvPath = typer.Option(None, callback=env_validate_callback)
+EnvPath = typer.Option(default=".env", callback=env_validate_callback)
+ViewsDir = typer.Option(default="views")
 
 
 @app.command()
@@ -51,9 +52,10 @@ def teardown(production: bool = False, env: str = EnvPath):
 
 @app.command()
 def run(
-    views_dir: str,
-    only: list[str] = typer.Option(None),
+    views_dir: str = ViewsDir,
+    only: list[str] = typer.Option(default=None),
     dry: bool = False,
+    print: bool = False,
     fresh: bool = False,
     production: bool = False,
     threads: int = 8,
@@ -74,6 +76,7 @@ def run(
         views_dir=views_dir,
         only=only,
         dry=dry,
+        print_to_cli=print,
         fresh=fresh,
         threads=threads,
         show=show,
@@ -84,7 +87,7 @@ def run(
 
 @app.command()
 def test(
-    views_dir: str,
+    views_dir: str = ViewsDir,
     only: list[str] = typer.Option(None),
     threads: int = 8,
     production: bool = False,
@@ -107,7 +110,7 @@ def test(
 
 
 @app.command()
-def docs(views_dir: str, output_dir: str = "docs", env: str = EnvPath):
+def docs(views_dir: str = ViewsDir, output_dir: str = "docs", env: str = EnvPath):
     from lea.app.docs import docs
 
     client = _make_client(production=True)

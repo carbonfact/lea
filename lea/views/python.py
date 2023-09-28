@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 
 from .base import View
 from .sql import SQLView
@@ -33,3 +34,14 @@ class PythonView(View):
                     pass
 
         return set(_dependencies())
+
+    @property
+    def description(self):
+        module_name = self.path.stem
+        spec = importlib.util.spec_from_file_location(module_name, self.path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.__doc__
+
+    def extract_comments(self, columns: list[str]):
+        return {}

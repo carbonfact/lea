@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import importlib
+import textwrap
 import typing
 
 import pandas as pd
@@ -22,6 +23,10 @@ class Client(abc.ABC):
 
     @abc.abstractproperty
     def sqlglot_dialect(self):
+        ...
+
+    @abc.abstractmethod
+    def _make_view_path(self, view: views.View) -> str:
         ...
 
     @abc.abstractmethod
@@ -75,10 +80,6 @@ class Client(abc.ABC):
     def get_columns(self, schema: str) -> pd.DataFrame:
         ...
 
-    @abc.abstractmethod
-    def yield_unit_tests(self, view: views.View, view_columns: list[str]) -> typing.Iterator[views.GenericSQLView]:
-        ...
-
     def get_diff_summary(self, origin: str, destination: str) -> pd.DataFrame:
 
         origin_columns = set(map(tuple, self.get_columns(origin)[["table", "column"]].values.tolist()))
@@ -118,3 +119,30 @@ class Client(abc.ABC):
                 for table, column in destination_columns - origin_columns
             ]
         )
+
+
+    @abc.abstractmethod
+    def make_test_unique_column(self, view: views.View, column: str) -> str:
+        ...
+
+    def yield_unit_tests(self, view, view_columns):
+
+        # Unit tests in Python views are not handled yet
+        if isinstance(view, views.PythonView):
+            return
+            yield
+
+        column_comments = view.extract_comments(columns=view_columns)
+
+        for column, comment_block in column_comments.items():
+            for comment in comment_block:
+                if "@" not in comment.text:
+                    continue
+                if comment.text == "@UNIQUE":
+                    yield views.GenericSQLView(
+                        schema="tests",
+                        name=f"{view.schema}.{view.name}.{column}@UNIQUE",
+                        query=self.make_test_unique_column(view, column),
+                    )
+                else:
+                    raise ValueError(f"Unhandled tag: {comment.text}")

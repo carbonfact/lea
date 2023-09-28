@@ -60,11 +60,10 @@ def docs(
                 content.write(f"{view.description}\n\n")
 
             # Write down the query
-            # HACK
             content.write(
                 "```sql\n"
                 "SELECT *\n"
-                f"FROM {client.dataset_name}.{schema}__{view.name}\n"
+                f"FROM {client._make_view_path(view)}\n"
                 "```\n\n"
             )
             # Write down the columns

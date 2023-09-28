@@ -93,7 +93,7 @@ class BigQuery(Client):
 
         job = self.client.load_table_from_dataframe(
             dataframe,
-            f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}",
+            f"{self.project_id}.{self._make_view_path(view)}",
             job_config=job_config,
         )
         job.result()
@@ -111,7 +111,7 @@ class BigQuery(Client):
 
     def delete_view(self, view: lea.views.View):
         self.client.delete_table(
-            f"{self.project_id}.{self.dataset_name}.{view.schema}__{view.name}"
+            f"{self.project_id}.{self._make_view_path(view)}"
         )
 
     def get_columns(self, schema=None) -> pd.DataFrame:
@@ -125,25 +125,13 @@ class BigQuery(Client):
         """
         return self._load_sql(lea.views.GenericSQLView(schema=None, name=None, query=query))
 
-    def yield_unit_tests(self, view, view_columns):
-        column_comments = view.extract_comments(columns=view_columns)
+    def _make_view_path(self, view: View) -> str:
+        return f"{self.dataset_name}.{view.schema}__{view.name}"
 
-        for column, comment_block in column_comments.items():
-            for comment in comment_block:
-                if "@" not in comment.text:
-                    continue
-                if comment.text == "@UNIQUE":
-                    yield lea.views.GenericSQLView(
-                        schema="tests",
-                        name=f"{view.schema}.{view.name}.{column}@UNIQUE",
-                        query=textwrap.dedent(
-                            f"""
-                            SELECT {column}, COUNT(*) AS n
-                            FROM {self.dataset_name}.{view.schema}__{view.name}
-                            GROUP BY {column}
-                            HAVING n > 1
-                            """
-                        ),
-                    )
-                else:
-                    raise ValueError(f"Unhandled tag: {comment.text}")
+    def make_test_unique_column(self, view: views.View, column: str) -> str:
+        return f"""
+        SELECT {column}, COUNT(*) AS n
+        FROM {self._make_view_path(view)}
+        GROUP BY {column}
+        HAVING n > 1
+        """

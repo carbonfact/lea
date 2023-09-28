@@ -5,6 +5,7 @@ import dataclasses
 import itertools
 import os
 import re
+import textwrap
 import warnings
 
 import jinja2
@@ -167,7 +168,7 @@ class GenericSQLView(SQLView):
     def __init__(self, schema, name, query):
         self._schema = schema
         self._name = name
-        self._query = query
+        self._query = textwrap.dedent(query)
 
     @property
     def schema(self):

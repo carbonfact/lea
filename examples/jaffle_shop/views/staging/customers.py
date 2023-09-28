@@ -1,3 +1,5 @@
+"""Docstring for the customers view."""
+
 from __future__ import annotations
 
 import pathlib

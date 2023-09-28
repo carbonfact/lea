@@ -31,6 +31,23 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             deps[src_schema].update([schema for schema, _ in dsts if schema != src_schema])
         return deps
 
+    def list_ancestors(self, node):
+        """Returns a list of all the ancestors for a given node."""
+        def _list_ancestors(node):
+            for child in self.dependencies.get(node, []):
+                yield child
+                yield from _list_ancestors(child)
+        return list(_list_ancestors(node))
+
+    def list_descendants(self, node):
+        """Returns a list of all the descendants for a given node."""
+        def _list_descendants(node):
+            for parent in self.dependencies:
+                if node in self.dependencies[parent]:
+                    yield parent
+                    yield from _list_descendants(parent)
+        return list(_list_descendants(node))
+
     def _to_mermaid_views(self):
         out = io.StringIO()
         out.write('%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%\n')

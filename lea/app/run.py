@@ -9,6 +9,7 @@ import time
 
 import rich.console
 import rich.live
+import rich.syntax
 
 import lea
 
@@ -18,8 +19,49 @@ ERRORED = "[red]ERRORED"
 SKIPPED = "[blue]SKIPPED"
 
 
-def _do_nothing():
+def _do_nothing(*args, **kwargs):
     """This is a dummy function for dry runs"""
+
+
+def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> str:
+    if isinstance(view, lea.views.SQLView):
+        syntax = rich.syntax.Syntax(view.query, "sql")
+    elif isinstance(view, lea.views.PythonView):
+        syntax = rich.syntax.Syntax(view.path.read_text(), "python")
+    else:
+        raise NotImplementedError
+    console.print(syntax)
+
+
+def make_blacklist(dag: lea.views.DAGOfViews, only: list) -> set:
+    """
+
+    Basic implementation of dbt-like graph operators.
+
+    References
+    ----------
+    https://docs.getdbt.com/reference/node-selection/graph-operators
+
+    """
+
+    # Start by assuming that all views are blacklisted
+    blacklist = set(dag.keys())
+
+    for schema, table in only:
+        # Ancestors
+        if schema.startswith('+'):
+            blacklist.difference_update(dag.list_ancestors((schema[1:], table)))
+            schema = schema[1:]
+
+        # Descendants
+        if table.endswith('+'):
+            blacklist.difference_update(dag.list_descendants((schema, table[:-1])))
+            table = table[:-1]
+
+        # The node itself
+        blacklist.remove((schema, table))
+
+    return blacklist
 
 
 def run(
@@ -27,35 +69,42 @@ def run(
     views_dir: str,
     only: list[str],
     dry: bool,
+    print_to_cli: bool,
     fresh: bool,
     threads: int,
     show: int,
     raise_exceptions: bool,
     console: rich.console.Console,
 ):
+
+    # If print_to_cli, it means we only want to print out the view definitions, nothing else
+    console_log = _do_nothing if print_to_cli else console.log
+
     # List the relevant views
     views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
-    console.log(f"{len(views):,d} view(s) in total")
+    console_log(f"{len(views):,d} view(s) in total")
 
     # Organize the views into a directed acyclic graph
     dag = lea.views.DAGOfViews(views)
 
     # Determine which views need to be run
-    blacklist = set(dag.keys()).difference(only) if only else set()
-    console.log(f"{len(views) - len(blacklist):,d} view(s) selected")
+    blacklist = make_blacklist(dag, only) if only else set()
+    console_log(f"{len(views) - len(blacklist):,d} view(s) selected")
 
     # Remove orphan views
     for schema, table in client.list_existing_view_names():
         if (schema, table) in dag:
             continue
-        console.log(f"Removing {schema}.{table}")
+        console_log(f"Removing {schema}.{table}")
         if not dry:
             view_to_delete = lea.views.GenericSQLView(schema=schema, name=table, query="")
             client.delete_view(view=view_to_delete)
-        console.log(f"Removed {schema}.{table}")
+        console_log(f"Removed {schema}.{table}")
 
     def display_progress() -> rich.table.Table:
+        if print_to_cli:
+            return None
         table = rich.table.Table(box=None)
         table.add_column("#", header_style="italic")
         table.add_column("schema", header_style="italic")
@@ -96,10 +145,10 @@ def run(
     )
     tic = time.time()
 
-    console.log(f"{len(cache):,d} view(s) already done")
+    console_log(f"{len(cache):,d} view(s) already done")
 
     with rich.live.Live(
-        display_progress(), vertical_overflow="visible", refresh_per_second=6
+        display_progress() , vertical_overflow="visible", refresh_per_second=6
     ) as live:
         while dag.is_active():
             # We check if new views have been unlocked
@@ -131,6 +180,7 @@ def run(
                 jobs[node] = executor.submit(
                     _do_nothing
                     if dry or node in cache
+                    else functools.partial(pretty_print_view, view=dag[node], console=console) if print_to_cli
                     else functools.partial(client.create, view=dag[node])
                 )
                 jobs_started_at[node] = dt.datetime.now()
@@ -159,6 +209,8 @@ def run(
         cache_path.unlink(missing_ok=True)
 
     # Summary statistics
+    if print_to_cli:
+        return
     console.log(f"Took {round(time.time() - tic)}s")
     summary = rich.table.Table()
     summary.add_column("status")
