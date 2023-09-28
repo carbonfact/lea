@@ -1,8 +1,8 @@
 <h1>lea</h1>
 
-lea is an opinionated alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Dataform](https://cloud.google.com/dataform).
+lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Dataform](https://cloud.google.com/dataform).
 
-lea is designed to be simple and easy to extend. We use it every day at Carbonfact to manage our data warehouse.
+lea is intended to be simple, opinionated, while offering the ability to be extended. We use it every day at Carbonfact to manage our data warehouse.
 
 - [Example](#example)
 - [Usage](#usage)
@@ -114,11 +114,21 @@ lea run --only core.users+ --only +core.orders
 
 #### Workflow tips
 
-A `.cache.pkl` file is created during the run. This file is a checkpoint containing the state of the DAG. It is used to determine which queries to run next time. That is, if some queries have failed, only those queries and their descendants will be run again next time. This can be disabled with the `--fresh` flag.
+The `lea run` command creates a `.cache.pkl` file is created during the run. This file is a checkpoint containing the state of the DAG. It is used to determine which queries to run next time. That is, if some queries have failed, only those queries and their descendants will be run again next time. The `.cache.pkl` is deleted once all queries have succeeded.
+
+This checkpointing logic can be disabled with the `--fresh` flag.
 
 ```sh
---raise-exceptions
+lea run --fresh
 ```
+
+The `--raise-exceptions` flag can be used to immediately stop if a query fails:
+
+```sh
+lea --raise-exceptions
+```
+
+For debugging purposes, it is possible to print out a query and copy it to the clipboard:
 
 ```sh
 lea run --print --only core.users | pbcopy
