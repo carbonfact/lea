@@ -97,7 +97,7 @@ This will also create a Mermaid diagram in the `docs` directory. This diagram is
 lea diff origin destination
 ```
 
-This prints out a summary of the differences between two schemas. This is handy in pull requests.
+This prints out a summary of the difference between two schemas in terms of structure. This is handy in pull requests.
 
 ### `lea teardown`
 
@@ -162,7 +162,7 @@ for schema, table in dag.get_ready():
 
 ## Roadmap
 
-- Incremental runs
+- Incremental queries
 - Exporting
 - Archiving
 - Historization
@@ -171,5 +171,7 @@ for schema, table in dag.get_ready():
 - Extending the CLI
 - Only refresh what changed, based on git
 - Splitting a query into CTEs
+- Metric layer
+- Shell auto-completion
 
 Note: some of these features already exist at Carbonfact. We just don't feel they're polished enough for public consumption just yet.
