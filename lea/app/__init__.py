@@ -10,7 +10,7 @@ app = typer.Typer()
 console = rich.console.Console()
 
 
-def env_validate_callback(env_path: str | None = ".env"):
+def env_validate_callback(env_path: str | None):
     """
 
     If a path to .env file is provided, we check that it exists. In any case, we use dotenv
@@ -22,7 +22,7 @@ def env_validate_callback(env_path: str | None = ".env"):
     dotenv.load_dotenv(env_path, verbose=True)
 
 
-EnvPath = typer.Option(default=".env", callback=env_validate_callback)
+EnvPath = typer.Option(default=None, callback=env_validate_callback)
 ViewsDir = typer.Option(default="views")
 
 
