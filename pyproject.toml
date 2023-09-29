@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "lea"
 version = "0.1.0"
-description = "An opinionated alternative to dbt"
+description = "A minimalist alternative to dbt"
 authors = ["Max Halford <maxhalford25@gmail.com>"]
 
 [tool.poetry.dependencies]
@@ -20,6 +20,7 @@ duckdb = "^0.8.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.21.2"
+pytest = "^7.4.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

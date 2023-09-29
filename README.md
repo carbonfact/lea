@@ -50,7 +50,9 @@ LEA_BQ_PROJECT_ID=carbonfact-dwh
 LEA_BQ_SERVICE_ACCOUNT=<a JSON dump of the service account file>
 ```
 
-The `prepare` command has to be run once to create whatever needs creating. For instance, when working with BigQuery, a dataset has to be created:
+These parameters can be provided in an `.env` file, or directly in the shell.
+
+The `prepare` command has to be run once to create whatever needs creating. For instance, when using BigQuery, a dataset has to be created:
 
 ```sh
 lea prepare

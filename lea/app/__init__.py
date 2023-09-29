@@ -19,7 +19,7 @@ def env_validate_callback(env_path: str | None):
     """
     if env_path is not None and not pathlib.Path(env_path).exists():
         raise typer.BadParameter(f"File not found: {env_path}")
-    dotenv.load_dotenv(env_path, verbose=True)
+    dotenv.load_dotenv(env_path or ".env", verbose=True)
 
 
 EnvPath = typer.Option(default=None, callback=env_validate_callback)
