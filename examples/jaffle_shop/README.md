@@ -55,7 +55,7 @@ You can also generate documentation:
 lea docs
 ```
 
-This generates a `docs` folder with the following structure:
+This generates a [`docs` folder](docs) with the following structure:
 
 ```
 docs

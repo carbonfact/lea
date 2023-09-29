@@ -23,7 +23,7 @@ def env_validate_callback(env_path: str | None):
 
 
 EnvPath = typer.Option(default=None, callback=env_validate_callback)
-ViewsDir = typer.Option(default="views")
+ViewsDir = typer.Argument(default="views")
 
 
 @app.command()

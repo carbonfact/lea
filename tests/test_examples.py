@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import shutil
 
 import duckdb
 from typer.testing import CliRunner
@@ -30,7 +31,7 @@ def test_jaffle_shop():
     result = runner.invoke(app, ["prepare", "--env", env_path])
     assert result.exit_code == 0
 
-    # RUn
+    # Run
     result = runner.invoke(app, ["run", views_path, "--env", env_path])
     assert result.exit_code == 0
 
@@ -46,3 +47,20 @@ def test_jaffle_shop():
     # Check number of rows in core__orders
     orders = con.sql("SELECT * FROM jaffle_shop_max.core__orders").df()
     assert orders.shape[0] == 99
+
+    # Run unit tests
+    result = runner.invoke(app, ["test", views_path, "--env", env_path])
+    assert result.exit_code == 0
+    assert "Found 1 generic tests" in result.stdout
+    assert "Found 1 singular tests" in result.stdout
+    assert "SUCCESS" in result.stdout
+
+    # Build docs
+    docs_path = here.parent / "examples" / "jaffle_shop" / "docs"
+    shutil.rmtree(docs_path, ignore_errors=True)
+    result = runner.invoke(app, ["docs", views_path, "--env", env_path, "--output-dir", str(docs_path.absolute())])
+    assert result.exit_code == 0
+    assert docs_path.exists()
+    assert (docs_path / "README.md").exists()
+    assert (docs_path / "core" / "README.md").exists()
+    assert (docs_path / "staging" / "README.md").exists()

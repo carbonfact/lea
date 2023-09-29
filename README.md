@@ -41,16 +41,16 @@ LEA_SCHEMA=kaya
 LEA_USERNAME=max
 LEA_WAREHOUSE=bigquery
 
-# DuckDB
+# DuckDB 🦆
 LEA_DUCKDB_PATH=duckdb.db
 
-# BigQuery
+# BigQuery 🦏
 LEA_BQ_LOCATION=EU
 LEA_BQ_PROJECT_ID=carbonfact-dwh
 LEA_BQ_SERVICE_ACCOUNT=<a JSON dump of the service account file>
 ```
 
-These parameters can be provided in an `.env` file, or directly in the shell.
+These parameters can be provided in an `.env` file, or directly in the shell. Each command also has an `--env` flag to provide a path to an `.env` file.
 
 The `prepare` command has to be run once to create whatever needs creating. For instance, when using BigQuery, a dataset has to be created:
 
@@ -70,6 +70,8 @@ The queries are run concurrently. They are organized in a DAG, which is traverse
 
 #### File structure
 
+Each query is expected to be placed under a schema, represented by a directory. For instance, the following file structure is valid:
+
 ```
 views/
     schema_1/
@@ -79,6 +81,14 @@ views/
         table_3.sql
         table_4.sql
 ```
+
+The schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
+
+```sh
+lea run /path/to/views
+```
+
+This also applies to the other commands.
 
 #### Development vs. production
 
