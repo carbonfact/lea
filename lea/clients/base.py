@@ -144,3 +144,7 @@ class Client(abc.ABC):
                     )
                 else:
                     raise ValueError(f"Unhandled tag: {comment.text}")
+
+    @abc.abstractmethod
+    def teardown(self):
+        ...

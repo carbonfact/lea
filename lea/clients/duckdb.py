@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import duckdb
 import pandas as pd
 
@@ -48,6 +50,9 @@ class DuckDB(Client):
 
     def delete_view(self, view: views.View):
         self.con.sql(f"DROP TABLE IF EXISTS {self._make_view_path(view)}")
+
+    def teardown(self):
+        os.remove(self.path)
 
     def list_existing_view_names(self) -> list[tuple[str, str]]:
         results = duckdb.sql("SELECT table_schema, table_name FROM information_schema.tables").df()

@@ -211,7 +211,7 @@ Here is an example:
 lea teardown
 ```
 
-This deletes the schema created by `lea prepare`. This is handy during continuous integration. For example, you might create a temporary schema named in a branch. You then may want to delete it after testing is finished and/or when the branch is merged.
+This deletes the schema created by `lea prepare`. This is handy during continuous integration. For example, you might create a temporary schema in a branch. You would typically want to delete it after testing is finished and/or when the branch is merged.
 
 ### Jinja templating
 
