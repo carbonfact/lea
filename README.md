@@ -22,7 +22,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
   - [`lea teardown`](#lea-teardown)
   - [Jinja templating](#jinja-templating)
   - [Python scripts](#python-scripts)
-  - [Import lea as a Python module](#import-lea-as-a-python-module)
+  - [Import lea as a Python library](#import-lea-as-a-python-library)
 - [Roadmap](#roadmap)
 
 ## Example
@@ -234,30 +234,52 @@ users = pd.DataFrame(
 )
 ```
 
-### Import lea as a Python module
+### Import lea as a Python library
 
-lea is meant to be used as a CLI. But you can use it as a library too.
+lea is meant to be used as a CLI. But you can import it as a Python library too. For instance, we do this at Carbonfact to craft custom commands.
 
 **Parsing a directory of queries**
 
 ```py
-from lea import views
+>>> from lea import views
 
-views = views.load_views('views', sqlglot_dialect='bigquery')
-for view in views:
-    print(view)
-    print(view.dependencies)
+>>> views = views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+>>> views = [v for v in views if v.schema != 'tests']
+>>> for view in views:
+...     print(view.name)
+...     print(sorted(view.dependencies))
+payments
+[]
+orders
+[]
+customers
+[]
+customers
+[('staging', 'customers'), ('staging', 'orders'), ('staging', 'payments')]
+orders
+[('staging', 'orders'), ('staging', 'payments')]
+
 ```
 
 **Organizing queries into a DAG**
 
 ```py
-from lea import views
+>>> from lea import views
+>>> from lea.views import DAGOfViews
 
-views = views.load_views('views', sqlglot_dialect='bigquery')
-dag = views.DAGOfViews(views)
-for schema, table in dag.get_ready():
-    print(schema, table)
+>>> views = views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+>>> views = [v for v in views if v.schema != 'tests']
+>>> dag = DAGOfViews(views)
+>>> while dag.is_active():
+...     for schema, table in dag.get_ready():
+...         print(f'At {schema}.{table}')
+...         dag.done((schema, table))
+At staging.payments
+At staging.orders
+At staging.customers
+At core.orders
+At core.customers
+
 ```
 
 ## Roadmap
