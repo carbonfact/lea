@@ -2,6 +2,8 @@
 
 <img src="https://giphy.com/embed/qoCXTKmz7c57a" width="33%" align="right" />
 
+<iframe src="https://giphy.com/embed/qoCXTKmz7c57a" width="480" height="284" frameBorder="0" class="giphy-embed" allowFullScreen></iframe><p><a href="https://giphy.com/gifs/greta-gerwig-qoCXTKmz7c57a">via GIPHY</a></p>
+
 <p>
 <!-- Tests -->
 <a href="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml">
