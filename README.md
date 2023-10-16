@@ -293,14 +293,14 @@ staging.payments
 >>> views = [v for v in views if v.schema != 'tests']
 >>> dag = DAGOfViews(views)
 >>> while dag.is_active():
-...     for schema, table in dag.get_ready():
+...     for schema, table in sorted(dag.get_ready()):
 ...         print(f'{schema}.{table}')
 ...         dag.done((schema, table))
-staging.payments
-staging.orders
 staging.customers
-core.orders
+staging.orders
+staging.payments
 core.customers
+core.orders
 
 ```
 
