@@ -136,7 +136,6 @@ def diff(origin: str, destination: str, env: str = EnvPath):
 
 
 def make_app(make_client):
-
     # This is a hack to make the client available to the commands
     global _make_client
     _make_client = make_client

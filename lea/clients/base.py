@@ -47,7 +47,6 @@ class Client(abc.ABC):
         ...
 
     def _load_python(self, view: views.PythonView):
-
         module_name = view.path.stem
         spec = importlib.util.spec_from_file_location(module_name, view.path)
         module = importlib.util.module_from_spec(spec)
@@ -79,7 +78,6 @@ class Client(abc.ABC):
         ...
 
     def get_diff_summary(self, origin: str, destination: str) -> pd.DataFrame:
-
         origin_columns = set(
             map(tuple, self.get_columns(origin)[["table", "column"]].values.tolist())
         )
@@ -130,7 +128,6 @@ class Client(abc.ABC):
         ...
 
     def yield_unit_tests(self, view, view_columns):
-
         # Unit tests in Python views are not handled yet
         if isinstance(view, views.PythonView):
             return

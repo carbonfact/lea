@@ -13,7 +13,6 @@ from .sql import GenericSQLView, SQLView
 def load_views(
     views_dir: pathlib.Path | str, sqlglot_dialect: sqlglot.dialects.Dialect | str
 ) -> list[View]:
-
     # Massage the inputs
     if isinstance(views_dir, str):
         views_dir = pathlib.Path(views_dir)

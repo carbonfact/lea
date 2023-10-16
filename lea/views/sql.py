@@ -98,7 +98,6 @@ class SQLView(View):
         )
 
     def extract_comments(self, columns: list[str]) -> dict[str, CommentBlock]:
-
         dialect = sqlglot.Dialect.get_or_raise(self.dialect)()
         tokens = dialect.tokenizer.tokenize(self.query)
 

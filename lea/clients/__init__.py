@@ -6,7 +6,6 @@ import os
 
 
 def make_client(production: bool):
-
     warehouse = os.environ["LEA_WAREHOUSE"]
     username = None if production else str(os.environ.get("LEA_USERNAME", getpass.getuser()))
 

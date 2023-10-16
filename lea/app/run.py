@@ -76,7 +76,6 @@ def run(
     raise_exceptions: bool,
     console: rich.console.Console,
 ):
-
     # If print_to_cli, it means we only want to print out the view definitions, nothing else
     console_log = _do_nothing if print_to_cli else console.log
 
