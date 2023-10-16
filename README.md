@@ -1,9 +1,6 @@
 <h1>lea</h1>
 
 <img src="https://giphy.com/embed/qoCXTKmz7c57a" width="33%" align="right" />
-
-<iframe src="https://giphy.com/embed/qoCXTKmz7c57a" width="480" height="284" frameBorder="0" class="giphy-embed" allowFullScreen></iframe><p><a href="https://giphy.com/gifs/greta-gerwig-qoCXTKmz7c57a">via GIPHY</a></p>
-
 <p>
 <!-- Tests -->
 <a href="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml">
@@ -269,19 +266,19 @@ lea is meant to be used as a CLI. But you can import it as a Python library too.
 
 >>> views = views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
 >>> views = [v for v in views if v.schema != 'tests']
->>> for view in views:
-...     print(view.name)
+>>> for view in sorted(views, key=str):
+...     print(view)
 ...     print(sorted(view.dependencies))
-payments
-[]
-orders
-[]
-customers
-[]
-customers
+core.customers
 [('staging', 'customers'), ('staging', 'orders'), ('staging', 'payments')]
-orders
+core.orders
 [('staging', 'orders'), ('staging', 'payments')]
+staging.customers
+[]
+staging.orders
+[]
+staging.payments
+[]
 
 ```
 

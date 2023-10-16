@@ -43,3 +43,6 @@ class PythonView(View):
 
     def extract_comments(self, columns: list[str]):
         return {}
+
+    def __repr__(self):
+        return f"{self.schema}.{self.name}"
