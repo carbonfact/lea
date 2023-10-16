@@ -282,13 +282,13 @@ orders
 >>> dag = DAGOfViews(views)
 >>> while dag.is_active():
 ...     for schema, table in dag.get_ready():
-...         print(f'At {schema}.{table}')
+...         print(f'{schema}.{table}')
 ...         dag.done((schema, table))
-At staging.payments
-At staging.orders
-At staging.customers
-At core.orders
-At core.customers
+staging.payments
+staging.orders
+staging.customers
+core.orders
+core.customers
 
 ```
 
