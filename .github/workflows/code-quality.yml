@@ -1,0 +1,18 @@
+name: Code quality
+
+on:
+  pull_request:
+    branches:
+      - "*"
+  push:
+    branches:
+      - main
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/install-env
+      - name: Run pre-commit on all files
+        run: poetry run pre-commit run --all-files
