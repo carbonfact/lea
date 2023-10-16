@@ -2,6 +2,18 @@
 
 <img src="https://github.com/carbonfact/lea/assets/8095957/de1eb7c1-4681-4a9c-b725-4b5ccaec22b3" width="33%" align="right" />
 
+<p>
+<!-- Tests -->
+<a href="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml">
+<img src="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml/badge.svg" alt="tests">
+</a>
+
+<!-- Code quality -->
+<a href="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml">
+<img src="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml/badge.svg" alt="code_quality">
+</a>
+</p>
+
 lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Google's Dataform](https://cloud.google.com/dataform).
 
 lea aims to be simple and opinionated, and yet offers the possibility to be extended. We happily use it every day at [Carbonfact](https://www.carbonfact.com/) to manage our data warehouse. We will actively maintain it and add features, while welcoming contributions.
