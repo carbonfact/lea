@@ -9,6 +9,7 @@ lea aims to be simple and opinionated, and yet offers the possibility to be exte
 Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack quack).
 
 - [Example](#example)
+- [Installation](#installation)
 - [Usage](#usage)
   - [Configuration](#configuration)
   - [`lea run`](#lea-run)
@@ -24,10 +25,19 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
   - [Python scripts](#python-scripts)
   - [Import lea as a Python library](#import-lea-as-a-python-library)
 - [Roadmap](#roadmap)
+- [License](#license)
 
 ## Example
 
 - [Jaffle shop 🥪](examples/jaffle_shop/)
+
+## Installation
+
+```sh
+pip install git+https://github.com/carbonfact/lea
+```
+
+☝️ _The `lea` name isn't available on PyPI yet, we're working on it._
 
 ## Usage
 
@@ -294,5 +304,10 @@ At core.customers
 - Splitting a query into CTEs
 - Metric layer
 - Shell auto-completion
+- Hot-swapping after success
 
 Some of these features already exist at Carbonfact. We just don't feel they're polished enough for public consumption. Feel free to reach out if you want to know more and/or contribute 😊
+
+## License
+
+lea is free and open-source software licensed under the Apache License, Version 2.0.
