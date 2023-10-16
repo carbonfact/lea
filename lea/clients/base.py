@@ -80,8 +80,15 @@ class Client(abc.ABC):
 
     def get_diff_summary(self, origin: str, destination: str) -> pd.DataFrame:
 
-        origin_columns = set(map(tuple, self.get_columns(origin)[["table", "column"]].values.tolist()))
-        destination_columns = set(map(tuple, self.get_columns(destination)[["table", "column"]].values.tolist()))
+        origin_columns = set(
+            map(tuple, self.get_columns(origin)[["table", "column"]].values.tolist())
+        )
+        destination_columns = set(
+            map(
+                tuple,
+                self.get_columns(destination)[["table", "column"]].values.tolist(),
+            )
+        )
 
         return pd.DataFrame(
             [
@@ -90,25 +97,25 @@ class Client(abc.ABC):
                     "column": None,
                     "diff_kind": "ADDED",
                 }
-                for table in {t for t, _ in origin_columns} -  {t for t, _ in destination_columns}
-            ] +
-            [
+                for table in {t for t, _ in origin_columns} - {t for t, _ in destination_columns}
+            ]
+            + [
                 {
                     "table": table,
                     "column": column,
                     "diff_kind": "ADDED",
                 }
                 for table, column in origin_columns - destination_columns
-            ] +
-            [
+            ]
+            + [
                 {
                     "table": table,
                     "column": None,
                     "diff_kind": "REMOVED",
                 }
-                for table in {t for t, _ in destination_columns } -  {t for t, _ in origin_columns}
-            ] +
-            [
+                for table in {t for t, _ in destination_columns} - {t for t, _ in origin_columns}
+            ]
+            + [
                 {
                     "table": table,
                     "column": column,
@@ -117,7 +124,6 @@ class Client(abc.ABC):
                 for table, column in destination_columns - origin_columns
             ]
         )
-
 
     @abc.abstractmethod
     def make_test_unique_column(self, view: views.View, column: str) -> str:

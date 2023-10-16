@@ -47,9 +47,7 @@ class SQLView(View):
             loader = jinja2.FileSystemLoader(self.origin)
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(self.relative_path))
-            return template.render(
-                env=os.environ
-            )
+            return template.render(env=os.environ)
         return text
 
     def parse_dependencies(self, query):
@@ -70,13 +68,20 @@ class SQLView(View):
         try:
             return self.parse_dependencies(self.query)
         except sqlglot.errors.ParseError:
-            warnings.warn(f"SQLGlot couldn't parse {self.path} with dialect {self.dialect}. Falling back to regex.")
+            warnings.warn(
+                f"SQLGlot couldn't parse {self.path} with dialect {self.dialect}. Falling back to regex."
+            )
             dependencies = set()
             for match in re.finditer(
-                r"(JOIN|FROM)\s+(?P<schema>[a-z][a-z_]+[a-z])\.(?P<view>[a-z][a-z_]+[a-z])", self.query, re.IGNORECASE
+                r"(JOIN|FROM)\s+(?P<schema>[a-z][a-z_]+[a-z])\.(?P<view>[a-z][a-z_]+[a-z])",
+                self.query,
+                re.IGNORECASE,
             ):
                 schema, view_name = (
-                    (match.group("view").split("__")[0], match.group("view").split("__", 1)[1])
+                    (
+                        match.group("view").split("__")[0],
+                        match.group("view").split("__", 1)[1],
+                    )
                     if "__" in match.group("view")
                     else (match.group("schema"), match.group("view"))
                 )
@@ -92,9 +97,7 @@ class SQLView(View):
             )
         )
 
-    def extract_comments(
-        self, columns: list[str]
-    ) -> dict[str, CommentBlock]:
+    def extract_comments(self, columns: list[str]) -> dict[str, CommentBlock]:
 
         dialect = sqlglot.Dialect.get_or_raise(self.dialect)()
         tokens = dialect.tokenizer.tokenize(self.query)
@@ -115,11 +118,7 @@ class SQLView(View):
             change = False
             for comment_block in comment_blocks:
                 next_comment_block = next(
-                    (
-                        cb
-                        for cb in comment_blocks
-                        if cb.first_line == comment_block.last_line + 1
-                    ),
+                    (cb for cb in comment_blocks if cb.first_line == comment_block.last_line + 1),
                     None,
                 )
                 if next_comment_block:
@@ -132,15 +131,11 @@ class SQLView(View):
         # We assume the tokens are stored. Therefore, by looping over them and building a dictionary,
         # each key will be unique and the last value will be the last variable in the line.
         var_tokens = [
-            token
-            for token in tokens
-            if token.token_type.value == "VAR" and token.text in columns
+            token for token in tokens if token.token_type.value == "VAR" and token.text in columns
         ]
 
         def is_var_line(line):
-            line_tokens = [
-                t for t in tokens if t.line == line and t.token_type.value != "COMMA"
-            ]
+            line_tokens = [t for t in tokens if t.line == line and t.token_type.value != "COMMA"]
             return line_tokens[-1].token_type.value == "VAR"
 
         last_var_per_line = {

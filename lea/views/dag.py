@@ -10,13 +10,9 @@ import lea
 
 class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
     def __init__(self, views: list[lea.views.View]):
-        view_to_dependencies = {
-            (view.schema, view.name): view.dependencies for view in views
-        }
+        view_to_dependencies = {(view.schema, view.name): view.dependencies for view in views}
         graphlib.TopologicalSorter.__init__(self, view_to_dependencies)
-        collections.UserDict.__init__(
-            self, {(view.schema, view.name): view for view in views}
-        )
+        collections.UserDict.__init__(self, {(view.schema, view.name): view for view in views})
         self.dependencies = view_to_dependencies
         self.prepare()
 
@@ -33,19 +29,23 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
 
     def list_ancestors(self, node):
         """Returns a list of all the ancestors for a given node."""
+
         def _list_ancestors(node):
             for child in self.dependencies.get(node, []):
                 yield child
                 yield from _list_ancestors(child)
+
         return list(_list_ancestors(node))
 
     def list_descendants(self, node):
         """Returns a list of all the descendants for a given node."""
+
         def _list_descendants(node):
             for parent in self.dependencies:
                 if node in self.dependencies[parent]:
                     yield parent
                     yield from _list_descendants(parent)
+
         return list(_list_descendants(node))
 
     def _to_mermaid_views(self):

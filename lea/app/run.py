@@ -49,12 +49,12 @@ def make_blacklist(dag: lea.views.DAGOfViews, only: list) -> set:
 
     for schema, table in only:
         # Ancestors
-        if schema.startswith('+'):
+        if schema.startswith("+"):
             blacklist.difference_update(dag.list_ancestors((schema[1:], table)))
             schema = schema[1:]
 
         # Descendants
-        if table.endswith('+'):
+        if table.endswith("+"):
             blacklist.difference_update(dag.list_descendants((schema, table[:-1])))
             table = table[:-1]
 
@@ -138,17 +138,13 @@ def run(
     exceptions = {}
     skipped = set()
     cache_path = pathlib.Path(".cache.pkl")
-    cache = (
-        set()
-        if fresh or not cache_path.exists()
-        else pickle.loads(cache_path.read_bytes())
-    )
+    cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
     tic = time.time()
 
     console_log(f"{len(cache):,d} view(s) already done")
 
     with rich.live.Live(
-        display_progress() , vertical_overflow="visible", refresh_per_second=6
+        display_progress(), vertical_overflow="visible", refresh_per_second=6
     ) as live:
         while dag.is_active():
             # We check if new views have been unlocked
@@ -169,10 +165,7 @@ def run(
 
                 # A node can only be computed if all its dependencies have been computed
                 # If all the dependencies have not been computed succesfully, we skip the node
-                if any(
-                    dep in skipped or dep in exceptions
-                    for dep in dag[node].dependencies
-                ):
+                if any(dep in skipped or dep in exceptions for dep in dag[node].dependencies):
                     skipped.add(node)
                     dag.done(node)
                     continue
@@ -180,7 +173,8 @@ def run(
                 jobs[node] = executor.submit(
                     _do_nothing
                     if dry or node in cache
-                    else functools.partial(pretty_print_view, view=dag[node], console=console) if print_to_cli
+                    else functools.partial(pretty_print_view, view=dag[node], console=console)
+                    if print_to_cli
                     else functools.partial(client.create, view=dag[node])
                 )
                 jobs_started_at[node] = dt.datetime.now()
@@ -200,8 +194,7 @@ def run(
     cache = (
         set()
         if all_done
-        else cache
-        | {node for node in order if node not in exceptions and node not in skipped}
+        else cache | {node for node in order if node not in exceptions and node not in skipped}
     )
     if cache:
         cache_path.write_bytes(pickle.dumps(cache))

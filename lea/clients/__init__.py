@@ -27,6 +27,7 @@ def make_client(production: bool):
         )
     elif warehouse == "duckdb":
         from lea.clients.duckdb import DuckDB
+
         return DuckDB(
             path=os.environ["LEA_DUCKDB_PATH"],
             schema=os.environ["LEA_SCHEMA"],

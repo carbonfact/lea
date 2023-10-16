@@ -10,7 +10,9 @@ from .python import PythonView
 from .sql import GenericSQLView, SQLView
 
 
-def load_views(views_dir: pathlib.Path | str, sqlglot_dialect: sqlglot.dialects.Dialect | str) -> list[View]:
+def load_views(
+    views_dir: pathlib.Path | str, sqlglot_dialect: sqlglot.dialects.Dialect | str
+) -> list[View]:
 
     # Massage the inputs
     if isinstance(views_dir, str):
@@ -36,5 +38,11 @@ def load_views(views_dir: pathlib.Path | str, sqlglot_dialect: sqlglot.dialects.
     ]
 
 
-
-__all__ = ["load_views", "DAGOfViews", "View", "PythonView", "SQLView", "GenericSQLView"]
+__all__ = [
+    "load_views",
+    "DAGOfViews",
+    "View",
+    "PythonView",
+    "SQLView",
+    "GenericSQLView",
+]

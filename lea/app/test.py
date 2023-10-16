@@ -26,9 +26,7 @@ def test(
 
     generic_tests = []
     for view in views:
-        view_columns = columns.query(f"table == '{view.schema}__{view.name}'")[
-            "column"
-        ].tolist()
+        view_columns = columns.query(f"table == '{view.schema}__{view.name}'")["column"].tolist()
         for generic_test in client.yield_unit_tests(view=view, view_columns=view_columns):
             generic_tests.append(generic_test)
     console.log(f"Found {len(generic_tests):,d} generic tests")
@@ -40,10 +38,7 @@ def test(
     tests = [test for test in tests if test.name not in blacklist]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        jobs = {
-            executor.submit(client.load, test): test
-            for test in tests
-        }
+        jobs = {executor.submit(client.load, test): test for test in tests}
         for job in concurrent.futures.as_completed(jobs):
             test = jobs[job]
             conflicts = job.result()

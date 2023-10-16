@@ -29,3 +29,25 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 lea = "lea.main:app"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+select = ["E", "F", "I", "UP"]  # https://beta.ruff.rs/docs/rules/
+line-length = 100
+target-version = 'py310'
+ignore = ["E501"]
+
+[tool.ruff.isort]
+required-imports = ["from __future__ import annotations"]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--doctest-modules",
+    "--doctest-glob=README.md",
+    "--ignore=lea/examples",
+    "--verbose",
+    "--color=yes"
+]

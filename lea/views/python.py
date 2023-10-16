@@ -26,9 +26,7 @@ class PythonView(View):
 
                 # .query
                 try:
-                    if isinstance(node, ast.Call) and node.func.attr.startswith(
-                        "query"
-                    ):
+                    if isinstance(node, ast.Call) and node.func.attr.startswith("query"):
                         yield from SQLView.parse_dependencies(node.args[0].value)
                 except AttributeError:
                     pass

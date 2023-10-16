@@ -11,7 +11,6 @@ from .base import Client
 
 
 class DuckDB(Client):
-
     def __init__(self, path: str, schema: str, username: str):
         self.path = path
         self._schema = schema
@@ -24,11 +23,7 @@ class DuckDB(Client):
 
     @property
     def schema(self):
-        return (
-            f"{self._schema}_{self.username}"
-            if self.username
-            else self._schema
-        )
+        return f"{self._schema}_{self.username}" if self.username else self._schema
 
     def prepare(self, console):
         self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema}")
@@ -36,7 +31,9 @@ class DuckDB(Client):
 
     def _create_python(self, view: views.PythonView):
         dataframe = self._load_python(view)  # noqa: F841
-        self.con.sql(f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS SELECT * FROM dataframe")
+        self.con.sql(
+            f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS SELECT * FROM dataframe"
+        )
 
     def _create_sql(self, view: views.SQLView):
         query = view.query.replace(f"{self._schema}.", f"{self.schema}.")
@@ -56,10 +53,7 @@ class DuckDB(Client):
 
     def list_existing_view_names(self) -> list[tuple[str, str]]:
         results = duckdb.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
-        return [
-            (r["table_schema"], r["table_name"])
-            for r in results.to_dict(orient="records")
-        ]
+        return [(r["table_schema"], r["table_name"]) for r in results.to_dict(orient="records")]
 
     def get_columns(self, schema=None) -> pd.DataFrame:
         schema = schema or self.schema

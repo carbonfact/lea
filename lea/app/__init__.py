@@ -28,18 +28,14 @@ ViewsDir = typer.Argument(default="views")
 
 @app.command()
 def prepare(production: bool = False, env: str = EnvPath):
-    """
-
-    """
+    """ """
     client = _make_client(production)
     client.prepare(console)
 
 
 @app.command()
 def teardown(production: bool = False, env: str = EnvPath):
-    """
-
-    """
+    """ """
 
     if production:
         raise ValueError("This is a dangerous operation, so it is not allowed in production.")
@@ -61,7 +57,7 @@ def run(
     threads: int = 8,
     show: int = 20,
     raise_exceptions: bool = False,
-    env: str = EnvPath
+    env: str = EnvPath,
 ):
     from lea.app.run import run
 
@@ -92,7 +88,7 @@ def test(
     threads: int = 8,
     production: bool = False,
     raise_exceptions: bool = False,
-    env: str = EnvPath
+    env: str = EnvPath,
 ):
     from lea.app.test import test
 
@@ -110,13 +106,17 @@ def test(
 
 
 @app.command()
-def docs(views_dir: str = ViewsDir, output_dir: str = "docs", production: bool = False, env: str = EnvPath):
+def docs(
+    views_dir: str = ViewsDir,
+    output_dir: str = "docs",
+    production: bool = False,
+    env: str = EnvPath,
+):
     from lea.app.docs import docs
 
     client = _make_client(production=production)
 
     docs(views_dir=views_dir, output_dir=output_dir, client=client, console=console)
-
 
 
 @app.command()

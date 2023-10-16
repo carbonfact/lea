@@ -11,8 +11,8 @@ from lea.clients import make_client
 
 runner = CliRunner()
 
-def test_jaffle_shop():
 
+def test_jaffle_shop():
     app = make_app(make_client=make_client)
     here = pathlib.Path(__file__).parent
     env_path = str((here.parent / "examples" / "jaffle_shop" / ".env").absolute())
@@ -58,7 +58,17 @@ def test_jaffle_shop():
     # Build docs
     docs_path = here.parent / "examples" / "jaffle_shop" / "docs"
     shutil.rmtree(docs_path, ignore_errors=True)
-    result = runner.invoke(app, ["docs", views_path, "--env", env_path, "--output-dir", str(docs_path.absolute())])
+    result = runner.invoke(
+        app,
+        [
+            "docs",
+            views_path,
+            "--env",
+            env_path,
+            "--output-dir",
+            str(docs_path.absolute()),
+        ],
+    )
     assert result.exit_code == 0
     assert docs_path.exists()
     assert (docs_path / "README.md").exists()

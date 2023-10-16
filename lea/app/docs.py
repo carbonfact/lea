@@ -62,16 +62,11 @@ def docs(
 
             # Write down the query
             content.write(
-                "```sql\n"
-                "SELECT *\n"
-                f"FROM {client._make_view_path(view)}\n"
-                "```\n\n"
+                "```sql\n" "SELECT *\n" f"FROM {client._make_view_path(view)}\n" "```\n\n"
             )
             # Write down the columns
             view_columns = columns.query(f"table == '{schema}__{view.name}'")[["column", "type"]]
-            view_comments = view.extract_comments(
-                columns=view_columns["column"].tolist()
-            )
+            view_comments = view.extract_comments(columns=view_columns["column"].tolist())
             view_columns["Description"] = (
                 view_columns["column"]
                 .map(

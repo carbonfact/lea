@@ -29,15 +29,14 @@ class BigQuery(Client):
 
     @property
     def dataset_name(self):
-        return (
-            f"{self._dataset_name}_{self.username}"
-            if self.username
-            else self._dataset_name
-        )
+        return f"{self._dataset_name}_{self.username}" if self.username else self._dataset_name
 
     def create_dataset(self):
         from google.cloud import bigquery
-        dataset_ref = bigquery.DatasetReference(project=self.project_id, dataset_id=self.dataset_name)
+
+        dataset_ref = bigquery.DatasetReference(
+            project=self.project_id, dataset_id=self.dataset_name
+        )
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset = self.client.create_dataset(dataset, exists_ok=True)
@@ -64,7 +63,7 @@ class BigQuery(Client):
                         "tableId": f"{view.schema}__{view.name}" if view.schema else view.name,
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
-                    "writeDisposition": "WRITE_TRUNCATE"
+                    "writeDisposition": "WRITE_TRUNCATE",
                 },
                 "labels": {
                     "job_dataset": self.dataset_name,
@@ -109,9 +108,7 @@ class BigQuery(Client):
         ]
 
     def delete_view(self, view: views.View):
-        self.client.delete_table(
-            f"{self.project_id}.{self._make_view_path(view)}"
-        )
+        self.client.delete_table(f"{self.project_id}.{self._make_view_path(view)}")
 
     def get_columns(self, schema=None) -> pd.DataFrame:
         schema = schema or self.dataset_name
