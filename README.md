@@ -1,6 +1,6 @@
 <h1>lea</h1>
 
-<img src="https://github.com/carbonfact/lea/assets/8095957/de1eb7c1-4681-4a9c-b725-4b5ccaec22b3" width="33%" align="right" />
+<img src="https://giphy.com/embed/qoCXTKmz7c57a" width="33%" align="right" />
 
 <p>
 <!-- Tests -->
