@@ -8,6 +8,12 @@ Start by cloning the repository:
 git clone https://github.com/carbonfact/lea
 ```
 
+There are submodules in this repository, so you'll need to fetch/update them:
+
+```sh
+git submodule update
+```
+
 Next, you'll need a Python environment:
 
 ```sh
