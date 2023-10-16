@@ -1,8 +1,6 @@
 <h1>lea</h1>
 
-<img src="https://giphy.com/embed/qoCXTKmz7c57a" width="33%" align="right" />
-
-<iframe src="https://giphy.com/embed/qoCXTKmz7c57a" width="480" height="284" frameBorder="0" class="giphy-embed" allowFullScreen></iframe><p><a href="https://giphy.com/gifs/greta-gerwig-qoCXTKmz7c57a">via GIPHY</a></p>
+<img src="https://github.com/carbonfact/lea/assets/8095957/df2bcf1e-fcc9-4111-9897-ec29427aeeaa" width="33%" align="right" />
 
 <p>
 <!-- Tests -->
