@@ -157,7 +157,7 @@ lea run --only +core.users+  # users and all its dependencies
 You can select all views in a schema:
 
 ```sh
-lea run --only core.*
+lea run --only core/
 ```
 
 There are thus 8 possible operators:
