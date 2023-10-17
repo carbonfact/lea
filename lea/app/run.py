@@ -64,6 +64,131 @@ def make_blacklist(dag: lea.views.DAGOfViews, only: list) -> set:
     return blacklist
 
 
+def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
+    """Make a whitelist of tables given a query.
+
+    These are the different queries to handle:
+
+    schema.table
+    schema.table+   (descendants)
+    +schema.table   (ancestors)
+    +schema.table+  (ancestors and descendants)
+    schema/         (all tables in schema)
+    schema/+        (all tables in schema with their descendants)
+    +schema/        (all tables in schema with their ancestors)
+    +schema/+       (all tables in schema with their ancestors and descendants)
+
+    Examples
+    --------
+
+    >>> import lea
+
+    >>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+    >>> views = [v for v in views if v.schema != 'tests']
+    >>> dag = lea.views.DAGOfViews(views)
+
+    >>> def pprint(whitelist):
+    ...     for schema, table in sorted(whitelist):
+    ...         print(f'{schema}.{table}')
+
+    schema.table
+
+    >>> pprint(make_whitelist('staging.orders', dag))
+    staging.orders
+
+    schema.table+ (descendants)
+
+    >>> pprint(make_whitelist('staging.orders+', dag))
+    analytics.kpis
+    core.customers
+    core.orders
+    staging.orders
+
+    +schema.table (ancestors)
+
+    >>> pprint(make_whitelist('+core.customers', dag))
+    core.customers
+    staging.customers
+    staging.orders
+    staging.payments
+
+    +schema.table+ (ancestors and descendants)
+
+    >>> pprint(make_whitelist('+core.customers+', dag))
+    analytics.kpis
+    core.customers
+    staging.customers
+    staging.orders
+    staging.payments
+
+    schema/ (all tables in schema)
+
+    >>> pprint(make_whitelist('staging/', dag))
+    staging.customers
+    staging.orders
+    staging.payments
+
+    schema/+ (all tables in schema with their descendants)
+
+    >>> pprint(make_whitelist('staging/+', dag))
+    analytics.kpis
+    core.customers
+    core.orders
+    staging.customers
+    staging.orders
+    staging.payments
+
+    +schema/ (all tables in schema with their ancestors)
+
+    >>> pprint(make_whitelist('+core/', dag))
+    core.customers
+    core.orders
+    staging.customers
+    staging.orders
+    staging.payments
+
+    +schema/+  (all tables in schema with their ancestors and descendants)
+
+    >>> pprint(make_whitelist('+core/+', dag))
+    analytics.kpis
+    core.customers
+    core.orders
+    staging.customers
+    staging.orders
+    staging.payments
+
+    """
+
+    def _yield_whitelist(query, include_ancestors, include_descendants):
+        if query.endswith("+"):
+            yield from _yield_whitelist(
+                query[:-1], include_ancestors=include_ancestors, include_descendants=True
+            )
+            return
+        if query.startswith("+"):
+            yield from _yield_whitelist(
+                query[1:], include_ancestors=True, include_descendants=include_descendants
+            )
+            return
+        if query.endswith("/"):
+            for schema, table in dag:
+                if schema == query[:-1]:
+                    yield from _yield_whitelist(
+                        f"{schema}.{table}",
+                        include_ancestors=include_ancestors,
+                        include_descendants=include_descendants,
+                    )
+        else:
+            schema, table = query.split(".")
+            yield schema, table
+            if include_ancestors:
+                yield from dag.list_ancestors((schema, table))
+            if include_descendants:
+                yield from dag.list_descendants((schema, table))
+
+    return set(_yield_whitelist(query, include_ancestors=False, include_descendants=False))
+
+
 def run(
     client: lea.clients.Client,
     views_dir: str,

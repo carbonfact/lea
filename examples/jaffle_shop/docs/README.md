@@ -2,6 +2,7 @@
 
 ## Schemas
 
+- [`analytics`](./analytics)
 - [`core`](./core)
 - [`staging`](./staging)
 
@@ -10,9 +11,11 @@
 ```mermaid
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart TB
-    core(core)
+    analytics(analytics)
     staging(staging)
+    core(core)
     staging --> core
+    core --> analytics
 ```
 
 ## Flowchart
@@ -20,6 +23,10 @@ flowchart TB
 ```mermaid
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart TB
+    subgraph analytics
+    analytics.kpis(kpis)
+    end
+
     subgraph core
     core.customers(customers)
     core.orders(orders)
@@ -36,5 +43,7 @@ flowchart TB
     staging.payments --> core.customers
     staging.orders --> core.orders
     staging.payments --> core.orders
+    core.customers --> analytics.kpis
+    core.orders --> analytics.kpis
 ```
 

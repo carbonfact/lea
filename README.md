@@ -13,6 +13,11 @@
     <img src="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml/badge.svg" alt="code_quality">
 </a>
 
+<!-- PyPI -->
+<a href="https://pypi.org/project/lea-cli">
+    <img src="https://img.shields.io/pypi/v/lea-cli.svg?label=release&color=blue" alt="pypi">
+</a>
+
 <!-- License -->
 <a href="https://opensource.org/license/apache-2-0/">
     <img src="https://img.shields.io/github/license/carbonfact/lea" alt="license">
@@ -149,7 +154,26 @@ lea run --only +core.users   # users and everything it depends on
 lea run --only +core.users+  # users and all its dependencies
 ```
 
-You may of course do combinations:
+You can select all views in a schema:
+
+```sh
+lea run --only core.*
+```
+
+There are thus 8 possible operators:
+
+```
+schema.table    (table by itself)
+schema.table+   (table with its descendants)
++schema.table   (table with its ancestors)
++schema.table+  (table with its ancestors and descendants)
+schema/         (all tables in schema)
+schema/+        (all tables in schema with their descendants)
++schema/        (all tables in schema with their ancestors)
++schema/+       (all tables in schema with their ancestors and descendants)
+```
+
+Combinations are possible:
 
 ```sh
 lea run --only core.users+ --only +core.orders
@@ -268,13 +292,15 @@ lea is meant to be used as a CLI. But you can import it as a Python library too.
 **Parsing a directory of queries**
 
 ```py
->>> from lea import views
+>>> import lea
 
->>> views = views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+>>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
 >>> views = [v for v in views if v.schema != 'tests']
 >>> for view in sorted(views, key=str):
 ...     print(view)
 ...     print(sorted(view.dependencies))
+analytics.kpis
+[('core', 'customers'), ('core', 'orders')]
 core.customers
 [('staging', 'customers'), ('staging', 'orders'), ('staging', 'payments')]
 core.orders
@@ -291,12 +317,11 @@ staging.payments
 **Organizing queries into a DAG**
 
 ```py
->>> from lea import views
->>> from lea.views import DAGOfViews
+>>> import lea
 
->>> views = views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+>>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
 >>> views = [v for v in views if v.schema != 'tests']
->>> dag = DAGOfViews(views)
+>>> dag = lea.views.DAGOfViews(views)
 >>> while dag.is_active():
 ...     for schema, table in sorted(dag.get_ready()):
 ...         print(f'{schema}.{table}')
@@ -306,6 +331,7 @@ staging.orders
 staging.payments
 core.customers
 core.orders
+analytics.kpis
 
 ```
 

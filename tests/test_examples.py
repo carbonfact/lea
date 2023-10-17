@@ -38,7 +38,7 @@ def test_jaffle_shop():
     # Check number of tables created
     con = duckdb.connect("duckdb.db")
     tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
-    assert tables.shape[0] == 5
+    assert tables.shape[0] == 6
 
     # Check number of rows in core__customers
     customers = con.sql("SELECT * FROM jaffle_shop_max.core__customers").df()
