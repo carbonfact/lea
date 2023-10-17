@@ -33,37 +33,6 @@ def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> st
     console.print(syntax)
 
 
-def make_blacklist(dag: lea.views.DAGOfViews, only: list) -> set:
-    """
-
-    Basic implementation of dbt-like graph operators.
-
-    References
-    ----------
-    https://docs.getdbt.com/reference/node-selection/graph-operators
-
-    """
-
-    # Start by assuming that all views are blacklisted
-    blacklist = set(dag.keys())
-
-    for schema, table in only:
-        # Ancestors
-        if schema.startswith("+"):
-            blacklist.difference_update(dag.list_ancestors((schema[1:], table)))
-            schema = schema[1:]
-
-        # Descendants
-        if table.endswith("+"):
-            blacklist.difference_update(dag.list_descendants((schema, table[:-1])))
-            table = table[:-1]
-
-        # The node itself
-        blacklist.remove((schema, table))
-
-    return blacklist
-
-
 def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
     """Make a whitelist of tables given a query.
 
@@ -213,8 +182,10 @@ def run(
     dag = lea.views.DAGOfViews(views)
 
     # Determine which views need to be run
-    blacklist = make_blacklist(dag, only) if only else set()
-    console_log(f"{len(views) - len(blacklist):,d} view(s) selected")
+    whitelist = (
+        set.union(*(make_whitelist(query, dag) for query in only)) if only else set(dag.keys())
+    )
+    console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
     for schema, table in client.list_existing_view_names():
@@ -280,7 +251,7 @@ def run(
                     # they're external dependencies which can be ignored
                     node not in dag
                     # Some nodes are blacklisted, so we skip them
-                    or node in blacklist
+                    or node not in whitelist
                 ):
                     dag.done(node)
                     continue

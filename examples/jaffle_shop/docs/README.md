@@ -12,10 +12,10 @@
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart TB
     analytics(analytics)
-    staging(staging)
     core(core)
-    staging --> core
+    staging(staging)
     core --> analytics
+    staging --> core
 ```
 
 ## Flowchart
@@ -24,26 +24,20 @@ flowchart TB
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart TB
     subgraph analytics
-    analytics.kpis(kpis)
     end
 
     subgraph core
-    core.customers(customers)
-    core.orders(orders)
     end
 
     subgraph staging
-    staging.customers(customers)
-    staging.orders(orders)
-    staging.payments(payments)
     end
 
+    core.customers --> analytics.kpis
+    core.orders --> analytics.kpis
     staging.customers --> core.customers
     staging.orders --> core.customers
     staging.payments --> core.customers
     staging.orders --> core.orders
     staging.payments --> core.orders
-    core.customers --> analytics.kpis
-    core.orders --> analytics.kpis
 ```
 

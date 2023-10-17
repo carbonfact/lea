@@ -61,9 +61,6 @@ def run(
 ):
     from lea.app.run import run
 
-    # Massage CLI inputs
-    only = [tuple(v.split(".")) for v in only] if only else None
-
     # The client determines where the views will be written
     client = _make_client(production)
 
