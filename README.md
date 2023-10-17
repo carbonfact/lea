@@ -157,7 +157,7 @@ lea run --only core.users+ --only +core.orders
 
 #### Workflow tips
 
-The `lea run` command creates a `.cache.pkl` file is created during the run. This file is a checkpoint containing the state of the DAG. It is used to determine which queries to run next time. That is, if some queries have failed, only those queries and their descendants will be run again next time. The `.cache.pkl` is deleted once all queries have succeeded.
+The `lea run` command creates a `.cache.pkl` file during the run. This file is a checkpoint containing the state of the DAG. It is used to determine which queries to run next time. That is, if some queries have failed, only those queries and their descendants will be run again next time. The `.cache.pkl` is deleted once all queries have succeeded.
 
 This checkpointing logic can be disabled with the `--fresh` flag.
 
