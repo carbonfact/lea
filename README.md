@@ -46,10 +46,10 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 ## Installation
 
 ```sh
-pip install git+https://github.com/carbonfact/lea
+pip install lea-cli
 ```
 
-☝️ _The `lea` name isn't available on PyPI yet, we're working on it._
+This installs the `lea` command. It also makes the `lea` Python library available.
 
 ## Usage
 
