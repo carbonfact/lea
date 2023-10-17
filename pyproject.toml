@@ -1,8 +1,11 @@
 [tool.poetry]
-name = "lea"
+name = "lea-cli"
 version = "0.1.0"
 description = "A minimalist alternative to dbt"
 authors = ["Max Halford <maxhalford25@gmail.com>"]
+packages = [
+    { include="lea", from="." },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.10"
