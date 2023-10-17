@@ -5,12 +5,17 @@
 <p>
 <!-- Tests -->
 <a href="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml">
-<img src="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml/badge.svg" alt="tests">
+    <img src="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml/badge.svg" alt="tests">
 </a>
 
 <!-- Code quality -->
 <a href="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml">
-<img src="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml/badge.svg" alt="code_quality">
+    <img src="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml/badge.svg" alt="code_quality">
+</a>
+
+<!-- License -->
+<a href="https://opensource.org/license/apache-2-0/">
+    <img src="https://img.shields.io/github/license/carbonfact/lea" alt="license">
 </a>
 </p>
 
