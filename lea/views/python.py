@@ -45,4 +45,4 @@ class PythonView(View):
         return {}
 
     def __repr__(self):
-        return f"{self.schema}.{self.name}"
+        return ".".join(self.key)

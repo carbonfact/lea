@@ -3,8 +3,8 @@
 ## Schemas
 
 - [`analytics`](./analytics)
-- [`core`](./core)
 - [`staging`](./staging)
+- [`core`](./core)
 
 ## Schema flowchart
 
@@ -32,6 +32,7 @@ flowchart TB
     subgraph staging
     end
 
+    core.orders --> analytics.finance.kpis
     core.customers --> analytics.kpis
     core.orders --> analytics.kpis
     staging.customers --> core.customers

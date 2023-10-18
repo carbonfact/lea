@@ -21,7 +21,7 @@ def make_client(production: bool):
             ),
             location=os.environ["LEA_BQ_LOCATION"],
             project_id=os.environ["LEA_BQ_PROJECT_ID"],
-            dataset_name=os.environ["LEA_SCHEMA"],
+            dataset_name=os.environ["LEA_BQ_DATASET_NAME"],
             username=username,
         )
     elif warehouse == "duckdb":
@@ -29,7 +29,6 @@ def make_client(production: bool):
 
         return DuckDB(
             path=os.environ["LEA_DUCKDB_PATH"],
-            schema=os.environ["LEA_SCHEMA"],
             username=username,
         )
     else:

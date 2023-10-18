@@ -31,6 +31,7 @@ lea aims to be simple and opinionated, and yet offers the possibility to be exte
 Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack quack).
 
 - [Example](#example)
+- [Teaser](#teaser)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Configuration](#configuration)
@@ -53,6 +54,8 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 
 - [Jaffle shop 🥪](examples/jaffle_shop/)
 
+## Teaser
+
 ## Installation
 
 ```sh
@@ -69,7 +72,6 @@ lea is configured by setting environment variables. The following variables are 
 
 ```sh
 # General configuration
-LEA_SCHEMA=kaya
 LEA_USERNAME=max
 LEA_WAREHOUSE=bigquery
 
@@ -79,6 +81,7 @@ LEA_DUCKDB_PATH=duckdb.db
 # BigQuery 🦏
 LEA_BQ_LOCATION=EU
 LEA_BQ_PROJECT_ID=carbonfact-dwh
+LEA_BQ_DATASET_NAME=kaya
 LEA_BQ_SERVICE_ACCOUNT=<a JSON dump of the service account file>
 ```
 
@@ -116,6 +119,8 @@ views/
             table_5.sql
             table_6.sql
 ```
+
+Each view will be named according to its location, following the warehouse convention. For instance, `schema_1/table_1.sql` will be named `dataset.schema_1__table_1` in BigQuery and `schema_1.table_1` in DuckDB.
 
 The schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
 
@@ -161,6 +166,12 @@ You can select all views in a schema:
 
 ```sh
 lea run --only core/
+```
+
+This also work with sub-schemas:
+
+```sh
+lea run --only analytics.finance/
 ```
 
 There are thus 8 possible operators:
@@ -213,10 +224,10 @@ lea test views
 There are two types of tests:
 
 - Singular tests -- these are queries which return failing rows. They are stored in a `tests` directory.
-- Annotation tests -- these are comment annotations in the queries themselves:
+- Assertion tests -- these are comment annotations in the queries themselves:
   - `@UNIQUE` -- checks that a column's values are unique.
 
-As with the `run` command, there is a `--production` flag to disable the `<user>` suffix.
+As with the `run` command, there is a `--production` flag to disable the `<user>` suffix and thus test production data.
 
 ### `lea docs`
 
@@ -302,6 +313,8 @@ lea is meant to be used as a CLI. But you can import it as a Python library too.
 >>> for view in sorted(views, key=str):
 ...     print(view)
 ...     print(sorted(view.dependencies))
+analytics.finance.kpis
+[('core', 'orders')]
 analytics.kpis
 [('core', 'customers'), ('core', 'orders')]
 core.customers
@@ -326,14 +339,15 @@ staging.payments
 >>> views = [v for v in views if v.schema != 'tests']
 >>> dag = lea.views.DAGOfViews(views)
 >>> while dag.is_active():
-...     for schema, table in sorted(dag.get_ready()):
-...         print(f'{schema}.{table}')
-...         dag.done((schema, table))
+...     for node in sorted(dag.get_ready()):
+...         print(dag[node])
+...         dag.done(node)
 staging.customers
 staging.orders
 staging.payments
 core.customers
 core.orders
+analytics.finance.kpis
 analytics.kpis
 
 ```

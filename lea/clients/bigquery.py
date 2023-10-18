@@ -60,7 +60,7 @@ class BigQuery(Client):
                     "destinationTable": {
                         "projectId": self.project_id,
                         "datasetId": self.dataset_name,
-                        "tableId": f"{view.schema}__{view.name}" if view.schema else view.name,
+                        "tableId": f"{self._make_view_path(view).split('.', 1)[1]}",
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
                     "writeDisposition": "WRITE_TRUNCATE",
@@ -68,7 +68,7 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": view.schema,
-                    "job_table": f"{view.schema}__{view.name}" if view.schema else view.name,
+                    "job_table": f"{self._make_view_path(view).split('.', 1)[1]}",
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -99,7 +99,7 @@ class BigQuery(Client):
     def _load_sql(self, view: views.SQLView) -> pd.DataFrame:
         query = view.query
         if self.username:
-            query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
+            query = query.replace(f"{self._dataset_name}_{self.username}.", f"{self.dataset_name}.")
         return pd.read_gbq(query, credentials=self.client._credentials)
 
     def list_existing_view_names(self):

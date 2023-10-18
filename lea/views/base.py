@@ -24,15 +24,8 @@ class View(abc.ABC):
         return self.relative_path.parts[0]
 
     @property
-    def name(self):
-        name_parts = itertools.chain(
-            self.relative_path.parts[1:-1], [self.relative_path.name.split(".")[0]]
-        )
-        return "__".join(name_parts)
-
-    @property
-    def dunder_name(self):
-        return f"{self.schema}__{self.name}"
+    def key(self):
+        return tuple([*self.relative_path.parts[:-1], self.relative_path.name.split(".")[0]])
 
     @property
     @abc.abstractmethod
