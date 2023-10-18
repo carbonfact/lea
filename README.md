@@ -117,6 +117,8 @@ views/
             table_6.sql
 ```
 
+Each view will be named according to its location, following the warehouse convention. For instance, `schema_1/table_1.sql` will be named `schema_1__table_1` in BigQuery and DuckDB.
+
 The schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
 
 ```sh
