@@ -3,8 +3,8 @@
 ## Schemas
 
 - [`analytics`](./analytics)
-- [`staging`](./staging)
 - [`core`](./core)
+- [`staging`](./staging)
 
 ## Schema flowchart
 

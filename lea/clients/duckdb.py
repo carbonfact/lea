@@ -59,7 +59,7 @@ class DuckDB(Client):
         return [(r["table_schema"], r["table_name"]) for r in results.to_dict(orient="records")]
 
     def get_columns(self, schema=None) -> pd.DataFrame:
-        query = f"""
+        query = """
         SELECT
             table_schema || '.' || table_name AS view_name,
             column_name AS column,
