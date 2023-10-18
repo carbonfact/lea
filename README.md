@@ -57,7 +57,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 ## Teaser
 
 <p align="center">
-  <img width="66%" src="https://github.com/carbonfact/lea/assets/8095957/77e3fdb8-2ea6-4771-b32a-8eea8aa0a7aa" />
+  <img width="85%" src="https://github.com/carbonfact/lea/assets/8095957/77e3fdb8-2ea6-4771-b32a-8eea8aa0a7aa" />
 </p>
 
 ## Installation
