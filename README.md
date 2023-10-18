@@ -102,7 +102,7 @@ The queries are run concurrently. They are organized in a DAG, which is traverse
 
 #### File structure
 
-Each query is expected to be placed under a schema, represented by a directory. For instance, the following file structure is valid:
+Each query is expected to be placed under a schema, represented by a directory. Schemas can have sub-schemas. For instance, the following file structure is valid:
 
 ```
 views/
@@ -112,6 +112,9 @@ views/
     schema_2/
         table_3.sql
         table_4.sql
+        sub_schema_2_1/
+            table_5.sql
+            table_6.sql
 ```
 
 The schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
