@@ -1,18 +1,18 @@
 with customers as (
 
-    select * from jaffle_shop.staging__customers
+    select * from staging.customers
 
 ),
 
 orders as (
 
-    select * from jaffle_shop.staging__orders
+    select * from staging.orders
 
 ),
 
 payments as (
 
-    select * from jaffle_shop.staging__payments
+    select * from staging.payments
 
 ),
 

@@ -11,9 +11,8 @@ from .base import Client
 
 
 class DuckDB(Client):
-    def __init__(self, path: str, schema: str, username: str):
+    def __init__(self, path: str, username: str | None):
         self.path = path
-        self._schema = schema
         self.username = username
         self.con = duckdb.connect(self.path)
 
@@ -21,13 +20,13 @@ class DuckDB(Client):
     def sqlglot_dialect(self):
         return "duckdb"
 
-    @property
-    def schema(self):
-        return f"{self._schema}_{self.username}" if self.username else self._schema
-
-    def prepare(self, console):
-        self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema}")
-        console.log(f"Created schema {self.schema}")
+    def prepare(self, views, console):
+        schemas = set(
+            f"{view.schema}_{self.username}" if self.username else view.schema for view in views
+        )
+        for schema in schemas:
+            self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+            console.log(f"Created schema {schema}")
 
     def _create_python(self, view: views.PythonView):
         dataframe = self._load_python(view)  # noqa: F841
@@ -36,13 +35,17 @@ class DuckDB(Client):
         )
 
     def _create_sql(self, view: views.SQLView):
-        query = view.query.replace(f"{self._schema}.", f"{self.schema}.")
+        query = view.query
+        if self.username:
+            for schema, *_ in view.dependencies:
+                query = query.replace(f"{schema}.", f"{schema}_{self.username}.")
         self.con.sql(f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS ({query})")
 
     def _load_sql(self, view: views.SQLView):
         query = view.query
         if self.username:
-            query = query.replace(f"{self._schema}.", f"{self.schema}.")
+            for schema, *_ in view.dependencies:
+                query = query.replace(f"{schema}.", f"{schema}_{self.username}.")
         return self.con.cursor().sql(query).df()
 
     def delete_view(self, view: views.View):
@@ -56,24 +59,25 @@ class DuckDB(Client):
         return [(r["table_schema"], r["table_name"]) for r in results.to_dict(orient="records")]
 
     def get_columns(self, schema=None) -> pd.DataFrame:
-        schema = schema or self.schema
         query = f"""
         SELECT
-            table_name AS table,
+            table_schema || '.' || table_name AS view_name,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
-        WHERE table_schema = '{schema}'
         """
         return self.con.sql(query).df()
 
     def _make_view_path(self, view: views.View) -> str:
-        return f"{self.schema}.{view.dunder_name}"
+        schema, *leftover = view.key
+        schema = f"{schema}_{self.username}" if self.username else schema
+        return f"{schema}.{'__'.join(leftover)}"
 
     def make_test_unique_column(self, view: views.View, column: str) -> str:
+        schema, *leftover = view.key
         return f"""
         SELECT {column}, COUNT(*) AS n
-        FROM {self._make_view_path(view)}
+        FROM {f"{schema}.{'__'.join(leftover)}"}
         GROUP BY {column}
         HAVING n > 1
         """

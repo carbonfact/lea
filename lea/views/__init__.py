@@ -24,7 +24,7 @@ def load_views(
         if path.suffix == ".py":
             return PythonView(origin, relative_path)
         if path.suffix == ".sql" or path.suffixes == [".sql", ".jinja"]:
-            return SQLView(origin, relative_path, dialect=sqlglot_dialect)
+            return SQLView(origin, relative_path, sqlglot_dialect=sqlglot_dialect)
 
     return [
         _load_view_from_path(path, origin=views_dir, sqlglot_dialect=sqlglot_dialect)

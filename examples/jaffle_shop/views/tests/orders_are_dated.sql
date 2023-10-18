@@ -1,3 +1,3 @@
 SELECT *
-FROM jaffle_shop.core__orders
+FROM core.orders
 WHERE order_date IS NULL

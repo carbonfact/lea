@@ -2,16 +2,16 @@
 
 ## Table of contents
 
-- [customers](#customers)
-- [orders](#orders)
+- [core.customers](#core.customers)
+- [core.orders](#core.orders)
 
 ## Views
 
-### customers
+### core.customers
 
 ```sql
 SELECT *
-FROM jaffle_shop_max.core__customers
+FROM core_max.customers
 ```
 
 | Column                  | Type      | Description   | Unique   |
@@ -24,11 +24,11 @@ FROM jaffle_shop_max.core__customers
 | most_recent_order       | `VARCHAR` |               |          |
 | number_of_orders        | `BIGINT`  |               |          |
 
-### orders
+### core.orders
 
 ```sql
 SELECT *
-FROM jaffle_shop_max.core__orders
+FROM core_max.orders
 ```
 
 | Column               | Type      | Description   | Unique   |

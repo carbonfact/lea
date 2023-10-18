@@ -3,3 +3,5 @@
 *.db
 .env
 dist/
+/*.ipynb
+.DS_Store

@@ -19,24 +19,30 @@ def test(
     columns = client.get_columns()
 
     # The client determines where the views will be written
-    # List the test views
+
+    # List singular tests
     views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
     singular_tests = [view for view in views if view.schema == "tests"]
     console.log(f"Found {len(singular_tests):,d} singular tests")
 
-    generic_tests = []
-    for view in views:
-        view_columns = columns.query(f"table == '{view.schema}__{view.name}'")["column"].tolist()
-        for generic_test in client.yield_unit_tests(view=view, view_columns=view_columns):
-            generic_tests.append(generic_test)
-    console.log(f"Found {len(generic_tests):,d} generic tests")
+    # List assertion tests
+    assertion_tests = []
+    for view in filter(lambda v: v.schema not in {"funcs", "tests"}, views):
+        view_columns = columns.query(f"view_name == '{client._make_view_path(view)}'")[
+            "column"
+        ].tolist()
+
+        for test in client.yield_unit_tests(view=view, view_columns=view_columns):
+            assertion_tests.append(test)
+    console.log(f"Found {len(assertion_tests):,d} assertion tests")
 
     # Determine which tests need to be run
-    tests = singular_tests + generic_tests
-    blacklist = set(t.name for t in tests).difference(only) if only else set()
+    tests = singular_tests + assertion_tests
+    blacklist = set(t.key for t in tests).difference(only) if only else set()
     console.log(f"{len(tests) - len(blacklist):,d} test(s) selected")
-    tests = [test for test in tests if test.name not in blacklist]
+    tests = [test for test in tests if test.key not in blacklist]
 
+    # Run tests concurrently
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         jobs = {executor.submit(client.load, test): test for test in tests}
         for job in concurrent.futures.as_completed(jobs):

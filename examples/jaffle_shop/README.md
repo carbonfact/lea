@@ -19,17 +19,22 @@ The first thing to do is create an `.env` file, as so:
 
 ```sh
 echo "
-LEA_SCHEMA=jaffle_shop
 LEA_USERNAME=max
 LEA_WAREHOUSE=duckdb
 LEA_DUCKDB_PATH=duckdb.db
 " > .env
 ```
 
-Next, run the following command to create the `duckdb.db` file and the `jaffle_shop` schema therein:
+Next, run the following command to create the `jaffle_shop.db` file and the schemas therein:
 
 ```sh
 lea prepare
+```
+
+```
+Created schema analytics_max
+Created schema core_max
+Created schema staging_max
 ```
 
 Now you can run the views:

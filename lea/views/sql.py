@@ -35,10 +35,10 @@ class CommentBlock(collections.UserList):
 
 @dataclasses.dataclass
 class SQLView(View):
-    dialect: sqlglot.Dialect
+    sqlglot_dialect: sqlglot.Dialect
 
     def __repr__(self):
-        return f"{self.schema}.{self.name}"
+        return ".".join(self.key)
 
     @property
     def query(self):
@@ -51,7 +51,7 @@ class SQLView(View):
         return text
 
     def parse_dependencies(self, query):
-        parse = sqlglot.parse_one(query, dialect=self.dialect)
+        parse = sqlglot.parse_one(query, dialect=self.sqlglot_dialect)
         cte_names = {(None, cte.alias) for cte in parse.find_all(sqlglot.exp.CTE)}
         table_names = {
             (table.sql().split(".")[0], table.name)
@@ -69,7 +69,7 @@ class SQLView(View):
             return self.parse_dependencies(self.query)
         except sqlglot.errors.ParseError:
             warnings.warn(
-                f"SQLGlot couldn't parse {self.path} with dialect {self.dialect}. Falling back to regex."
+                f"SQLGlot couldn't parse {self.path} with dialect {self.sqlglot_dialect}. Falling back to regex."
             )
             dependencies = set()
             for match in re.finditer(
@@ -98,7 +98,7 @@ class SQLView(View):
         )
 
     def extract_comments(self, columns: list[str]) -> dict[str, CommentBlock]:
-        dialect = sqlglot.Dialect.get_or_raise(self.dialect)()
+        dialect = sqlglot.Dialect.get_or_raise(self.sqlglot_dialect)()
         tokens = dialect.tokenizer.tokenize(self.query)
 
         # Extract comments, which are lines that start with --
@@ -159,19 +159,24 @@ class SQLView(View):
 
 
 class GenericSQLView(SQLView):
-    def __init__(self, schema, name, query):
+    def __init__(self, schema, name, query, sqlglot_dialect):
         self._schema = schema
         self._name = name
         self._query = textwrap.dedent(query)
+        self._sqlglot_dialect = sqlglot_dialect
 
     @property
     def schema(self):
         return self._schema
 
     @property
-    def name(self):
-        return self._name
+    def key(self):
+        return (self._name,)
 
     @property
     def query(self):
         return self._query
+
+    @property
+    def sqlglot_dialect(self):
+        return self._sqlglot_dialect

@@ -53,9 +53,9 @@ class Client(abc.ABC):
         spec.loader.exec_module(module)
 
         # Step 2: Retrieve the variable from the module's namespace
-        dataframe = getattr(module, view.name, None)
+        dataframe = getattr(module, view.key[1], None)  # HACK
         if dataframe is None:
-            raise ValueError(f"Could not find variable {view.name} in {view.path}")
+            raise ValueError(f"Could not find variable {view.key[1]} in {view.path}")
         return dataframe
 
     def load(self, view: views.View):
@@ -142,8 +142,9 @@ class Client(abc.ABC):
                 if comment.text == "@UNIQUE":
                     yield views.GenericSQLView(
                         schema="tests",
-                        name=f"{view.schema}.{view.name}.{column}@UNIQUE",
+                        name=f"{view}.{column}@UNIQUE",
                         query=self.make_test_unique_column(view, column),
+                        sqlglot_dialect=self.sqlglot_dialect,
                     )
                 else:
                     raise ValueError(f"Unhandled tag: {comment.text}")

@@ -20,15 +20,10 @@ def test_jaffle_shop():
 
     # Write .env file
     with open(env_path, "w") as f:
-        f.write(
-            "LEA_SCHEMA=jaffle_shop\n"
-            "LEA_USERNAME=max\n"
-            "LEA_WAREHOUSE=duckdb\n"
-            "LEA_DUCKDB_PATH=duckdb.db\n"
-        )
+        f.write("LEA_USERNAME=max\n" "LEA_WAREHOUSE=duckdb\n" "LEA_DUCKDB_PATH=duckdb.db\n")
 
     # Prepare
-    result = runner.invoke(app, ["prepare", "--env", env_path])
+    result = runner.invoke(app, ["prepare", views_path, "--env", env_path])
     assert result.exit_code == 0
 
     # Run
@@ -38,21 +33,21 @@ def test_jaffle_shop():
     # Check number of tables created
     con = duckdb.connect("duckdb.db")
     tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
-    assert tables.shape[0] == 6
+    assert tables.shape[0] == 7
 
     # Check number of rows in core__customers
-    customers = con.sql("SELECT * FROM jaffle_shop_max.core__customers").df()
+    customers = con.sql("SELECT * FROM core_max.customers").df()
     assert customers.shape[0] == 100
 
     # Check number of rows in core__orders
-    orders = con.sql("SELECT * FROM jaffle_shop_max.core__orders").df()
+    orders = con.sql("SELECT * FROM core_max.orders").df()
     assert orders.shape[0] == 99
 
     # Run unit tests
     result = runner.invoke(app, ["test", views_path, "--env", env_path])
     assert result.exit_code == 0
-    assert "Found 1 generic tests" in result.stdout
     assert "Found 1 singular tests" in result.stdout
+    assert "Found 1 assertion tests" in result.stdout
     assert "SUCCESS" in result.stdout
 
     # Build docs
@@ -74,3 +69,4 @@ def test_jaffle_shop():
     assert (docs_path / "README.md").exists()
     assert (docs_path / "core" / "README.md").exists()
     assert (docs_path / "staging" / "README.md").exists()
+    assert (docs_path / "analytics" / "README.md").exists()

@@ -2,19 +2,19 @@
 
 ## Table of contents
 
-- [customers](#customers)
-- [orders](#orders)
-- [payments](#payments)
+- [staging.customers](#staging.customers)
+- [staging.orders](#staging.orders)
+- [staging.payments](#staging.payments)
 
 ## Views
 
-### customers
+### staging.customers
 
 Docstring for the customers view.
 
 ```sql
 SELECT *
-FROM jaffle_shop_max.staging__customers
+FROM staging_max.customers
 ```
 
 | Column      | Type      | Description   | Unique   |
@@ -23,13 +23,13 @@ FROM jaffle_shop_max.staging__customers
 | first_name  | `VARCHAR` |               |          |
 | last_name   | `VARCHAR` |               |          |
 
-### orders
+### staging.orders
 
 Docstring for the orders view.
 
 ```sql
 SELECT *
-FROM jaffle_shop_max.staging__orders
+FROM staging_max.orders
 ```
 
 | Column      | Type      | Description   | Unique   |
@@ -39,11 +39,11 @@ FROM jaffle_shop_max.staging__orders
 | order_id    | `BIGINT`  |               |          |
 | status      | `VARCHAR` |               |          |
 
-### payments
+### staging.payments
 
 ```sql
 SELECT *
-FROM jaffle_shop_max.staging__payments
+FROM staging_max.payments
 ```
 
 | Column         | Type      | Description   | Unique   |

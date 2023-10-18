@@ -57,8 +57,8 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
     >>> dag = lea.views.DAGOfViews(views)
 
     >>> def pprint(whitelist):
-    ...     for schema, table in sorted(whitelist):
-    ...         print(f'{schema}.{table}')
+    ...     for key in sorted(whitelist):
+    ...         print('.'.join(key))
 
     schema.table
 
@@ -68,6 +68,7 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
     schema.table+ (descendants)
 
     >>> pprint(make_whitelist('staging.orders+', dag))
+    analytics.finance.kpis
     analytics.kpis
     core.customers
     core.orders
@@ -100,6 +101,7 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
     schema/+ (all tables in schema with their descendants)
 
     >>> pprint(make_whitelist('staging/+', dag))
+    analytics.finance.kpis
     analytics.kpis
     core.customers
     core.orders
@@ -119,12 +121,18 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
     +schema/+  (all tables in schema with their ancestors and descendants)
 
     >>> pprint(make_whitelist('+core/+', dag))
+    analytics.finance.kpis
     analytics.kpis
     core.customers
     core.orders
     staging.customers
     staging.orders
     staging.payments
+
+    schema.subschema/
+
+    >>> pprint(make_whitelist('analytics.finance/', dag))
+    analytics.finance.kpis
 
     """
 
@@ -140,27 +148,27 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
             )
             return
         if query.endswith("/"):
-            for schema, table in dag:
-                if schema == query[:-1]:
+            for key in dag:
+                if str(dag[key]).startswith(query[:-1]):
                     yield from _yield_whitelist(
-                        f"{schema}.{table}",
+                        ".".join(key),
                         include_ancestors=include_ancestors,
                         include_descendants=include_descendants,
                     )
         else:
-            schema, table = query.split(".")
-            yield schema, table
+            key = tuple(query.split("."))
+            yield key
             if include_ancestors:
-                yield from dag.list_ancestors((schema, table))
+                yield from dag.list_ancestors(key)
             if include_descendants:
-                yield from dag.list_descendants((schema, table))
+                yield from dag.list_descendants(key)
 
     return set(_yield_whitelist(query, include_ancestors=False, include_descendants=False))
 
 
 def run(
     client: lea.clients.Client,
-    views_dir: str,
+    views: list[lea.views.View],
     only: list[str],
     dry: bool,
     print_to_cli: bool,
@@ -174,8 +182,6 @@ def run(
     console_log = _do_nothing if print_to_cli else console.log
 
     # List the relevant views
-    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
-    views = [view for view in views if view.schema not in {"tests", "funcs"}]
     console_log(f"{len(views):,d} view(s) in total")
 
     # Organize the views into a directed acyclic graph
@@ -202,26 +208,22 @@ def run(
             return None
         table = rich.table.Table(box=None)
         table.add_column("#", header_style="italic")
-        table.add_column("schema", header_style="italic")
         table.add_column("view", header_style="italic")
         table.add_column("status", header_style="italic")
         table.add_column("duration", header_style="italic")
 
         order_not_done = [node for node in order if node not in cache]
-        for i, (schema, view_name) in list(enumerate(order_not_done, start=1))[-show:]:
-            status = SUCCESS if (schema, view_name) in jobs_ended_at else RUNNING
-            status = ERRORED if (schema, view_name) in exceptions else status
-            status = SKIPPED if (schema, view_name) in skipped else status
+        for i, node in list(enumerate(order_not_done, start=1))[-show:]:
+            status = SUCCESS if node in jobs_ended_at else RUNNING
+            status = ERRORED if node in exceptions else status
+            status = SKIPPED if node in skipped else status
             duration = (
-                (
-                    jobs_ended_at.get((schema, view_name), dt.datetime.now())
-                    - jobs_started_at[(schema, view_name)]
-                )
-                if (schema, view_name) in jobs_started_at
+                (jobs_ended_at.get(node, dt.datetime.now()) - jobs_started_at[node])
+                if node in jobs_started_at
                 else dt.timedelta(seconds=0)
             )
             rounded_seconds = round(duration.total_seconds(), 1)
-            table.add_row(str(i), schema, view_name, status, f"{rounded_seconds}s")
+            table.add_row(str(i), str(dag[node]), status, f"{rounded_seconds}s")
 
         return table
 
@@ -313,8 +315,8 @@ def run(
 
     # Summary of errors
     if exceptions:
-        for (schema, view_name), exception in exceptions.items():
-            console.print(f"{schema}.{view_name}", style="bold red")
+        for node, exception in exceptions.items():
+            console.print(str(dag[node]), style="bold red")
             console.print(exception)
 
         if raise_exceptions:

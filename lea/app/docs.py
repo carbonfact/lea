@@ -20,7 +20,6 @@ def docs(
     # List all the relevant views
     views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
-    console.log(f"Found {len(views):,d} views")
 
     # Organize the views into a directed acyclic graph
     dag = lea.views.DAGOfViews(views)
@@ -32,7 +31,7 @@ def docs(
     readme_content = io.StringIO()
     readme_content.write("# Views\n\n")
     readme_content.write("## Schemas\n\n")
-    for schema in dag.schemas:
+    for schema in sorted(dag.schemas):
         readme_content.write(f"- [`{schema}`](./{schema})\n")
         content = io.StringIO()
 
@@ -44,18 +43,18 @@ def docs(
 
         # Write down table of contents
         content.write("## Table of contents\n\n")
-        for view in sorted(dag.values(), key=lambda view: view.name):
+        for view in sorted(dag.values(), key=lambda view: view.key):
             if view.schema != schema:
                 continue
-            content.write(f"- [{view.name}](#{view.name})\n")
+            content.write(f"- [{view}](#{view})\n")
         content.write("\n")
 
         # Write down the views
         content.write("## Views\n\n")
-        for view in sorted(dag.values(), key=lambda view: view.name):
+        for view in sorted(dag.values(), key=lambda view: view.key):
             if view.schema != schema:
                 continue
-            content.write(f"### {view.name}\n\n")
+            content.write(f"### {view}\n\n")
             if view.description:
                 content.write(f"{view.description}\n\n")
 
@@ -64,7 +63,9 @@ def docs(
                 "```sql\n" "SELECT *\n" f"FROM {client._make_view_path(view)}\n" "```\n\n"
             )
             # Write down the columns
-            view_columns = columns.query(f"table == '{schema}__{view.name}'")[["column", "type"]]
+            view_columns = columns.query(f"view_name == '{client._make_view_path(view)}'")[
+                ["column", "type"]
+            ]
             view_comments = view.extract_comments(columns=view_columns["column"].tolist())
             view_columns["Description"] = (
                 view_columns["column"]
@@ -121,3 +122,4 @@ def docs(
     readme = output_dir / "README.md"
     readme.parent.mkdir(parents=True, exist_ok=True)
     readme.write_text(readme_content.getvalue())
+    console.log(f"Wrote {readme}", style="bold green")
