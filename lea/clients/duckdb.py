@@ -4,8 +4,9 @@ import os
 
 import duckdb
 import pandas as pd
+import sqlglot
 
-from lea import views
+import lea
 
 from .base import Client
 
@@ -18,7 +19,7 @@ class DuckDB(Client):
 
     @property
     def sqlglot_dialect(self):
-        return "duckdb"
+        return sqlglot.dialects.Dialects.DUCKDB
 
     def prepare(self, views, console):
         schemas = set(
@@ -28,27 +29,27 @@ class DuckDB(Client):
             self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
             console.log(f"Created schema {schema}")
 
-    def _create_python(self, view: views.PythonView):
+    def _create_python(self, view: lea.views.PythonView):
         dataframe = self._load_python(view)  # noqa: F841
         self.con.sql(
             f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS SELECT * FROM dataframe"
         )
 
-    def _create_sql(self, view: views.SQLView):
+    def _create_sql(self, view: lea.views.SQLView):
         query = view.query
         if self.username:
-            for schema, *_ in view.dependencies:
+            for schema in {schema for schema, *_ in view.dependencies}:
                 query = query.replace(f"{schema}.", f"{schema}_{self.username}.")
         self.con.sql(f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS ({query})")
 
-    def _load_sql(self, view: views.SQLView):
+    def _load_sql(self, view: lea.views.SQLView):
         query = view.query
         if self.username:
-            for schema, *_ in view.dependencies:
+            for schema in {schema for schema, *_ in view.dependencies}:
                 query = query.replace(f"{schema}.", f"{schema}_{self.username}.")
         return self.con.cursor().sql(query).df()
 
-    def delete_view(self, view: views.View):
+    def delete_view(self, view: lea.views.View):
         self.con.sql(f"DROP TABLE IF EXISTS {self._make_view_path(view)}")
 
     def teardown(self):
@@ -61,23 +62,23 @@ class DuckDB(Client):
     def get_columns(self, schema=None) -> pd.DataFrame:
         query = """
         SELECT
-            table_schema || '.' || table_name AS view_name,
+            table_schema || '.' || table_name AS view_name,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
         """
         return self.con.sql(query).df()
 
-    def _make_view_path(self, view: views.View) -> str:
+    def _make_view_path(self, view: lea.views.View) -> str:
         schema, *leftover = view.key
         schema = f"{schema}_{self.username}" if self.username else schema
-        return f"{schema}.{'__'.join(leftover)}"
+        return f"{schema}.{lea._SEP.join(leftover)}"
 
-    def make_test_unique_column(self, view: views.View, column: str) -> str:
+    def make_test_unique_column(self, view: lea.views.View, column: str) -> str:
         schema, *leftover = view.key
         return f"""
         SELECT {column}, COUNT(*) AS n
-        FROM {f"{schema}.{'__'.join(leftover)}"}
+        FROM {f"{schema}.{lea._SEP.join(leftover)}"}
         GROUP BY {column}
         HAVING n > 1
         """

@@ -14,7 +14,6 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         graphlib.TopologicalSorter.__init__(self, view_to_dependencies)
         collections.UserDict.__init__(self, {view.key: view for view in views})
         self.dependencies = view_to_dependencies
-        self.prepare()
 
     @property
     def schemas(self) -> set:

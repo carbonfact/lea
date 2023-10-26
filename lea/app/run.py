@@ -186,6 +186,7 @@ def run(
 
     # Organize the views into a directed acyclic graph
     dag = lea.views.DAGOfViews(views)
+    dag.prepare()
 
     # Determine which views need to be run
     whitelist = (
@@ -199,7 +200,9 @@ def run(
             continue
         console_log(f"Removing {schema}.{table}")
         if not dry:
-            view_to_delete = lea.views.GenericSQLView(schema=schema, name=table, query="")
+            view_to_delete = lea.views.GenericSQLView(
+                schema=schema, name=table, query="", sqlglot_dialect=client.sqlglot_dialect
+            )
             client.delete_view(view=view_to_delete)
         console_log(f"Removed {schema}.{table}")
 
