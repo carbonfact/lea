@@ -3,9 +3,8 @@ from __future__ import annotations
 import os
 
 import pandas as pd
-import sqlglot
 
-from lea import views
+import lea
 
 from .base import Client
 
@@ -51,7 +50,7 @@ class BigQuery(Client):
         dataset.location = self.location
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
 
-    def _make_job(self, view: views.SQLView):
+    def _make_job(self, view: lea.views.SQLView):
         query = view.query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
 
         return self.client.create_job(
@@ -76,11 +75,11 @@ class BigQuery(Client):
             }
         )
 
-    def _create_sql(self, view: views.SQLView):
+    def _create_sql(self, view: lea.views.SQLView):
         job = self._make_job(view)
         job.result()
 
-    def _create_python(self, view: views.PythonView):
+    def _create_python(self, view: lea.views.PythonView):
         from google.cloud import bigquery
 
         dataframe = self._load_python(view)
@@ -97,7 +96,7 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _load_sql(self, view: views.SQLView) -> pd.DataFrame:
+    def _load_sql(self, view: lea.views.SQLView) -> pd.DataFrame:
         query = view.query
         if self.username:
             query = query.replace(f"{self._dataset_name}_{self.username}.", f"{self.dataset_name}.")
@@ -105,11 +104,10 @@ class BigQuery(Client):
 
     def list_existing_view_names(self):
         return [
-            table.table_id.split(lea._SEP, 1)
-            for table in self.client.list_tables(self.dataset_name)
+            table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
         ]
 
-    def delete_view(self, view: views.View):
+    def delete_view(self, view: lea.views.View):
         self.client.delete_table(f"{self.project_id}.{self._make_view_path(view)}")
 
     def get_columns(self, schema=None) -> pd.DataFrame:
@@ -122,15 +120,15 @@ class BigQuery(Client):
         FROM {schema}.INFORMATION_SCHEMA.COLUMNS
         """
         return self._load_sql(
-            views.GenericSQLView(
+            lea.views.GenericSQLView(
                 schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect
             )
         )
 
-    def _make_view_path(self, view: views.View) -> str:
+    def _make_view_path(self, view: lea.views.View) -> str:
         return f"{self.dataset_name}.{view.schema}{lea._SEP}{view.name}"
 
-    def make_test_unique_column(self, view: views.View, column: str) -> str:
+    def make_test_unique_column(self, view: lea.views.View, column: str) -> str:
         return f"""
         SELECT {column}, COUNT(*) AS n
         FROM {self._make_view_path(view)}
