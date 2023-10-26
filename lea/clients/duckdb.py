@@ -4,6 +4,7 @@ import os
 
 import duckdb
 import pandas as pd
+import sqlglot
 
 import lea
 
@@ -18,7 +19,7 @@ class DuckDB(Client):
 
     @property
     def sqlglot_dialect(self):
-        return "duckdb"
+        return sqlglot.dialects.Dialects.DUCKDB
 
     def prepare(self, views, console):
         schemas = set(

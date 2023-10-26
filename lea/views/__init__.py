@@ -16,7 +16,7 @@ def load_views(
     # Massage the inputs
     if isinstance(views_dir, str):
         views_dir = pathlib.Path(views_dir)
-    if isinstance(views_dir, str):
+    if isinstance(sqlglot_dialect, str):
         sqlglot_dialect = sqlglot.dialects.Dialects(sqlglot_dialect)
 
     def _load_view_from_path(path, origin, sqlglot_dialect):

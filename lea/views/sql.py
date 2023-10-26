@@ -55,13 +55,22 @@ class SQLView(View):
 
     def parse_dependencies(self, query) -> set[tuple[str, str]]:
         expression = sqlglot.parse_one(query, dialect=self.sqlglot_dialect)
-        return {
-            (table.db, *table.name.split(lea._SEP))
-            for scope in sqlglot.optimizer.scope.traverse_scope(expression)
-            for table in scope.tables
-            if not isinstance(table.this, sqlglot.exp.Func)
-            and sqlglot.exp.table_name(table) not in scope.cte_sources
-        }
+        dependencies = set()
+
+        for scope in sqlglot.optimizer.scope.traverse_scope(expression):
+            for table in scope.tables:
+                if (
+                    not isinstance(table.this, sqlglot.exp.Func)
+                    and sqlglot.exp.table_name(table) not in scope.cte_sources
+                ):
+                    if self.sqlglot_dialect is sqlglot.dialects.Dialects.BIGQUERY:
+                        dependencies.add(tuple(table.name.split(lea._SEP)))
+                    elif self.sqlglot_dialect is sqlglot.dialects.Dialects.DUCKDB:
+                        dependencies.add((table.db, *table.name.split(lea._SEP)))
+                    else:
+                        raise ValueError(f"Unsupported SQL dialect: {self.sqlglot_dialect}")
+
+        return dependencies
 
     @property
     def dependencies(self):

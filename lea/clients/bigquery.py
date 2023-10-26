@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 import pandas as pd
+import sqlglot
 
 from lea import views
 
@@ -25,7 +26,7 @@ class BigQuery(Client):
 
     @property
     def sqlglot_dialect(self):
-        return "bigquery"
+        return sqlglot.dialects.Dialects.BIGQUERY
 
     @property
     def dataset_name(self):
@@ -120,7 +121,11 @@ class BigQuery(Client):
             data_type AS type
         FROM {schema}.INFORMATION_SCHEMA.COLUMNS
         """
-        return self._load_sql(views.GenericSQLView(schema=None, name=None, query=query))
+        return self._load_sql(
+            views.GenericSQLView(
+                schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect
+            )
+        )
 
     def _make_view_path(self, view: views.View) -> str:
         return f"{self.dataset_name}.{view.schema}{lea._SEP}{view.name}"
