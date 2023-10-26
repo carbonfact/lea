@@ -10,6 +10,9 @@ import warnings
 
 import jinja2
 import sqlglot
+import sqlglot.optimizer.scope
+
+import lea
 
 from .base import View
 
@@ -50,18 +53,15 @@ class SQLView(View):
             return template.render(env=os.environ)
         return text
 
-    def parse_dependencies(self, query):
-        parse = sqlglot.parse_one(query, dialect=self.sqlglot_dialect)
-        cte_names = {(None, cte.alias) for cte in parse.find_all(sqlglot.exp.CTE)}
-        table_names = {
-            (table.sql().split(".")[0], table.name)
-            if "__" not in table.name and "." in table.sql()
-            else (table.name.split("__")[0], table.name.split("__", 1)[1])
-            if "__" in table.name
-            else (None, table.name)
-            for table in parse.find_all(sqlglot.exp.Table)
+    def parse_dependencies(self, query) -> set[tuple[str, str]]:
+        expression = sqlglot.parse_one(query, dialect=self.sqlglot_dialect)
+        return {
+            (table.db, *table.name.split(lea._SEP))
+            for scope in sqlglot.optimizer.scope.traverse_scope(expression)
+            for table in scope.tables
+            if not isinstance(table.this, sqlglot.exp.Func)
+            and sqlglot.exp.table_name(table) not in scope.cte_sources
         }
-        return table_names - cte_names
 
     @property
     def dependencies(self):
@@ -79,7 +79,7 @@ class SQLView(View):
             ):
                 schema, view_name = (
                     (
-                        match.group("view").split("__")[0],
+                        match.group("view").split(lea._SEP)[0],
                         match.group("view").split("__", 1)[1],
                     )
                     if "__" in match.group("view")

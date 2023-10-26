@@ -186,6 +186,7 @@ def run(
 
     # Organize the views into a directed acyclic graph
     dag = lea.views.DAGOfViews(views)
+    dag.prepare()
 
     # Determine which views need to be run
     whitelist = (

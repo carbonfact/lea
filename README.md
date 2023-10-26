@@ -124,7 +124,9 @@ views/
             table_6.sql
 ```
 
-Each view will be named according to its location, following the warehouse convention. For instance, `schema_1/table_1.sql` will be named `dataset.schema_1__table_1` in BigQuery and `schema_1.table_1` in DuckDB.
+Each view will be named according to its location, following the warehouse convention. For instance, lea names the `schema/table.sql` view to `dataset.schema__table` in BigQuery and `schema.table` in DuckDB.
+
+To reference a table in a sub-schema, the convention in lea it to use a double underscore `__`. For instance, `schema/sub_schema/table.sql` should be to referred to as `dataset.schema__sub_schema__table` in BigQuery and `schema.sub_schema__table` in DuckDB.
 
 The schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
 
@@ -342,6 +344,8 @@ staging.payments
 >>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
 >>> views = [v for v in views if v.schema != 'tests']
 >>> dag = lea.views.DAGOfViews(views)
+>>> dag.prepare()
+
 >>> while dag.is_active():
 ...     for node in sorted(dag.get_ready()):
 ...         print(dag[node])

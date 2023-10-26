@@ -20,18 +20,20 @@ def test_jaffle_shop():
 
     # Write .env file
     with open(env_path, "w") as f:
-        f.write("LEA_USERNAME=max\n" "LEA_WAREHOUSE=duckdb\n" "LEA_DUCKDB_PATH=duckdb.db\n")
+        f.write(
+            "LEA_USERNAME=max\n" "LEA_WAREHOUSE=duckdb\n" "LEA_DUCKDB_PATH=test_jaffle_shop.db\n"
+        )
 
     # Prepare
     result = runner.invoke(app, ["prepare", views_path, "--env", env_path])
     assert result.exit_code == 0
 
     # Run
-    result = runner.invoke(app, ["run", views_path, "--env", env_path])
+    result = runner.invoke(app, ["run", views_path, "--env", env_path, "--fresh"])
     assert result.exit_code == 0
 
     # Check number of tables created
-    con = duckdb.connect("duckdb.db")
+    con = duckdb.connect("test_jaffle_shop.db")
     tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
     assert tables.shape[0] == 7
 
