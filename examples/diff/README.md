@@ -1,4 +1,4 @@
-# Data diff example
+# Compare development to production
 
 - New table
 - Disappeared table

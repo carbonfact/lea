@@ -53,7 +53,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 ## Example
 
 - [Jaffle shop 🥪](examples/jaffle_shop/)
-- [Compare development and production 👯‍♀️](examples/diff/)
+- [Compare development to production 👯‍♀️](examples/diff/)
 
 ## Teaser
 
