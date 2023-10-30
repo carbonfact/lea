@@ -33,16 +33,18 @@ def test_jaffle_shop():
     assert result.exit_code == 0
 
     # Check number of tables created
-    con = duckdb.connect("tests/jaffle_shop_max.db")
-    tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
+    with duckdb.connect("tests/jaffle_shop_max.db") as con:
+        tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
     assert tables.shape[0] == 7
 
     # Check number of rows in core__customers
-    customers = con.sql("SELECT * FROM core.customers").df()
+    with duckdb.connect("tests/jaffle_shop_max.db") as con:
+        customers = con.sql("SELECT * FROM core.customers").df()
     assert customers.shape[0] == 100
 
     # Check number of rows in core__orders
-    orders = con.sql("SELECT * FROM core.orders").df()
+    with duckdb.connect("tests/jaffle_shop_max.db") as con:
+        orders = con.sql("SELECT * FROM core.orders").df()
     assert orders.shape[0] == 99
 
     # Run unit tests
@@ -81,14 +83,13 @@ def test_diff():
     prod_views_path = str((here.parent / "examples" / "diff" / "views" / "prod").absolute())
     dev_views_path = str((here.parent / "examples" / "diff" / "views" / "dev").absolute())
 
-    prod_args = [prod_views_path, "--env", env_path, "--production"]
-    dev_args = [dev_views_path, "--env", env_path]
-
     # Write .env file
     with open(env_path, "w") as f:
         f.write("LEA_USERNAME=max\n" "LEA_WAREHOUSE=duckdb\n" "LEA_DUCKDB_PATH=tests/diff.db\n")
 
     # Prepare
+    prod_args = [prod_views_path, "--env", env_path, "--production"]
+    dev_args = [dev_views_path, "--env", env_path]
     assert runner.invoke(app, ["prepare", *prod_args]).exit_code == 0
     assert runner.invoke(app, ["prepare", *dev_args]).exit_code == 0
 
@@ -96,20 +97,18 @@ def test_diff():
     assert runner.invoke(app, ["run", *prod_args]).exit_code == 0
     assert runner.invoke(app, ["run", *dev_args]).exit_code == 0
 
-    prod_con = duckdb.connect("tests/diff.db")
-    dev_con = duckdb.connect("tests/diff_max.db")
-
-    # Check number of tables created
-    prod_tables = prod_con.sql(
-        "SELECT table_schema, table_name FROM information_schema.tables"
-    ).df()
-    assert prod_tables.shape[0] == 5
-    assert prod_tables.table_schema.nunique() == 2
-
-    dev_tables = prod_con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
-    assert dev_tables.shape[0] == 5
-    assert dev_tables.table_schema.nunique() == 2
+    # Check number of tables
+    with duckdb.connect("tests/diff.db") as con:
+        tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
+        assert tables.shape[0] == 5
+        assert tables.table_schema.nunique() == 2
+    with duckdb.connect("tests/diff_max.db") as con:
+        tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
+        assert tables.shape[0] == 5
+        assert tables.table_schema.nunique() == 3
 
     # Check number of rows in core__customers
-    assert prod_con.sql("SELECT * FROM core.orders").df().shape[0] == 99
-    assert dev_con.sql("SELECT * FROM core.orders").df().shape[0] == 70
+    with duckdb.connect("tests/diff.db") as con:
+        assert con.sql("SELECT * FROM core.orders").df().shape[0] == 99
+    with duckdb.connect("tests/diff_max.db") as con:
+        assert con.sql("SELECT * FROM core.orders").df().shape[0] == 70

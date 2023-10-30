@@ -14,5 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/install-env
+      - name: Not sure why this is needed but it is...
+        run: poetry run pytest -k test_diff
       - name: Run pytest
         run: poetry run pytest
