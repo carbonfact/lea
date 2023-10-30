@@ -267,10 +267,12 @@ This prints out a summary of the difference between development and production. 
 
 ```diff
   core__users
++ 42 rows
 + age
 + email
 
 - core__coupons
+- 129 rows
 - coupon_id
 - amount
 - user_id
@@ -279,6 +281,9 @@ This prints out a summary of the difference between development and production. 
   core__orders
 - discount
 + supplier
+
+  core__sales
++ 100 rows
 ```
 
 This is handy in pull requests. For instance, at Carbonfact, we have a dataset for each pull request. We compare it to the production dataset and post the diff as a comment in the pull request. The diff is updated every time the pull request is updated. Check out [this example](examples/diff) for more information.
