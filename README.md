@@ -374,20 +374,20 @@ analytics.kpis
 
 ## Roadmap
 
-- Incremental queries
-- Exporting
-- Historization
-- Linting
-- Data lineage
-- Extending the CLI
-- Only refresh what changed, based on git
-- Splitting a query into CTEs
-- Metric layer
-- Shell auto-completion
-- Hot-swapping after success
-- Data diffing based on row counts
-- Cost estimation of running a refresh
-- Table usage statistics from query logs
+- [ ] Incremental queries
+- [ ] Exporting
+- [ ] Historization
+- [ ] Linting
+- [ ] Data lineage
+- [ ] Extending the CLI
+- [ ] Only refresh what changed, based on git
+- [ ] Splitting a query into CTEs
+- [ ] Metric layer
+- [ ] Shell auto-completion
+- [ ] Hot-swapping after success
+- [x] Data diffing based on row counts (2023-10-30)
+- [ ] Cost estimation of running a refresh
+- [ ] Table usage statistics from query logs
 
 Some of these features already exist at Carbonfact. We just don't feel they're polished enough for public consumption. Feel free to reach out if you want to know more and/or contribute 😊
 
