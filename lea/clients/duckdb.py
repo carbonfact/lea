@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import pathlib
 import os
+import pathlib
 
 import duckdb
 import pandas as pd
@@ -69,7 +69,7 @@ class DuckDB(Client):
         ]
 
     def get_tables(self):
-        query = f"""
+        query = """
         SELECT
             schema_name || '.' || table_name AS view_name,
             estimated_size AS n_rows,  -- TODO: Figure out how to get the exact number
@@ -79,7 +79,7 @@ class DuckDB(Client):
         return self.con.sql(query).df()
 
     def get_columns(self) -> pd.DataFrame:
-        query = f"""
+        query = """
         SELECT
              table_schema || '.' || table_name AS view_name,
             column_name AS column,
