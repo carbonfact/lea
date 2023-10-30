@@ -25,7 +25,9 @@ LEA_DUCKDB_PATH=jaffle_shop.db
 " > .env
 ```
 
-Next, run the following command to create the `jaffle_shop_max.db` file. The `max` suffix is the username from the `.env` file.
+This example uses DuckDB as the data warehouse. With lea, the convention when using DuckDB is to use a separate `.db` file per environment. For instance, in production, the file would be called `jaffle_shop.db`. In development, the file would be called `jaffle_shop_max.db`. The `max` suffix is the username from the `.env` file.
+
+The following command creates the `jaffle_shop_max.db` file and the necessary schemas:
 
 ```sh
 lea prepare
