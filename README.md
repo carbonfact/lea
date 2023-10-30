@@ -53,6 +53,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 ## Example
 
 - [Jaffle shop 🥪](examples/jaffle_shop/)
+- [Compare development and production 👯‍♀️](examples/diff/)
 
 ## Teaser
 
@@ -124,17 +125,27 @@ views/
             table_6.sql
 ```
 
-Each view will be named according to its location, following the warehouse convention. For instance, lea names the `schema/table.sql` view to `dataset.schema__table` in BigQuery and `schema.table` in DuckDB.
+Each view will be named according to its location, following the warehouse convention:
 
-To reference a table in a sub-schema, the convention in lea it to use a double underscore `__`. For instance, `schema/sub_schema/table.sql` should be to referred to as `dataset.schema__sub_schema__table` in BigQuery and `schema.sub_schema__table` in DuckDB.
+| Warehouse   | Dataset   | Username | Schema   | Table   | Name                                         |
+| ----------- | --------- | -------- | -------- | ------- | -------------------------------------------- |
+| DuckDB 🦆   | `dataset` | `user`   | `schema` | `table` | `schema.table` (stored in `dataset_user.db`) |
+| BigQuery 🦏 | `dataset` | `user`   | `schema` | `table` | `dataset_user.schema__table`                 |
 
-The schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
+The convention in lea to reference a table in a sub-schema is to use a double underscore `__`:
+
+| Warehouse   | Dataset   | Username | Schema   | Sub-schema | Table   | Name                                              |
+| ----------- | --------- | -------- | -------- | ---------- | ------- | ------------------------------------------------- |
+| DuckDB 🦆   | `dataset` | `user`   | `schema` | `sub`      | `table` | `schema.sub__table` (stored in `dataset_user.db`) |
+| BigQuery 🦏 | `dataset` | `user`   | `schema` | `sub`      | `table` | `dataset_user.schema__sub__table`                 |
+
+Schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
 
 ```sh
 lea run /path/to/views
 ```
 
-This also applies to the other commands.
+This argument also applies to other commands in lea.
 
 #### Development vs. production
 
@@ -249,16 +260,10 @@ This will also create a Mermaid diagram in the `docs` directory. This diagram is
 ### `lea diff`
 
 ```sh
-lea diff origin destination
+lea diff
 ```
 
-This prints out a summary of the difference between two schemas in terms of structure. This is handy in pull requests. For instance, at Carbonfact we often compare our development schemas with our production schema:
-
-```sh
-lea diff kaya_max kaya
-```
-
-Here is an example:
+This prints out a summary of the difference between development and production. Here is an example output:
 
 ```diff
   core__users
@@ -275,6 +280,8 @@ Here is an example:
 - discount
 + supplier
 ```
+
+This is handy in pull requests. For instance, at Carbonfact, we have a dataset for each pull request. We compare it to the production dataset and post the diff as a comment in the pull request. The diff is updated every time the pull request is updated. Check out [this example](examples/diff) for more information.
 
 ### `lea teardown`
 
@@ -373,6 +380,9 @@ analytics.kpis
 - Metric layer
 - Shell auto-completion
 - Hot-swapping after success
+- Data diffing based on row counts
+- Cost estimation of running a refresh
+- Table usage statistics from query logs
 
 Some of these features already exist at Carbonfact. We just don't feel they're polished enough for public consumption. Feel free to reach out if you want to know more and/or contribute 😊
 

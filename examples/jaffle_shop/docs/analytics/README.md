@@ -11,7 +11,7 @@
 
 ```sql
 SELECT *
-FROM analytics_max.finance__kpis
+FROM analytics.finance__kpis
 ```
 
 | Column              | Type     | Description   | Unique   |
@@ -23,7 +23,7 @@ FROM analytics_max.finance__kpis
 
 ```sql
 SELECT *
-FROM analytics_max.kpis
+FROM analytics.kpis
 ```
 
 | Column   | Type      | Description   | Unique   |

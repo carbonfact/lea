@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lea-cli"
-version = "0.2.2"
+version = "0.2.3"
 description = "A minimalist alternative to dbt"
 authors = ["Max Halford <maxhalford25@gmail.com>"]
 packages = [
@@ -52,7 +52,7 @@ required-imports = ["from __future__ import annotations"]
 addopts = [
     "--doctest-modules",
     "--doctest-glob=README.md",
-    "--ignore=lea/examples",
+    "--ignore=examples",
     "--verbose",
     "--color=yes"
 ]

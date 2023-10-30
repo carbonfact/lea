@@ -21,20 +21,20 @@ The first thing to do is create an `.env` file, as so:
 echo "
 LEA_USERNAME=max
 LEA_WAREHOUSE=duckdb
-LEA_DUCKDB_PATH=duckdb.db
+LEA_DUCKDB_PATH=jaffle_shop.db
 " > .env
 ```
 
-Next, run the following command to create the `jaffle_shop.db` file and the schemas therein:
+Next, run the following command to create the `jaffle_shop_max.db` file. The `max` suffix is the username from the `.env` file.
 
 ```sh
 lea prepare
 ```
 
 ```
-Created schema analytics_max
-Created schema core_max
-Created schema staging_max
+Created schema analytics
+Created schema core
+Created schema staging
 ```
 
 Now you can run the views:
@@ -69,4 +69,13 @@ docs
 │   └── README.md
 └── staging
     └── README.md
+```
+
+Now, if you were running in production and not in development mode, you would add a `--production` flag to each command:
+
+```sh
+lea prepare --production
+lea run --production
+lea test --production
+lea docs --production
 ```

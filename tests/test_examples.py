@@ -33,16 +33,16 @@ def test_jaffle_shop():
     assert result.exit_code == 0
 
     # Check number of tables created
-    con = duckdb.connect("test_jaffle_shop.db")
+    con = duckdb.connect("test_jaffle_shop_max.db")
     tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
     assert tables.shape[0] == 7
 
     # Check number of rows in core__customers
-    customers = con.sql("SELECT * FROM core_max.customers").df()
+    customers = con.sql("SELECT * FROM core.customers").df()
     assert customers.shape[0] == 100
 
     # Check number of rows in core__orders
-    orders = con.sql("SELECT * FROM core_max.orders").df()
+    orders = con.sql("SELECT * FROM core.orders").df()
     assert orders.shape[0] == 99
 
     # Run unit tests

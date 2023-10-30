@@ -19,12 +19,12 @@ class View(abc.ABC):
             self.path = pathlib.Path(self.path)
 
     @property
-    def schema(self):
-        return self.relative_path.parts[0]
-
-    @property
     def key(self):
         return tuple([*self.relative_path.parts[:-1], self.relative_path.name.split(".")[0]])
+
+    @property
+    def schema(self):
+        return self.key[0]
 
     @property
     @abc.abstractmethod

@@ -14,7 +14,7 @@ Docstring for the customers view.
 
 ```sql
 SELECT *
-FROM staging_max.customers
+FROM staging.customers
 ```
 
 | Column      | Type      | Description   | Unique   |
@@ -29,7 +29,7 @@ Docstring for the orders view.
 
 ```sql
 SELECT *
-FROM staging_max.orders
+FROM staging.orders
 ```
 
 | Column      | Type      | Description   | Unique   |
@@ -43,7 +43,7 @@ FROM staging_max.orders
 
 ```sql
 SELECT *
-FROM staging_max.payments
+FROM staging.payments
 ```
 
 | Column         | Type      | Description   | Unique   |

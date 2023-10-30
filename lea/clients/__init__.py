@@ -4,6 +4,8 @@ import getpass
 import json
 import os
 
+from .base import Client
+
 
 def make_client(production: bool):
     warehouse = os.environ["LEA_WAREHOUSE"]

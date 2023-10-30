@@ -11,7 +11,7 @@
 
 ```sql
 SELECT *
-FROM core_max.customers
+FROM core.customers
 ```
 
 | Column                  | Type      | Description   | Unique   |
@@ -28,7 +28,7 @@ FROM core_max.customers
 
 ```sql
 SELECT *
-FROM core_max.orders
+FROM core.orders
 ```
 
 | Column               | Type      | Description   | Unique   |

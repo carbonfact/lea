@@ -28,25 +28,25 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _create_sql(self, view: views.SQLView):
+    def _create_sql_view(self, view: views.SQLView):
         ...
 
     @abc.abstractmethod
-    def _create_python(self, view: views.PythonView):
+    def _create_python_view(self, view: views.PythonView):
         ...
 
     def create(self, view: views.View):
         if isinstance(view, views.SQLView):
-            return self._create_sql(view)
+            return self._create_sql_view(view)
         elif isinstance(view, views.PythonView):
-            return self._create_python(view)
+            return self._create_python_view(view)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
-    def _load_sql(self, view: views.SQLView):
+    def _load_sql_view(self, view: views.SQLView):
         ...
 
-    def _load_python(self, view: views.PythonView):
+    def _load_python_view(self, view: views.PythonView):
         module_name = view.path.stem
         spec = importlib.util.spec_from_file_location(module_name, view.path)
         module = importlib.util.module_from_spec(spec)
@@ -60,9 +60,9 @@ class Client(abc.ABC):
 
     def load(self, view: views.View):
         if isinstance(view, views.SQLView):
-            return self._load_sql(view)
+            return self._load_sql_view(view=view)
         elif isinstance(view, views.PythonView):
-            return self._load_python(view)
+            return self._load_python_view(view=view)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
@@ -74,54 +74,12 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_columns(self, schema: str) -> pd.DataFrame:
+    def get_tables(self, schema: str) -> pd.DataFrame:
         ...
 
-    def get_diff_summary(self, origin: str, destination: str) -> pd.DataFrame:
-        origin_columns = set(
-            map(tuple, self.get_columns(origin)[["table", "column"]].values.tolist())
-        )
-        destination_columns = set(
-            map(
-                tuple,
-                self.get_columns(destination)[["table", "column"]].values.tolist(),
-            )
-        )
-
-        return pd.DataFrame(
-            [
-                {
-                    "table": table,
-                    "column": None,
-                    "diff_kind": "ADDED",
-                }
-                for table in {t for t, _ in origin_columns} - {t for t, _ in destination_columns}
-            ]
-            + [
-                {
-                    "table": table,
-                    "column": column,
-                    "diff_kind": "ADDED",
-                }
-                for table, column in origin_columns - destination_columns
-            ]
-            + [
-                {
-                    "table": table,
-                    "column": None,
-                    "diff_kind": "REMOVED",
-                }
-                for table in {t for t, _ in destination_columns} - {t for t, _ in origin_columns}
-            ]
-            + [
-                {
-                    "table": table,
-                    "column": column,
-                    "diff_kind": "REMOVED",
-                }
-                for table, column in destination_columns - origin_columns
-            ]
-        )
+    @abc.abstractmethod
+    def get_columns(self, schema: str) -> pd.DataFrame:
+        ...
 
     @abc.abstractmethod
     def make_test_unique_column(self, view: views.View, column: str) -> str:

@@ -125,16 +125,12 @@ def docs(
 
 
 @app.command()
-def diff(origin: str, destination: str, env: str = EnvPath):
+def diff(env: str = EnvPath):
     from lea.app.diff import calculate_diff
 
-    # A client is necessary for getting the top 5 rows of each view
-    client = _make_client(production=True)
-
     diff = calculate_diff(
-        origin=origin,
-        destination=destination,
-        client=client,
+        origin_client=_make_client(production=False),
+        target_client=_make_client(production=True),
     )
 
     console.print(diff)

@@ -175,12 +175,8 @@ class GenericSQLView(SQLView):
         self._sqlglot_dialect = sqlglot_dialect
 
     @property
-    def schema(self):
-        return self._schema
-
-    @property
     def key(self):
-        return (self._name,)
+        return (self._schema, self._name)
 
     @property
     def query(self):
