@@ -1,10 +1,5 @@
 # Compare development to production
 
-- New table
-- Disappeared table
-- Only rows change
-- Only bytes change
-
 The first thing to do is create an `.env` file, as so:
 
 ```sh
@@ -84,7 +79,7 @@ The diff shows several things:
 - The `orders` didn't get dropped, but it lost some rows. This is because we added a `WHERE` to the underlying SQL.
 - The `kpis` view got added, and it contains a single row.
 
-The nice thing is that `lea diff` prints out a neat summary. This output can be highlighted on GitHub, which what we've done above, by using a ````diff` code block.
+The nice thing is that `lea diff` prints out a neat summary. This output can be highlighted on GitHub, which what we've done above, by using a `diff` code block.
 
 In a pull request, an automated message can be posted with the diff. Here is an example of a GitHub action that does this:
 

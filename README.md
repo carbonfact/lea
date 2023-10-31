@@ -30,7 +30,7 @@ lea aims to be simple and opinionated, and yet offers the possibility to be exte
 
 Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack quack).
 
-- [Example](#example)
+- [Examples](#examples)
 - [Teaser](#teaser)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -50,7 +50,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 - [Roadmap](#roadmap)
 - [License](#license)
 
-## Example
+## Examples
 
 - [Jaffle shop 🥪](examples/jaffle_shop/)
 - [Compare development to production 👯‍♀️](examples/diff/)
