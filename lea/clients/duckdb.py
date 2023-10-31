@@ -68,10 +68,13 @@ class DuckDB(Client):
         if self.is_motherduck:
             database = self.path.split(":")[1]
             query += f"\nWHERE table_catalog = '{database}'"
-        return [
-            (r["table_schema"], *r["table_name"].split(lea._SEP))
+        return {
+            (r["table_schema"], *r["table_name"].split(lea._SEP)): (
+                r["table_schema"],
+                r["table_name"],
+            )
             for r in self.con.sql(query).df().to_dict(orient="records")
-        ]
+        }
 
     def get_tables(self):
         query = """

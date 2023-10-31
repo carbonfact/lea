@@ -195,7 +195,7 @@ def run(
     console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
-    for key in client.list_existing_view_names():
+    for key, (schema, table) in client.list_existing_view_names().items():
         if key in dag:
             continue
         if not dry:
