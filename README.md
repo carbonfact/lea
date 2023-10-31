@@ -54,6 +54,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 
 - [Jaffle shop 🥪](examples/jaffle_shop/)
 - [Compare development to production 👯‍♀️](examples/diff/)
+- [Using MotherDuck 🦆](examples/motherduck/)
 
 ## Teaser
 
@@ -63,8 +64,12 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 
 ## Installation
 
+Use one of the following commands, depending on which warehouse you wish to use:
+
 ```sh
-pip install lea-cli
+pip install lea-cli[duckdb]
+pip install lea-cli[motherduck]
+pip install lea-cli[bigquery]
 ```
 
 This installs the `lea` command. It also makes the `lea` Python library available.
@@ -78,12 +83,13 @@ lea is configured by setting environment variables. The following variables are 
 ```sh
 # General configuration
 LEA_USERNAME=max
-LEA_WAREHOUSE=bigquery
 
 # DuckDB 🦆
+LEA_WAREHOUSE=duckdb
 LEA_DUCKDB_PATH=duckdb.db
 
 # BigQuery 🦏
+LEA_WAREHOUSE=bigquery
 LEA_BQ_LOCATION=EU
 LEA_BQ_PROJECT_ID=carbonfact-dwh
 LEA_BQ_DATASET_NAME=kaya
@@ -127,17 +133,17 @@ views/
 
 Each view will be named according to its location, following the warehouse convention:
 
-| Warehouse   | Dataset   | Username | Schema   | Table   | Name                                         |
-| ----------- | --------- | -------- | -------- | ------- | -------------------------------------------- |
-| DuckDB 🦆   | `dataset` | `user`   | `schema` | `table` | `schema.table` (stored in `dataset_user.db`) |
-| BigQuery 🦏 | `dataset` | `user`   | `schema` | `table` | `dataset_user.schema__table`                 |
+| Warehouse | Dataset   | Username | Schema   | Table   | Name                                         |
+| --------- | --------- | -------- | -------- | ------- | -------------------------------------------- |
+| DuckDB    | `dataset` | `user`   | `schema` | `table` | `schema.table` (stored in `dataset_user.db`) |
+| BigQuery  | `dataset` | `user`   | `schema` | `table` | `dataset_user.schema__table`                 |
 
 The convention in lea to reference a table in a sub-schema is to use a double underscore `__`:
 
-| Warehouse   | Dataset   | Username | Schema   | Sub-schema | Table   | Name                                              |
-| ----------- | --------- | -------- | -------- | ---------- | ------- | ------------------------------------------------- |
-| DuckDB 🦆   | `dataset` | `user`   | `schema` | `sub`      | `table` | `schema.sub__table` (stored in `dataset_user.db`) |
-| BigQuery 🦏 | `dataset` | `user`   | `schema` | `sub`      | `table` | `dataset_user.schema__sub__table`                 |
+| Warehouse | Dataset   | Username | Schema   | Sub-schema | Table   | Name                                              |
+| --------- | --------- | -------- | -------- | ---------- | ------- | ------------------------------------------------- |
+| DuckDB    | `dataset` | `user`   | `schema` | `sub`      | `table` | `schema.sub__table` (stored in `dataset_user.db`) |
+| BigQuery  | `dataset` | `user`   | `schema` | `sub`      | `table` | `dataset_user.schema__sub__table`                 |
 
 Schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
 
@@ -220,10 +226,10 @@ This checkpointing logic can be disabled with the `--fresh` flag.
 lea run --fresh
 ```
 
-The `--raise-exceptions` flag can be used to immediately stop if a query fails:
+The `--fail-fast` flag can be used to immediately stop if a query fails:
 
 ```sh
-lea run --raise-exceptions
+lea run --fail-fast
 ```
 
 For debugging purposes, it is possible to print out a query and copy it to the clipboard:

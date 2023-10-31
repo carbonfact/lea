@@ -14,12 +14,19 @@ from .base import Client
 
 class DuckDB(Client):
     def __init__(self, path: str, username: str | None):
-        if username is not None:
-            _path = pathlib.Path(path)
-            path = str((_path.parent / f"{_path.stem}_{username}{_path.suffix}").absolute())
+        if path.startswith("md:"):
+            path = f"{path}_{username}" if username is not None else path
+        else:
+            if username is not None:
+                _path = pathlib.Path(path)
+                path = str((_path.parent / f"{_path.stem}_{username}{_path.suffix}").absolute())
         self.path = path
         self.username = username
         self.con = duckdb.connect(self.path)
+
+    @property
+    def is_motherduck(self):
+        return self.path.startswith("md:")
 
     @property
     def sqlglot_dialect(self):
@@ -53,20 +60,21 @@ class DuckDB(Client):
 
     def list_existing_view_names(self) -> list[tuple[str, str]]:
         query = """
-            SELECT
-                CASE
-                    WHEN POSITION('_' IN table_schema) > 0
-                    THEN SUBSTRING(table_schema FROM 1 FOR POSITION('_' IN table_schema) - 1)
-                    ELSE table_schema
-                END table_schema,
-                table_name
-            FROM information_schema.tables
-
+        SELECT
+            table_schema,
+            table_name
+        FROM information_schema.tables
         """
-        return [
-            (r["table_schema"], r["table_name"])
+        if self.is_motherduck:
+            database = self.path.split(":")[1]
+            query += f"\nWHERE table_catalog = '{database}'"
+        return {
+            (r["table_schema"], *r["table_name"].split(lea._SEP)): (
+                r["table_schema"],
+                r["table_name"],
+            )
             for r in self.con.sql(query).df().to_dict(orient="records")
-        ]
+        }
 
     def get_tables(self):
         query = """

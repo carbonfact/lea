@@ -60,7 +60,7 @@ def run(
     production: bool = False,
     threads: int = 8,
     show: int = 20,
-    raise_exceptions: bool = False,
+    fail_fast: bool = False,
     env: str = EnvPath,
 ):
     from lea.app.run import run
@@ -81,7 +81,7 @@ def run(
         fresh=fresh,
         threads=threads,
         show=show,
-        raise_exceptions=raise_exceptions,
+        fail_fast=fail_fast,
         console=console,
     )
 
@@ -92,7 +92,7 @@ def test(
     only: list[str] = typer.Option(None),
     threads: int = 8,
     production: bool = False,
-    raise_exceptions: bool = False,
+    fail_fast: bool = False,
     env: str = EnvPath,
 ):
     from lea.app.test import test
@@ -105,7 +105,7 @@ def test(
         views_dir=views_dir,
         only=only,
         threads=threads,
-        raise_exceptions=raise_exceptions,
+        fail_fast=fail_fast,
         console=console,
     )
 

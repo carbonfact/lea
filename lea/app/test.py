@@ -12,7 +12,7 @@ def test(
     views_dir: str,
     only: list[str],
     threads: int,
-    raise_exceptions: bool,
+    fail_fast: bool,
     console: rich.console.Console,
 ):
     # List all the columns
@@ -53,5 +53,5 @@ def test(
             else:
                 console.log(f"FAILURE {test}", style="bold red")
                 console.log(conflicts.head())
-                if raise_exceptions:
+                if fail_fast:
                     raise RuntimeError(f"Test {test} failed")
