@@ -229,7 +229,7 @@ lea run --raise-exceptions
 For debugging purposes, it is possible to print out a query and copy it to the clipboard:
 
 ```sh
-lea run --print --only core.users | pbcopy
+lea run --only core.users --print | pbcopy
 ```
 
 ### `lea test`
