@@ -78,12 +78,17 @@ lea is configured by setting environment variables. The following variables are 
 ```sh
 # General configuration
 LEA_USERNAME=max
-LEA_WAREHOUSE=bigquery
 
-# DuckDB 🦆
+# DuckDB 🐤
+LEA_WAREHOUSE=duckdb
+LEA_DUCKDB_PATH=duckdb.db
+
+# MotherDuck 🦆
+LEA_WAREHOUSE=motherduck
 LEA_DUCKDB_PATH=duckdb.db
 
 # BigQuery 🦏
+LEA_WAREHOUSE=bigquery
 LEA_BQ_LOCATION=EU
 LEA_BQ_PROJECT_ID=carbonfact-dwh
 LEA_BQ_DATASET_NAME=kaya
@@ -127,17 +132,17 @@ views/
 
 Each view will be named according to its location, following the warehouse convention:
 
-| Warehouse   | Dataset   | Username | Schema   | Table   | Name                                         |
-| ----------- | --------- | -------- | -------- | ------- | -------------------------------------------- |
-| DuckDB 🦆   | `dataset` | `user`   | `schema` | `table` | `schema.table` (stored in `dataset_user.db`) |
-| BigQuery 🦏 | `dataset` | `user`   | `schema` | `table` | `dataset_user.schema__table`                 |
+| Warehouse | Dataset   | Username | Schema   | Table   | Name                                         |
+| --------- | --------- | -------- | -------- | ------- | -------------------------------------------- |
+| DuckDB    | `dataset` | `user`   | `schema` | `table` | `schema.table` (stored in `dataset_user.db`) |
+| BigQuery  | `dataset` | `user`   | `schema` | `table` | `dataset_user.schema__table`                 |
 
 The convention in lea to reference a table in a sub-schema is to use a double underscore `__`:
 
-| Warehouse   | Dataset   | Username | Schema   | Sub-schema | Table   | Name                                              |
-| ----------- | --------- | -------- | -------- | ---------- | ------- | ------------------------------------------------- |
-| DuckDB 🦆   | `dataset` | `user`   | `schema` | `sub`      | `table` | `schema.sub__table` (stored in `dataset_user.db`) |
-| BigQuery 🦏 | `dataset` | `user`   | `schema` | `sub`      | `table` | `dataset_user.schema__sub__table`                 |
+| Warehouse | Dataset   | Username | Schema   | Sub-schema | Table   | Name                                              |
+| --------- | --------- | -------- | -------- | ---------- | ------- | ------------------------------------------------- |
+| DuckDB    | `dataset` | `user`   | `schema` | `sub`      | `table` | `schema.sub__table` (stored in `dataset_user.db`) |
+| BigQuery  | `dataset` | `user`   | `schema` | `sub`      | `table` | `dataset_user.schema__sub__table`                 |
 
 Schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
 
