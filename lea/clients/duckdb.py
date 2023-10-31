@@ -14,9 +14,12 @@ from .base import Client
 
 class DuckDB(Client):
     def __init__(self, path: str, username: str | None):
-        if username is not None:
-            _path = pathlib.Path(path)
-            path = str((_path.parent / f"{_path.stem}_{username}{_path.suffix}").absolute())
+        if path.startswith("md:"):
+            path = f"{path}_{username}" if username is not None else path
+        else:
+            if username is not None:
+                _path = pathlib.Path(path)
+                path = str((_path.parent / f"{_path.stem}_{username}{_path.suffix}").absolute())
         self.path = path
         self.username = username
         self.con = duckdb.connect(self.path)

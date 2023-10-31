@@ -175,7 +175,7 @@ def run(
     fresh: bool,
     threads: int,
     show: int,
-    raise_exceptions: bool,
+    fail_fast: bool,
     console: rich.console.Console,
 ):
     # If print_to_cli, it means we only want to print out the view definitions, nothing else
@@ -322,5 +322,5 @@ def run(
             console.print(str(dag[node]), style="bold red")
             console.print(exception)
 
-        if raise_exceptions:
+        if fail_fast:
             raise Exception("Some views failed to build")
