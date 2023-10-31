@@ -1,10 +1,5 @@
 # Compare development to production
 
-- New table
-- Disappeared table
-- Only rows change
-- Only bytes change
-
 The first thing to do is create an `.env` file, as so:
 
 ```sh
