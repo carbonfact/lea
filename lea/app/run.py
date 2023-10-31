@@ -195,16 +195,15 @@ def run(
     console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
-    for schema, table in client.list_existing_view_names():
-        if (schema, table) in dag:
+    for key in client.list_existing_view_names():
+        if key in dag:
             continue
-        console_log(f"Removing {schema}.{table}")
         if not dry:
             view_to_delete = lea.views.GenericSQLView(
                 schema=schema, name=table, query="", sqlglot_dialect=client.sqlglot_dialect
             )
             client.delete_view(view=view_to_delete)
-        console_log(f"Removed {schema}.{table}")
+        console_log(f"Removed {'.'.join(key)}")
 
     def display_progress() -> rich.table.Table:
         if print_to_cli:

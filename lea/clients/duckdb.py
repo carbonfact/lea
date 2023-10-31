@@ -25,6 +25,10 @@ class DuckDB(Client):
         self.con = duckdb.connect(self.path)
 
     @property
+    def is_motherduck(self):
+        return self.path.startswith("md:")
+
+    @property
     def sqlglot_dialect(self):
         return sqlglot.dialects.Dialects.DUCKDB
 
@@ -56,18 +60,16 @@ class DuckDB(Client):
 
     def list_existing_view_names(self) -> list[tuple[str, str]]:
         query = """
-            SELECT
-                CASE
-                    WHEN POSITION('_' IN table_schema) > 0
-                    THEN SUBSTRING(table_schema FROM 1 FOR POSITION('_' IN table_schema) - 1)
-                    ELSE table_schema
-                END table_schema,
-                table_name
-            FROM information_schema.tables
-
+        SELECT
+            table_schema,
+            table_name
+        FROM information_schema.tables
         """
+        if self.is_motherduck:
+            database = self.path.split(":")[1]
+            query += f"\nWHERE table_catalog = '{database}'"
         return [
-            (r["table_schema"], r["table_name"])
+            (r["table_schema"], *r["table_name"].split(lea._SEP))
             for r in self.con.sql(query).df().to_dict(orient="records")
         ]
 
