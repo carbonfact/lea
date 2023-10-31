@@ -68,7 +68,6 @@ Use one of the following commands, depending on which warehouse you wish to use:
 
 ```sh
 pip install lea-cli[duckdb]
-pip install lea-cli[motherduck]
 pip install lea-cli[bigquery]
 ```
 
