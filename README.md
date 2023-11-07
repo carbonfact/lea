@@ -240,14 +240,14 @@ lea run --only core.users --print | pbcopy
 ### `lea test`
 
 ```sh
-lea test views
+lea test
 ```
 
 There are two types of tests:
 
-- Singular tests -- these are queries which return failing rows. They are stored in a `tests` directory.
-- Assertion tests -- these are comment annotations in the queries themselves:
-  - `@UNIQUE` -- checks that a column's values are unique.
+- Singular tests — these are queries which return failing rows. They are stored in a `tests` directory.
+- Assertion tests — these are comment annotations in the queries themselves:
+  - `@UNIQUE` — checks that a column's values are unique.
 
 As with the `run` command, there is a `--production` flag to disable the `<user>` suffix and thus test production data.
 
@@ -256,7 +256,7 @@ As with the `run` command, there is a `--production` flag to disable the `<user>
 It is possible to generate documentation for the queries. This is done by inspecting the schema of the generated views and extracting the comments in the queries.
 
 ```sh
-lea docs views
+lea docs
     --output-dir docs  # where to put the generated files
 ```
 
