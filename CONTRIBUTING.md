@@ -11,6 +11,7 @@ git clone https://github.com/carbonfact/lea
 There are submodules in this repository, so you'll need to fetch/update them:
 
 ```sh
+git submodule init
 git submodule update
 ```
 
