@@ -132,10 +132,12 @@ class BigQuery(Client):
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
-        view = lea.views.GenericSQLView(schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect)
+        view = lea.views.GenericSQLView(
+            schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect
+        )
         columns = self._load_sql_view(view)
         # HACK
-        columns['view_name'] = columns['view_name'].apply(lambda x: f"{self.dataset_name}.{x}")
+        columns["view_name"] = columns["view_name"].apply(lambda x: f"{self.dataset_name}.{x}")
         return columns
 
     def _make_view_path(self, view: lea.views.View) -> str:
