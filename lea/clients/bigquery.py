@@ -133,7 +133,10 @@ class BigQuery(Client):
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
         view = lea.views.GenericSQLView(schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect)
-        return self._load_sql_view(view)
+        columns = self._load_sql_view(view)
+        # HACK
+        columns['view_name'] = columns['view_name'].apply(lambda x: f"{self.dataset_name}.{x}")
+        return columns
 
     def _make_view_path(self, view: lea.views.View) -> str:
         return f"{self.dataset_name}.{lea._SEP.join(view.key)}"

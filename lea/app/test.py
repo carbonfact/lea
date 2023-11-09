@@ -31,7 +31,6 @@ def test(
         view_columns = columns.query(f"view_name == '{client._make_view_path(view)}'")[
             "column"
         ].tolist()
-
         for test in client.yield_unit_tests(view=view, view_columns=view_columns):
             assertion_tests.append(test)
     console.log(f"Found {len(assertion_tests):,d} assertion tests")

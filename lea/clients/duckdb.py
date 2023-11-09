@@ -89,7 +89,7 @@ class DuckDB(Client):
     def get_columns(self) -> pd.DataFrame:
         query = """
         SELECT
-             table_schema || '.' || table_name AS view_name,
+            table_schema || '.' || table_name AS view_name,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
