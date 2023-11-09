@@ -55,9 +55,10 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             self.dependencies.keys()
         )
         schema_nodes = itertools.groupby(sorted(nodes), lambda node: node[0])
-        for schema, nodes in sorted(schema_nodes):
+        for schema, nodes in schema_nodes:
             out.write(f"    subgraph {schema}\n")
-            for _, node in sorted(nodes):
+            for _, *node in sorted(nodes):
+                node = ".".join(node)
                 out.write(f"    {schema}.{node}({node})\n")
             out.write("    end\n\n")
         for dst, srcs in sorted(self.dependencies.items()):
