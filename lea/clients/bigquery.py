@@ -104,9 +104,9 @@ class BigQuery(Client):
         return pd.read_gbq(query, credentials=self.client._credentials)
 
     def list_existing_view_names(self):
-        return [
-            table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
-        ]
+        return {
+            tuple(table.table_id.split("__")): table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
+        }
 
     def delete_view(self, view: lea.views.View):
         self.client.delete_table(f"{self.project_id}.{self._make_view_path(view)}")

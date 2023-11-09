@@ -15,9 +15,14 @@ def make_client(production: bool):
 
         from lea.clients.bigquery import BigQuery
 
+        scopes_str = os.environ.get("LEA_BQ_SCOPES", "https://www.googleapis.com/auth/bigquery")
+        scopes = scopes_str.split(",")
+        scopes = [scope.strip() for scope in scopes]
+
         return BigQuery(
             credentials=service_account.Credentials.from_service_account_info(
-                json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"], strict=False)
+                json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"], strict=False),
+                scopes=scopes
             ),
             location=os.environ["LEA_BQ_LOCATION"],
             project_id=os.environ["LEA_BQ_PROJECT_ID"],
