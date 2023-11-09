@@ -105,7 +105,8 @@ class BigQuery(Client):
 
     def list_existing_view_names(self):
         return {
-            tuple(table.table_id.split("__")): table.table_id.split("__", 1) for table in self.client.list_tables(self.dataset_name)
+            tuple(table.table_id.split("__")): table.table_id.split("__", 1)
+            for table in self.client.list_tables(self.dataset_name)
         }
 
     def delete_view(self, view: lea.views.View):

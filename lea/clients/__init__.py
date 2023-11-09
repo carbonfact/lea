@@ -21,8 +21,7 @@ def make_client(production: bool):
 
         return BigQuery(
             credentials=service_account.Credentials.from_service_account_info(
-                json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"], strict=False),
-                scopes=scopes
+                json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"], strict=False), scopes=scopes
             ),
             location=os.environ["LEA_BQ_LOCATION"],
             project_id=os.environ["LEA_BQ_PROJECT_ID"],
