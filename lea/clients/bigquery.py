@@ -132,7 +132,7 @@ class BigQuery(Client):
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
-        view = lea.views.GenericSQLView(schema=None, table=None, query=query)
+        view = lea.views.GenericSQLView(schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect)
         return self._load_sql_view(view)
 
     def _make_view_path(self, view: lea.views.View) -> str:

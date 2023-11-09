@@ -23,7 +23,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
     def schema_dependencies(self):
         deps = collections.defaultdict(set)
         for (src_schema, *_), dsts in self.dependencies.items():
-            deps[src_schema].update([schema for schema, _ in dsts if schema != src_schema])
+            deps[src_schema].update([schema for schema, *_ in dsts if schema != src_schema])
         return deps
 
     def list_ancestors(self, node):

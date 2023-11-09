@@ -64,7 +64,12 @@ class SQLView(View):
                     and sqlglot.exp.table_name(table) not in scope.cte_sources
                 ):
                     if self.sqlglot_dialect is sqlglot.dialects.Dialects.BIGQUERY:
-                        dependencies.add(tuple(table.name.split(lea._SEP)))
+                        parts = tuple(table.name.split(lea._SEP))
+                        # External tables that are not part of the dataset
+                        if len(parts) == 1:
+                            dependencies.add((table.db, *parts))
+                        else:
+                            dependencies.add(parts)
                     elif self.sqlglot_dialect is sqlglot.dialects.Dialects.DUCKDB:
                         dependencies.add((table.db, *table.name.split(lea._SEP)))
                     else:
