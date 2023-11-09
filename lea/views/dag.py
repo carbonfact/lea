@@ -83,6 +83,49 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         return out.getvalue()
 
     def to_mermaid(self, schemas_only=False):
+        """
+
+        >>> import pathlib
+        >>> import lea
+
+        >>> views_dir = pathlib.Path(__file__).parent.parent.parent / "examples" / "jaffle_shop" / "views"
+        >>> views = lea.views.load_views(views_dir, sqlglot_dialect="duckdb")
+        >>> views = [view for view in views if view.schema not in {"tests"}]
+        >>> dag = lea.views.DAGOfViews(views)
+
+        >>> print(dag.to_mermaid(schemas_only=True))
+        %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
+        flowchart TB
+            analytics(analytics)
+            core(core)
+            staging(staging)
+            core --> analytics
+            staging --> core
+        <BLANKLINE>
+
+        >>> print(dag.to_mermaid())
+        %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
+        flowchart TB
+            subgraph analytics
+            end
+        <BLANKLINE>
+            subgraph core
+            end
+        <BLANKLINE>
+            subgraph staging
+            end
+        <BLANKLINE>
+            core.orders --> analytics.finance.kpis
+            core.customers --> analytics.kpis
+            core.orders --> analytics.kpis
+            staging.customers --> core.customers
+            staging.orders --> core.customers
+            staging.payments --> core.customers
+            staging.orders --> core.orders
+            staging.payments --> core.orders
+        <BLANKLINE>
+
+        """
         if schemas_only:
             return self._to_mermaid_schemas()
         return self._to_mermaid_views()
