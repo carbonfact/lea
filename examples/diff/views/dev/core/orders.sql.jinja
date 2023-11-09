@@ -1,19 +1,6 @@
 {% set payment_methods = ['credit_card', 'coupon', 'bank_transfer', 'gift_card'] %}
 
-with orders as (
-
-    select * from staging.orders
-    where date_part('month', cast(order_date AS date)) > 1
-
-),
-
-payments as (
-
-    select * from staging.payments
-
-),
-
-order_payments as (
+with order_payments as (
 
     select
         order_id,
@@ -24,7 +11,7 @@ order_payments as (
 
         sum(amount) as total_amount
 
-    from payments
+    from staging.payments
 
     group by order_id
 
@@ -44,8 +31,8 @@ select
 
     order_payments.total_amount as amount
 
-from orders
-
-
+from staging.orders
 left join order_payments
     on orders.order_id = order_payments.order_id
+
+where date_part('month', cast(order_date AS date)) > 1

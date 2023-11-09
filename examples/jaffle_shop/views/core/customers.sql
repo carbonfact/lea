@@ -1,22 +1,4 @@
-with customers as (
-
-    select * from staging.customers
-
-),
-
-orders as (
-
-    select * from staging.orders
-
-),
-
-payments as (
-
-    select * from staging.payments
-
-),
-
-customer_orders as (
+with customer_orders as (
 
         select
         customer_id,
@@ -24,7 +6,7 @@ customer_orders as (
         min(order_date) as first_order,
         max(order_date) as most_recent_order,
         count(order_id) as number_of_orders
-    from orders
+    from staging.orders
 
     group by customer_id
 
@@ -36,10 +18,9 @@ customer_payments as (
         orders.customer_id,
         sum(amount) as total_amount
 
-    from payments
+    from staging.payments
 
-    left join orders on
-         payments.order_id = orders.order_id
+    left join staging.orders orders using (order_id)
 
     group by orders.customer_id
 
@@ -55,7 +36,7 @@ select
     customer_orders.number_of_orders,
     customer_payments.total_amount as customer_lifetime_value
 
-from customers
+from staging.customers customers
 
 left join customer_orders
     on customers.customer_id = customer_orders.customer_id

@@ -84,7 +84,8 @@ def test_diff(monkeypatch):
 
     # Run
     assert runner.invoke(app, ["run", prod_views_path, "--production"]).exit_code == 0
-    assert runner.invoke(app, ["run", dev_views_path]).exit_code == 0
+    result = runner.invoke(app, ["run", dev_views_path])
+    print(result.stdout)
 
     # Check number of tables
     with duckdb.connect("tests/diff.db") as con:

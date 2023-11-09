@@ -395,6 +395,7 @@ analytics.kpis
 - [ ] Cost estimation of running a refresh
 - [ ] Table usage statistics from query logs
 - [ ] LLM query generation (aka. a better semantic layer)
+- [ ] Return correct exit code when something goes wrong
 
 Some of these features already exist at Carbonfact. We just don't feel they're polished enough for public consumption. Feel free to reach out if you want to know more and/or contribute 😊
 
