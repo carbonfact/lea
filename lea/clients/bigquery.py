@@ -20,7 +20,7 @@ class BigQuery(Client):
         self._dataset_name = dataset_name
         self.username = username
 
-    def prepare(self, console):
+    def prepare(self, views, console):
         dataset = self.create_dataset()
         console.log(f"Created dataset {dataset.dataset_id}")
 
