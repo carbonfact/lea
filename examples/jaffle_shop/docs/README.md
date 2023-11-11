@@ -24,12 +24,19 @@ flowchart TB
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart TB
     subgraph analytics
+    analytics.finance.kpis(finance.kpis)
+    analytics.kpis(kpis)
     end
 
     subgraph core
+    core.customers(customers)
+    core.orders(orders)
     end
 
     subgraph staging
+    staging.customers(customers)
+    staging.orders(orders)
+    staging.payments(payments)
     end
 
     core.orders --> analytics.finance.kpis
