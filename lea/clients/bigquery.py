@@ -150,3 +150,10 @@ class BigQuery(Client):
         GROUP BY {column}
         HAVING n > 1
         """
+
+    def make_test_non_null_column(self, view: lea.views.View, column: str) -> str:
+        return f"""
+        SELECT ROW_NUMBER() OVER () AS row_number
+        FROM {self._make_view_path(view)}
+        WHERE {column} IS NULL
+        """

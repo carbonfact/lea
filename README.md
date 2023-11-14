@@ -249,6 +249,7 @@ There are two types of tests:
 - Singular tests — these are queries which return failing rows. They are stored in a `tests` directory.
 - Assertion tests — these are comment annotations in the queries themselves:
   - `@UNIQUE` — checks that a column's values are unique.
+  - `@NOT_NULL` — checks that all values in a column are not null.
 
 As with the `run` command, there is a `--production` flag to disable the `<user>` suffix and thus test production data.
 

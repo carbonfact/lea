@@ -85,6 +85,10 @@ class Client(abc.ABC):
     def make_test_unique_column(self, view: views.View, column: str) -> str:
         ...
 
+    @abc.abstractmethod
+    def make_test_non_null_column(self, view: views.View, column: str) -> str:
+        ...
+
     def yield_unit_tests(self, view, view_columns):
         # Unit tests in Python views are not handled yet
         if isinstance(view, views.PythonView):
@@ -102,6 +106,13 @@ class Client(abc.ABC):
                         schema="tests",
                         name=f"{view}.{column}@UNIQUE",
                         query=self.make_test_unique_column(view, column),
+                        sqlglot_dialect=self.sqlglot_dialect,
+                    )
+                elif comment.text == "@NOT_NULL":
+                    yield views.GenericSQLView(
+                        schema="tests",
+                        name=f"{view}.{column}@NOT_NULL",
+                        query=self.make_test_non_null_column(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
                 else:

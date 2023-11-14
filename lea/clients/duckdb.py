@@ -108,3 +108,11 @@ class DuckDB(Client):
         GROUP BY {column}
         HAVING n > 1
         """
+
+    def make_test_non_null_column(self, view: lea.views.View, column: str) -> str:
+        schema, *leftover = view.key
+        return f"""
+        SELECT ROW_NUMBER() OVER () AS row_number
+        FROM {f"{schema}.{lea._SEP.join(leftover)}"}
+        WHERE {column} IS NULL
+        """
