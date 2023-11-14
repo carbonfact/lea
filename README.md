@@ -168,33 +168,33 @@ The `<user>` is determined automatically from the [login name](https://docs.pyth
 A single view can be run:
 
 ```sh
-lea run --only core.users
+lea run --select core.users
 ```
 
 Several views can be run:
 
 ```sh
-lea run --only core.users --only core.orders
+lea run --select core.users --select core.orders
 ```
 
 Similar to dbt, lea also supports graph operators:
 
 ```sh
-lea run --only core.users+   # users and everything that depends on it
-lea run --only +core.users   # users and everything it depends on
-lea run --only +core.users+  # users and all its dependencies
+lea run --select core.users+   # users and everything that depends on it
+lea run --select +core.users   # users and everything it depends on
+lea run --select +core.users+  # users and all its dependencies
 ```
 
 You can select all views in a schema:
 
 ```sh
-lea run --only core/
+lea run --select core/
 ```
 
 This also work with sub-schemas:
 
 ```sh
-lea run --only analytics.finance/
+lea run --select analytics.finance/
 ```
 
 There are thus 8 possible operators:
@@ -213,7 +213,7 @@ schema/+        (all tables in schema with their descendants)
 Combinations are possible:
 
 ```sh
-lea run --only core.users+ --only +core.orders
+lea run --select core.users+ --select +core.orders
 ```
 
 #### Workflow tips
@@ -235,7 +235,7 @@ lea run --fail-fast
 For debugging purposes, it is possible to print out a query and copy it to the clipboard:
 
 ```sh
-lea run --only core.users --print | pbcopy
+lea run --select core.users --print | pbcopy
 ```
 
 ### `lea test`

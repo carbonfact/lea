@@ -53,7 +53,7 @@ def teardown(production: bool = False, env: str = EnvPath):
 @app.command()
 def run(
     views_dir: str = ViewsDir,
-    only: list[str] = typer.Option(default=None),
+    select: list[str] = typer.Option(default=None),
     dry: bool = False,
     print: bool = False,
     fresh: bool = False,
@@ -75,7 +75,7 @@ def run(
     run(
         client=client,
         views=views,
-        only=only,
+        select=select,
         dry=dry,
         print_to_cli=print,
         fresh=fresh,
@@ -89,7 +89,7 @@ def run(
 @app.command()
 def test(
     views_dir: str = ViewsDir,
-    only: list[str] = typer.Option(None),
+    select: list[str] = typer.Option(None),
     threads: int = 8,
     production: bool = False,
     fail_fast: bool = False,
@@ -103,7 +103,7 @@ def test(
     test(
         client=client,
         views_dir=views_dir,
-        only=only,
+        select=select,
         threads=threads,
         fail_fast=fail_fast,
         console=console,

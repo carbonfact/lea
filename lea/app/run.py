@@ -169,7 +169,7 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
 def run(
     client: lea.clients.Client,
     views: list[lea.views.View],
-    only: list[str],
+    select: list[str],
     dry: bool,
     print_to_cli: bool,
     fresh: bool,
@@ -190,7 +190,7 @@ def run(
 
     # Determine which views need to be run
     whitelist = (
-        set.union(*(make_whitelist(query, dag) for query in only)) if only else set(dag.keys())
+        set.union(*(make_whitelist(query, dag) for query in select)) if select else set(dag.keys())
     )
     console_log(f"{len(whitelist):,d} view(s) selected")
 

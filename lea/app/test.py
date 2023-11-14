@@ -10,7 +10,7 @@ import lea
 def test(
     client: lea.clients.Client,
     views_dir: str,
-    only: list[str],
+    select: list[str],
     threads: int,
     fail_fast: bool,
     console: rich.console.Console,
@@ -37,7 +37,7 @@ def test(
 
     # Determine which tests need to be run
     tests = singular_tests + assertion_tests
-    blacklist = set(t.key for t in tests).difference(only) if only else set()
+    blacklist = set(t.key for t in tests).difference(select) if select else set()
     console.log(f"{len(tests) - len(blacklist):,d} test(s) selected")
     tests = [test for test in tests if test.key not in blacklist]
 
