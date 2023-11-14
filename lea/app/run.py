@@ -163,7 +163,12 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
             if include_descendants:
                 yield from dag.list_descendants(key)
 
-    return set(_yield_whitelist(query, include_ancestors=False, include_descendants=False))
+    return {
+        key
+        for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
+        # Some nodes in the graph are not part of the views, such as third-party tables
+        if key in dag
+    }
 
 
 def run(
@@ -190,6 +195,8 @@ def run(
 
     # Determine which views need to be run
     whitelist = (
+        # If multiple select queries are provided, we want to run the union of all the views they
+        # select. We use a set union to remove duplicates.
         set.union(*(make_whitelist(query, dag) for query in select)) if select else set(dag.keys())
     )
     console_log(f"{len(whitelist):,d} view(s) selected")
