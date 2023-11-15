@@ -155,7 +155,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
                 staging.customers(customers)
                 staging.orders(orders)
                 staging.payments(payments)
-                end
+            end
         <BLANKLINE>
             core.orders --> analytics.finance.kpis
             core.customers --> analytics.kpis
