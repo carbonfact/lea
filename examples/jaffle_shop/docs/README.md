@@ -23,20 +23,27 @@ flowchart TB
 ```mermaid
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart TB
+
     subgraph analytics
-    analytics.finance.kpis(finance.kpis)
-    analytics.kpis(kpis)
+
+    subgraph finance
+        analytics.finance.kpis(kpis)
     end
+
+        analytics.kpis(kpis)
+    end
+
 
     subgraph core
-    core.customers(customers)
-    core.orders(orders)
+        core.customers(customers)
+        core.orders(orders)
     end
 
+
     subgraph staging
-    staging.customers(customers)
-    staging.orders(orders)
-    staging.payments(payments)
+        staging.customers(customers)
+        staging.orders(orders)
+        staging.payments(payments)
     end
 
     core.orders --> analytics.finance.kpis
