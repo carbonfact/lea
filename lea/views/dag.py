@@ -3,9 +3,10 @@ from __future__ import annotations
 import collections
 import graphlib
 import io
-import itertools
 
 import lea
+
+FOUR_SPACES = "    "
 
 
 class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
@@ -47,6 +48,35 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
 
         return list(_list_descendants(node))
 
+    def _build_nested_schema(self, deps):
+        nested_schema = {}
+
+        for path in deps:
+            current_level = nested_schema
+            for part in path:
+                if part not in current_level:
+                    current_level[part] = {}
+                current_level = current_level[part]
+
+        return nested_schema
+
+    def _to_mermaid_subgraphs(self, out, nested_schema: dict):
+        def output_subgraph(schema: str, values: dict, prefix: str = ""):
+            out.write(f"\n{FOUR_SPACES}subgraph {schema}\n")
+            for value in sorted(values.keys()):
+                sub_values = values[value]
+                path = f"{prefix}.{schema}" if prefix else schema
+                full_path = f"{path}.{value}"
+                if sub_values:
+                    output_subgraph(value, sub_values, path)
+                else:
+                    out.write(f"{FOUR_SPACES*2}{full_path}({value})\n")
+            out.write(f"{FOUR_SPACES}end\n\n")
+
+        for schema in sorted(nested_schema.keys()):
+            values = nested_schema[schema]
+            output_subgraph(schema, values)
+
     def _to_mermaid_views(self):
         out = io.StringIO()
         out.write('%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%\n')
@@ -54,18 +84,15 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         nodes = set(node for deps in self.dependencies.values() for node in deps) | set(
             self.dependencies.keys()
         )
-        schema_nodes = itertools.groupby(sorted(nodes), lambda node: node[0])
-        for schema, nodes in schema_nodes:
-            out.write(f"    subgraph {schema}\n")
-            for _, *node in sorted(nodes):
-                node = ".".join(node)
-                out.write(f"    {schema}.{node}({node})\n")
-            out.write("    end\n\n")
+
+        nested_schema = self._build_nested_schema(nodes)
+        self._to_mermaid_subgraphs(out, nested_schema)
+
         for dst, srcs in sorted(self.dependencies.items()):
             dst = ".".join(dst)
             for src in sorted(srcs):
                 src = ".".join(src)
-                out.write(f"    {src} --> {dst}\n")
+                out.write(f"{FOUR_SPACES}{src} --> {dst}\n")
         return out.getvalue()
 
     def _to_mermaid_schemas(self):
@@ -77,10 +104,10 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             schema_dependencies.keys()
         )
         for node in sorted(nodes):
-            out.write(f"    {node}({node})\n")
+            out.write(f"{FOUR_SPACES}{node}({node})\n")
         for dst, srcs in sorted(schema_dependencies.items()):
             for src in sorted(srcs):
-                out.write(f"    {src} --> {dst}\n")
+                out.write(f"{FOUR_SPACES}{src} --> {dst}\n")
         return out.getvalue()
 
     def to_mermaid(self, schemas_only=False):
@@ -107,20 +134,27 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         >>> print(dag.to_mermaid())
         %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
         flowchart TB
+        <BLANKLINE>
             subgraph analytics
-            analytics.finance.kpis(finance.kpis)
-            analytics.kpis(kpis)
+        <BLANKLINE>
+            subgraph finance
+                analytics.finance.kpis(kpis)
             end
+        <BLANKLINE>
+                analytics.kpis(kpis)
+            end
+        <BLANKLINE>
         <BLANKLINE>
             subgraph core
-            core.customers(customers)
-            core.orders(orders)
+                core.customers(customers)
+                core.orders(orders)
             end
         <BLANKLINE>
+        <BLANKLINE>
             subgraph staging
-            staging.customers(customers)
-            staging.orders(orders)
-            staging.payments(payments)
+                staging.customers(customers)
+                staging.orders(orders)
+                staging.payments(payments)
             end
         <BLANKLINE>
             core.orders --> analytics.finance.kpis
