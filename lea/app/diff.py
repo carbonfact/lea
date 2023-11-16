@@ -50,7 +50,8 @@ def get_schema_diff(
                 "diff_kind": "REMOVED",
             }
             for view_name, column in destination_columns - origin_columns
-        ]
+        ],
+        columns=["view_name", "column", "diff_kind"],
     )
 
 
@@ -66,9 +67,10 @@ def get_size_diff(
         suffixes=("_origin", "_destination"),
         how="outer",
     ).fillna(0)
-    comparison["n_rows_diff"] = comparison.eval("n_rows_origin - n_rows_destination").astype(int)
-    comparison["n_bytes_diff"] = comparison.eval("n_bytes_origin - n_bytes_destination").astype(int)
-    comparison = comparison[(comparison.n_rows_diff != 0) | (comparison.n_bytes_diff != 0)]
+    comparison["n_rows_diff"] = (comparison["n_rows_origin"] - comparison["n_rows_destination"]).astype(int)
+    comparison["n_bytes_diff"] = (comparison["n_bytes_origin"] - comparison["n_bytes_destination"]).astype(int)
+    # TODO: include bytes
+    comparison = comparison[comparison.n_rows_diff != 0]
     return comparison
 
 
@@ -99,12 +101,15 @@ def calculate_diff(origin_client: lea.clients.Client, target_client: lea.clients
             print_(f"- {view_name}")
         elif view_name in added_view_names:
             print_(f"+ {view_name}")
-        else:
+        elif view_name in modified_view_names:
             print_(f"  {view_name}")
 
         if view_name in modified_view_names:
-            sign = "+" if view_size_diff.n_rows_diff > 0 else "-"
-            print_(f"{sign} {abs(view_size_diff.n_rows_diff):,d} rows")
+            # #rows changed
+            if view_size_diff.n_rows_diff:
+                sign = "+" if view_size_diff.n_rows_diff > 0 else "-"
+                print_(f"{sign} {abs(view_size_diff.n_rows_diff):,d} rows")
+            # TODO: #bytes changed
         for removed in sorted(view_schema_diff[view_schema_diff.diff_kind == "REMOVED"].column):
             print_(f"- {removed}")
         for added in sorted(view_schema_diff[view_schema_diff.diff_kind == "ADDED"].column):

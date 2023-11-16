@@ -121,7 +121,7 @@ class BigQuery(Client):
         FROM `region-{self.location.lower()}`.INFORMATION_SCHEMA.TABLE_STORAGE_BY_PROJECT
         WHERE table_schema = '{self.dataset_name}'
         """
-        view = lea.views.GenericSQLView(schema=None, table=None, query=query)
+        view = lea.views.GenericSQLView(schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect)
         return self._load_sql_view(view)
 
     def get_columns(self) -> pd.DataFrame:
@@ -136,8 +136,6 @@ class BigQuery(Client):
             schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect
         )
         columns = self._load_sql_view(view)
-        # HACK
-        columns["view_name"] = columns["view_name"].apply(lambda x: f"{self.dataset_name}.{x}")
         return columns
 
     def _make_view_path(self, view: lea.views.View) -> str:
