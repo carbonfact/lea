@@ -197,7 +197,9 @@ def run(
     whitelist = (
         # If multiple select queries are provided, we want to run the union of all the views they
         # select. We use a set union to remove duplicates.
-        set.union(*(make_whitelist(query, dag) for query in select)) if select else set(dag.keys())
+        set.union(*(make_whitelist(query, dag) for query in select))
+        if select
+        else set(dag.keys())
     )
     console_log(f"{len(whitelist):,d} view(s) selected")
 
