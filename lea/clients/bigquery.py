@@ -97,10 +97,14 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _load_sql_view(self, view: lea.views.SQLView) -> pd.DataFrame:
+    def _render_view_query(self, view: lea.views.SQLView) -> str:
         query = view.query
         if self.username:
-            query = query.replace(f"{self._dataset_name}_{self.username}.", f"{self.dataset_name}.")
+            query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
+        return query
+
+    def _load_sql_view(self, view: lea.views.SQLView) -> pd.DataFrame:
+        query = self._render_view_query(view)
         return pd.read_gbq(query, credentials=self.client._credentials)
 
     def list_existing_view_names(self):
