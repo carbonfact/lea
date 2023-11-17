@@ -53,4 +53,5 @@ def test(
                 console.log(f"FAILURE {test}", style="bold red")
                 console.log(conflicts.head())
                 if fail_fast:
+                    # TODO: print out the query to help quick debugging
                     raise RuntimeError(f"Test {test} failed")
