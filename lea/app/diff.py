@@ -67,8 +67,12 @@ def get_size_diff(
         suffixes=("_origin", "_destination"),
         how="outer",
     ).fillna(0)
-    comparison["n_rows_diff"] = (comparison["n_rows_origin"] - comparison["n_rows_destination"]).astype(int)
-    comparison["n_bytes_diff"] = (comparison["n_bytes_origin"] - comparison["n_bytes_destination"]).astype(int)
+    comparison["n_rows_diff"] = (
+        comparison["n_rows_origin"] - comparison["n_rows_destination"]
+    ).astype(int)
+    comparison["n_bytes_diff"] = (
+        comparison["n_bytes_origin"] - comparison["n_bytes_destination"]
+    ).astype(int)
     # TODO: include bytes
     comparison = comparison[comparison.n_rows_diff != 0]
     return comparison

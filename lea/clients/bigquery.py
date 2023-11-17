@@ -125,7 +125,9 @@ class BigQuery(Client):
         FROM `region-{self.location.lower()}`.INFORMATION_SCHEMA.TABLE_STORAGE_BY_PROJECT
         WHERE table_schema = '{self.dataset_name}'
         """
-        view = lea.views.GenericSQLView(schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect)
+        view = lea.views.GenericSQLView(
+            schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect
+        )
         return self._load_sql_view(view)
 
     def get_columns(self) -> pd.DataFrame:
