@@ -26,8 +26,9 @@ def docs(
 
     # List all the columns
     columns = client.get_columns()
-    # HACK
-    columns["view_name"] = f"{client.dataset_name}." + columns["view_name"]
+    # HACK: we should have a cleaner way to handle schemas/views irrespective of the client
+    if hasattr(client, "dataset_name"):
+        columns["view_name"] = f"{client.dataset_name}." + columns["view_name"]
 
     # Now we can generate the docs for each schema and view therein
     readme_content = io.StringIO()
