@@ -120,8 +120,7 @@ class Client(abc.ABC):
                         query=self.make_test_unique_column(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
-                elif (unique_by := re.fullmatch(r"@UNIQUE_BY\((?P<by>.+)\)", comment.text)):
-
+                elif unique_by := re.fullmatch(r"@UNIQUE_BY\((?P<by>.+)\)", comment.text):
                     by = unique_by.group("by")
                     yield views.GenericSQLView(
                         schema="tests",

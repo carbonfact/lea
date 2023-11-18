@@ -6,23 +6,23 @@ import pandas as pd
 @pytest.fixture
 def client():
     from lea.clients import duckdb
+
     return duckdb.DuckDB(":memory:", username=None)
 
-class MockRichConsole:
 
+class MockRichConsole:
     def log(self, msg):
         pass
+
 
 @pytest.mark.parametrize(
     "test_data,query,ok",
     [
-        pytest.param(
-            *case, id=f"test_assertion{tag}#{i}"
-        )
+        pytest.param(*case, id=f"test_assertion{tag}#{i}")
         for tag, cases in {
-            '@UNIQUE': [
+            "@UNIQUE": [
                 (
-                    pd.DataFrame({'test_column': [1, 2, 3, 4, 5]}),
+                    pd.DataFrame({"test_column": [1, 2, 3, 4, 5]}),
                     """
                     SELECT
                         -- @UNIQUE
@@ -32,9 +32,11 @@ class MockRichConsole:
                     True,
                 ),
                 (
-                    pd.DataFrame({
-                        'test_column': [1, 1, 2, 2, 3],
-                    }),
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 1, 2, 2, 3],
+                        }
+                    ),
                     """
                     SELECT
                         -- @UNIQUE
@@ -44,9 +46,7 @@ class MockRichConsole:
                     False,
                 ),
                 (
-                    pd.DataFrame({
-                        'test_column': [1, 2, 3, 4, None]
-                    }),
+                    pd.DataFrame({"test_column": [1, 2, 3, 4, None]}),
                     """
                     SELECT
                         -- @UNIQUE
@@ -56,9 +56,11 @@ class MockRichConsole:
                     True,
                 ),
                 (
-                    pd.DataFrame({
-                        'test_column': [1, 2, 3, None, None],
-                    }),
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 2, 3, None, None],
+                        }
+                    ),
                     """
                     SELECT
                         -- @UNIQUE
@@ -68,12 +70,14 @@ class MockRichConsole:
                     False,
                 ),
             ],
-            '@UNIQUE_BY': [
+            "@UNIQUE_BY": [
                 (
-                    pd.DataFrame({
-                        'by': ['a', 'a', 'b', 'b', 'c'],
-                        'col': [1, 1, 2, 2, 3],
-                    }),
+                    pd.DataFrame(
+                        {
+                            "by": ["a", "a", "b", "b", "c"],
+                            "col": [1, 1, 2, 2, 3],
+                        }
+                    ),
                     """
                     SELECT
                         by,
@@ -84,10 +88,12 @@ class MockRichConsole:
                     False,
                 ),
                 (
-                    pd.DataFrame({
-                        'by': ['a', 'a', 'b', 'b', 'c'],
-                        'col': [1, 2, 1, 2, 3],
-                    }),
+                    pd.DataFrame(
+                        {
+                            "by": ["a", "a", "b", "b", "c"],
+                            "col": [1, 2, 1, 2, 3],
+                        }
+                    ),
                     """
                     SELECT
                         by,
@@ -98,10 +104,12 @@ class MockRichConsole:
                     True,
                 ),
                 (
-                    pd.DataFrame({
-                        'by': ['a', 'a', 'a', 'b', 'c'],
-                        'col': [1, None, None, 2, 3],
-                    }),
+                    pd.DataFrame(
+                        {
+                            "by": ["a", "a", "a", "b", "c"],
+                            "col": [1, None, None, 2, 3],
+                        }
+                    ),
                     """
                     SELECT
                         by,
@@ -110,13 +118,15 @@ class MockRichConsole:
                     FROM test_data
                     """,
                     False,
-                )
+                ),
             ],
-            '@NOT_NULL': [
+            "@NOT_NULL": [
                 (
-                    pd.DataFrame({
-                        'test_column': [1, 2, 3, 4, 5],
-                    }),
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 2, 3, 4, 5],
+                        }
+                    ),
                     """
                     SELECT
                         -- @NOT_NULL
@@ -126,9 +136,11 @@ class MockRichConsole:
                     True,
                 ),
                 (
-                    pd.DataFrame({
-                        'test_column': [1, 2, 3, 4, None],
-                    }),
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 2, 3, 4, None],
+                        }
+                    ),
                     """
                     SELECT
                         -- @NOT_NULL
@@ -136,11 +148,11 @@ class MockRichConsole:
                     FROM test_data
                     """,
                     False,
-                )
-            ]
+                ),
+            ],
         }.items()
         for i, case in enumerate(cases, start=1)
-    ]
+    ],
 )
 def test_duckdb_assertions(test_data, query, ok, client):
     view = lea.views.GenericSQLView(
