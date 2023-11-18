@@ -109,6 +109,15 @@ class DuckDB(Client):
         HAVING n > 1
         """
 
+    def make_test_unique_column_by(self, view: lea.views.View, column: str, by: str) -> str:
+        schema, *leftover = view.key
+        return f"""
+        SELECT {by}, COUNT(*) AS n, COUNT(DISTINCT {column}) AS n_distinct
+        FROM {f"{schema}.{lea._SEP.join(leftover)}"}
+        GROUP BY {by}
+        HAVING n != n_distinct
+        """
+
     def make_test_non_null_column(self, view: lea.views.View, column: str) -> str:
         schema, *leftover = view.key
         return f"""

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import importlib
+import re
 
 import pandas as pd
 
@@ -86,6 +87,10 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
+    def make_test_unique_column_by(self, view: views.View, column: str, by: str) -> str:
+        ...
+
+    @abc.abstractmethod
     def make_test_non_null_column(self, view: views.View, column: str) -> str:
         ...
 
@@ -101,18 +106,27 @@ class Client(abc.ABC):
             for comment in comment_block:
                 if "@" not in comment.text:
                     continue
-                if comment.text == "@UNIQUE":
+                if comment.text == "@NOT_NULL":
+                    yield views.GenericSQLView(
+                        schema="tests",
+                        name=f"{view}.{column}@NOT_NULL",
+                        query=self.make_test_non_null_column(view, column),
+                        sqlglot_dialect=self.sqlglot_dialect,
+                    )
+                elif comment.text == "@UNIQUE":
                     yield views.GenericSQLView(
                         schema="tests",
                         name=f"{view}.{column}@UNIQUE",
                         query=self.make_test_unique_column(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
-                elif comment.text == "@NOT_NULL":
+                elif (unique_by := re.fullmatch(r"@UNIQUE_BY\((?P<by>.+)\)", comment.text)):
+
+                    by = unique_by.group("by")
                     yield views.GenericSQLView(
                         schema="tests",
-                        name=f"{view}.{column}@NOT_NULL",
-                        query=self.make_test_non_null_column(view, column),
+                        name=f"{view}.{column}@UNIQUE_BY_{by}",
+                        query=self.make_test_unique_column_by(view, column, by),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
                 else:
