@@ -1,6 +1,9 @@
-import lea
-import pytest
+from __future__ import annotations
+
 import pandas as pd
+import pytest
+
+import lea
 
 
 @pytest.fixture
@@ -157,7 +160,7 @@ class MockRichConsole:
 def test_duckdb_assertions(test_data, query, ok, client):
     view = lea.views.GenericSQLView(
         schema="tests",
-        name=f"test_assertion",
+        name="test_assertion",
         query=query,
         sqlglot_dialect=client.sqlglot_dialect,
     )
