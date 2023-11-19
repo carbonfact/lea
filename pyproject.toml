@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lea-cli"
-version = "0.3.0"
+version = "0.3.1"
 description = "A minimalist alternative to dbt"
 authors = ["Max Halford <maxhalford25@gmail.com>"]
 packages = [
