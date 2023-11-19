@@ -9,7 +9,7 @@ import sqlglot
 
 import lea
 
-from .base import Client
+from .base import Client, AssertionTag
 
 
 class DuckDB(Client):
@@ -100,28 +100,26 @@ class DuckDB(Client):
         schema, *leftover = view.key
         return f"{schema}.{lea._SEP.join(leftover)}"
 
-    def make_test_unique_column(self, view: lea.views.View, column: str) -> str:
+    def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
         schema, *leftover = view.key
-        return f"""
-        SELECT {column}, COUNT(*) AS n
-        FROM {f"{schema}.{lea._SEP.join(leftover)}"}
-        GROUP BY {column}
-        HAVING n > 1
-        """
+        return self.load_assertion_test_template(
+            AssertionTag.UNIQUE
+        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column)
 
-    def make_test_unique_column_by(self, view: lea.views.View, column: str, by: str) -> str:
+    def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
         schema, *leftover = view.key
-        return f"""
-        SELECT {by}, COUNT(*) AS n, COUNT(DISTINCT {column}) AS n_distinct
-        FROM {f"{schema}.{lea._SEP.join(leftover)}"}
-        GROUP BY {by}
-        HAVING n != n_distinct
-        """
+        return self.load_assertion_test_template(
+            AssertionTag.UNIQUE_BY
+        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column, by=by)
 
-    def make_test_non_null_column(self, view: lea.views.View, column: str) -> str:
+    def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
         schema, *leftover = view.key
-        return f"""
-        SELECT ROW_NUMBER() OVER () AS row_number
-        FROM {f"{schema}.{lea._SEP.join(leftover)}"}
-        WHERE {column} IS NULL
-        """
+        return self.load_assertion_test_template(
+           AssertionTag.NO_NULLS
+        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column)
+
+    def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
+        schema, *leftover = view.key
+        return self.load_assertion_test_template(
+            AssertionTag.SET
+        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column, elements=elements)

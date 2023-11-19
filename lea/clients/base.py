@@ -2,11 +2,20 @@ from __future__ import annotations
 
 import abc
 import importlib
+import pathlib
 import re
 
+import jinja2
 import pandas as pd
 
 from lea import views
+
+
+class AssertionTag:
+    NO_NULLS = "@NO_NULLS"
+    UNIQUE = "@UNIQUE"
+    UNIQUE_BY = "@UNIQUE_BY"
+    SET = "@SET"
 
 
 class Client(abc.ABC):
@@ -83,18 +92,27 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def make_test_unique_column(self, view: views.View, column: str) -> str:
+    def make_column_test_unique(self, view: views.View, column: str) -> str:
         ...
 
     @abc.abstractmethod
-    def make_test_unique_column_by(self, view: views.View, column: str, by: str) -> str:
+    def make_column_test_unique_by(self, view: views.View, column: str, by: str) -> str:
         ...
 
     @abc.abstractmethod
-    def make_test_non_null_column(self, view: views.View, column: str) -> str:
+    def make_column_test_no_nulls(self, view: views.View, column: str) -> str:
         ...
 
-    def yield_unit_tests(self, view, view_columns):
+    @abc.abstractmethod
+    def make_column_test_set(self, view: views.View, column: str, elements: set[str]) -> str:
+        ...
+
+    def load_assertion_test_template(self, tag: str) -> jinja2.Template:
+        return jinja2.Template(
+            (pathlib.Path(__file__).parent / "assertions" /  f"{tag.lstrip('@')}.sql.jinja").read_text()
+        )
+
+    def discover_assertion_tests(self, view, view_columns):
         # Unit tests in Python views are not handled yet
         if isinstance(view, views.PythonView):
             return
@@ -106,26 +124,34 @@ class Client(abc.ABC):
             for comment in comment_block:
                 if "@" not in comment.text:
                     continue
-                if comment.text == "@NOT_NULL":
+                if comment.text == AssertionTag.NO_NULLS:
                     yield views.GenericSQLView(
                         schema="tests",
-                        name=f"{view}.{column}@NOT_NULL",
-                        query=self.make_test_non_null_column(view, column),
+                        name=f"{view}.{column}{AssertionTag.NO_NULLS}",
+                        query=self.make_column_test_no_nulls(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
-                elif comment.text == "@UNIQUE":
+                elif comment.text == AssertionTag.UNIQUE:
                     yield views.GenericSQLView(
                         schema="tests",
-                        name=f"{view}.{column}@UNIQUE",
-                        query=self.make_test_unique_column(view, column),
+                        name=f"{view}.{column}{AssertionTag.UNIQUE}",
+                        query=self.make_column_test_unique(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
-                elif unique_by := re.fullmatch(r"@UNIQUE_BY\((?P<by>.+)\)", comment.text):
+                elif unique_by := re.fullmatch(rf"{AssertionTag.UNIQUE_BY}\((?P<by>.+)\)", comment.text):
                     by = unique_by.group("by")
                     yield views.GenericSQLView(
                         schema="tests",
-                        name=f"{view}.{column}@UNIQUE_BY_{by}",
-                        query=self.make_test_unique_column_by(view, column, by),
+                        name=f"{view}.{column}{AssertionTag.UNIQUE_BY}{by}",
+                        query=self.make_column_test_unique_by(view, column, by),
+                        sqlglot_dialect=self.sqlglot_dialect,
+                    )
+                elif set_ := re.fullmatch(AssertionTag.SET + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", comment.text):
+                    elements = {element.strip() for element in set_.group("elements").split(',')}
+                    yield views.GenericSQLView(
+                        schema="tests",
+                        name=f"{view}.{column}{AssertionTag.SET}",
+                        query=self.make_column_test_set(view, column, elements),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
                 else:

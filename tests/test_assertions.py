@@ -123,7 +123,7 @@ class MockRichConsole:
                     False,
                 ),
             ],
-            "@NOT_NULL": [
+            "@NO_NULLS": [
                 (
                     pd.DataFrame(
                         {
@@ -132,7 +132,7 @@ class MockRichConsole:
                     ),
                     """
                     SELECT
-                        -- @NOT_NULL
+                        -- @NO_NULLS
                         test_column
                     FROM test_data
                     """,
@@ -146,11 +146,69 @@ class MockRichConsole:
                     ),
                     """
                     SELECT
-                        -- @NOT_NULL
+                        -- @NO_NULLS
                         test_column
                     FROM test_data
                     """,
                     False,
+                ),
+            ],
+            "@SET": [
+                (
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 2, 3],
+                        }
+                    ),
+                    """
+                    SELECT
+                        -- @SET{1, 2, 3}
+                        test_column
+                    FROM test_data
+                    """,
+                    True,
+                ),
+                (
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 2, 3],
+                        }
+                    ),
+                    """
+                    SELECT
+                        -- @SET{1, 2, 3, 4}
+                        test_column
+                    FROM test_data
+                    """,
+                    True,
+                ),
+                (
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 2, 3],
+                        }
+                    ),
+                    """
+                    SELECT
+                        -- @SET{1, 2}
+                        test_column
+                    FROM test_data
+                    """,
+                    False,
+                ),
+                (
+                    pd.DataFrame(
+                        {
+                            "test_column": [1, 2, 3, None],
+                        }
+                    ),
+                    """
+                    SELECT
+                        -- @SET{1, 2, 3}
+                        test_column
+                    FROM test_data
+                    """,
+                    True,
                 ),
             ],
         }.items()
@@ -168,6 +226,6 @@ def test_duckdb_assertions(test_data, query, ok, client):
     client.prepare([view], console=dummy_console)
     client.create(view)
 
-    for test in client.yield_unit_tests(view, test_data.columns):
+    for test in client.discover_assertion_tests(view, test_data.columns):
         conflicts = client.load(test)
         assert conflicts.empty == ok

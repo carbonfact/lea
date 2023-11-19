@@ -1,0 +1,6 @@
+SELECT
+    {{ column }},
+    COUNT(*) AS n
+FROM {{ table }}
+GROUP BY {{ column }}
+HAVING n > 1

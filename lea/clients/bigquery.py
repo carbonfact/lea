@@ -147,25 +147,25 @@ class BigQuery(Client):
     def _make_view_path(self, view: lea.views.View) -> str:
         return f"{self.dataset_name}.{lea._SEP.join(view.key)}"
 
-    def make_test_unique_column(self, view: lea.views.View, column: str) -> str:
-        return f"""
-        SELECT {column}, COUNT(*) AS n
-        FROM {self._make_view_path(view)}
-        GROUP BY {column}
-        HAVING n > 1
-        """
+    def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
+        return self.load_assertion_test_template(
+            AssertionTag.UNIQUE
+        ).render(table=self._make_view_path(view), column=column)
 
-    def make_test_unique_column_by(self, view: lea.views.View, column: str, by: str) -> str:
-        return f"""
-        SELECT {by}, COUNT(*) AS n, COUNT(DISTINCT {column}) AS n_distinct
-        FROM {self._make_view_path(view)}
-        GROUP BY {by}
-        HAVING n != n_distinct
-        """
+    def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
+        schema, *leftover = view.key
+        return self.load_assertion_test_template(
+            AssertionTag.UNIQUE_BY
+        ).render(table=self._make_view_path(view), column=column, by=by)
 
-    def make_test_non_null_column(self, view: lea.views.View, column: str) -> str:
-        return f"""
-        SELECT ROW_NUMBER() OVER () AS row_number
-        FROM {self._make_view_path(view)}
-        WHERE {column} IS NULL
-        """
+    def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
+        schema, *leftover = view.key
+        return self.load_assertion_test_template(
+           AssertionTag.NO_NULLS
+        ).render(table=self._make_view_path(view), column=column)
+
+    def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
+        schema, *leftover = view.key
+        return self.load_assertion_test_template(
+            AssertionTag.SET
+        ).render(table=self._make_view_path(view), column=column, elements=elements)

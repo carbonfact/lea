@@ -1,0 +1,3 @@
+SELECT DISTINCT({{ column }}) AS {{ column }}
+FROM {{ table }}
+WHERE {{ column }} NOT IN ({{ ', '.join(elements) }})

@@ -1,0 +1,7 @@
+SELECT
+    {{ by }},
+    COUNT(*) AS n,
+    COUNT(DISTINCT {{ column }}) AS n_distinct
+FROM {{ table }}
+GROUP BY {{ by }}
+HAVING n != n_distinct

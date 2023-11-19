@@ -1,0 +1,3 @@
+SELECT ROW_NUMBER() OVER () AS row_number
+FROM {{ table }}
+WHERE {{ column }} IS NULL
