@@ -109,7 +109,9 @@ class Client(abc.ABC):
 
     def load_assertion_test_template(self, tag: str) -> jinja2.Template:
         return jinja2.Template(
-            (pathlib.Path(__file__).parent / "assertions" /  f"{tag.lstrip('@')}.sql.jinja").read_text()
+            (
+                pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('@')}.sql.jinja"
+            ).read_text()
         )
 
     def discover_assertion_tests(self, view, view_columns):
@@ -138,7 +140,9 @@ class Client(abc.ABC):
                         query=self.make_column_test_unique(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
-                elif unique_by := re.fullmatch(rf"{AssertionTag.UNIQUE_BY}\((?P<by>.+)\)", comment.text):
+                elif unique_by := re.fullmatch(
+                    rf"{AssertionTag.UNIQUE_BY}\((?P<by>.+)\)", comment.text
+                ):
                     by = unique_by.group("by")
                     yield views.GenericSQLView(
                         schema="tests",
@@ -146,8 +150,10 @@ class Client(abc.ABC):
                         query=self.make_column_test_unique_by(view, column, by),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
-                elif set_ := re.fullmatch(AssertionTag.SET + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", comment.text):
-                    elements = {element.strip() for element in set_.group("elements").split(',')}
+                elif set_ := re.fullmatch(
+                    AssertionTag.SET + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", comment.text
+                ):
+                    elements = {element.strip() for element in set_.group("elements").split(",")}
                     yield views.GenericSQLView(
                         schema="tests",
                         name=f"{view}.{column}{AssertionTag.SET}",

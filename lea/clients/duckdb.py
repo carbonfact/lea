@@ -9,7 +9,7 @@ import sqlglot
 
 import lea
 
-from .base import Client, AssertionTag
+from .base import AssertionTag, Client
 
 
 class DuckDB(Client):
@@ -102,24 +102,24 @@ class DuckDB(Client):
 
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template(
-            AssertionTag.UNIQUE
-        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column)
+        return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
+            table=f"{schema}.{lea._SEP.join(leftover)}", column=column
+        )
 
     def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template(
-            AssertionTag.UNIQUE_BY
-        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column, by=by)
+        return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
+            table=f"{schema}.{lea._SEP.join(leftover)}", column=column, by=by
+        )
 
     def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template(
-           AssertionTag.NO_NULLS
-        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column)
+        return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
+            table=f"{schema}.{lea._SEP.join(leftover)}", column=column
+        )
 
     def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template(
-            AssertionTag.SET
-        ).render(table=f"{schema}.{lea._SEP.join(leftover)}", column=column, elements=elements)
+        return self.load_assertion_test_template(AssertionTag.SET).render(
+            table=f"{schema}.{lea._SEP.join(leftover)}", column=column, elements=elements
+        )

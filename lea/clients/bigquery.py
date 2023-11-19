@@ -7,7 +7,7 @@ import sqlglot
 
 import lea
 
-from .base import Client
+from .base import AssertionTag, Client
 
 
 class BigQuery(Client):
@@ -148,24 +148,24 @@ class BigQuery(Client):
         return f"{self.dataset_name}.{lea._SEP.join(view.key)}"
 
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
-        return self.load_assertion_test_template(
-            AssertionTag.UNIQUE
-        ).render(table=self._make_view_path(view), column=column)
+        return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
+            table=self._make_view_path(view), column=column
+        )
 
     def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template(
-            AssertionTag.UNIQUE_BY
-        ).render(table=self._make_view_path(view), column=column, by=by)
+        return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
+            table=self._make_view_path(view), column=column, by=by
+        )
 
     def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template(
-           AssertionTag.NO_NULLS
-        ).render(table=self._make_view_path(view), column=column)
+        return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
+            table=self._make_view_path(view), column=column
+        )
 
     def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template(
-            AssertionTag.SET
-        ).render(table=self._make_view_path(view), column=column, elements=elements)
+        return self.load_assertion_test_template(AssertionTag.SET).render(
+            table=self._make_view_path(view), column=column, elements=elements
+        )
