@@ -49,7 +49,8 @@ def docs(
         for view in sorted(dag.values(), key=lambda view: view.key):
             if view.schema != schema:
                 continue
-            content.write(f"- [{view}](#{view})\n")
+            anchor = str(view).replace(".", "")
+            content.write(f"- [{view}](#{anchor})\n")
         content.write("\n")
 
         # Write down the views
