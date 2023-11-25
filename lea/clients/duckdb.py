@@ -41,19 +41,19 @@ class DuckDB(Client):
     def _create_python_view(self, view: lea.views.PythonView):
         dataframe = self._load_python_view(view)  # noqa: F841
         self.con.sql(
-            f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS SELECT * FROM dataframe"
+            f"CREATE OR REPLACE TABLE {self._make_table_reference(view.key)} AS SELECT * FROM dataframe"
         )
 
     def _create_sql_view(self, view: lea.views.SQLView):
         query = view.query
-        self.con.sql(f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS ({query})")
+        self.con.sql(f"CREATE OR REPLACE TABLE {self._make_table_reference(view.key)} AS ({query})")
 
     def _load_sql_view(self, view: lea.views.SQLView):
         query = view.query
         return self.con.cursor().sql(query).df()
 
     def delete_view(self, view: lea.views.View):
-        self.con.sql(f"DROP TABLE IF EXISTS {self._make_view_path(view)}")
+        self.con.sql(f"DROP TABLE IF EXISTS {self._make_table_reference(view.key)}")
 
     def teardown(self):
         os.remove(self.path)
@@ -96,30 +96,13 @@ class DuckDB(Client):
         """
         return self.con.sql(query).df()
 
-    def _make_view_path(self, view: lea.views.View) -> str:
-        schema, *leftover = view.key
+    def _make_table_reference(self, view_key: tuple[str]) -> str:
+        """
+
+        >>> client = DuckDB(path=":memory:", username=None)
+        >>> client._make_table_reference(("schema", "table"))
+        'schema.table'
+
+        """
+        schema, *leftover = view_key
         return f"{schema}.{lea._SEP.join(leftover)}"
-
-    def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column
-        )
-
-    def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column, by=by
-        )
-
-    def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column
-        )
-
-    def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.SET).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column, elements=elements
-        )

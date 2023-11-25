@@ -31,7 +31,7 @@ def test(
     # List assertion tests
     assertion_tests = []
     for view in filter(lambda v: v.schema not in {"funcs", "tests"}, views):
-        view_columns = columns.query(f"view_name == '{client._make_view_path(view)}'")[
+        view_columns = columns.query(f"view_name == '{client._make_table_reference(view.key)}'")[
             "column"
         ].tolist()
         for test in client.discover_assertion_tests(view=view, view_columns=view_columns):

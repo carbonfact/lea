@@ -34,7 +34,7 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _make_view_path(self, view: views.View) -> str:
+    def _make_table_reference(self, view_key: tuple[str]) -> str:
         ...
 
     @abc.abstractmethod
@@ -91,21 +91,26 @@ class Client(abc.ABC):
     def get_columns(self, schema: str) -> pd.DataFrame:
         ...
 
-    @abc.abstractmethod
-    def make_column_test_unique(self, view: views.View, column: str) -> str:
-        ...
+    def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
+        return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
+            table=self._make_table_reference(view.key), column=column
+        )
 
-    @abc.abstractmethod
-    def make_column_test_unique_by(self, view: views.View, column: str, by: str) -> str:
-        ...
+    def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
+        return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
+            table=self._make_table_reference(view.key), column=column, by=by
+        )
 
-    @abc.abstractmethod
-    def make_column_test_no_nulls(self, view: views.View, column: str) -> str:
-        ...
+    def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
+        return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
+            table=self._make_table_reference(view.key), column=column
+        )
 
-    @abc.abstractmethod
-    def make_column_test_set(self, view: views.View, column: str, elements: set[str]) -> str:
-        ...
+    def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
+        schema, *leftover = view.key
+        return self.load_assertion_test_template(AssertionTag.SET).render(
+            table=self._make_table_reference(view.key), column=column, elements=elements
+        )
 
     def load_assertion_test_template(self, tag: str) -> jinja2.Template:
         return jinja2.Template(

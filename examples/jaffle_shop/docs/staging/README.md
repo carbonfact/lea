@@ -2,9 +2,9 @@
 
 ## Table of contents
 
-- [staging.customers](#staging.customers)
-- [staging.orders](#staging.orders)
-- [staging.payments](#staging.payments)
+- [staging.customers](#stagingcustomers)
+- [staging.orders](#stagingorders)
+- [staging.payments](#stagingpayments)
 
 ## Views
 

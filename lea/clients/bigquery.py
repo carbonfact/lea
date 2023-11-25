@@ -16,21 +16,24 @@ class BigQuery(Client):
 
         self.project_id = project_id
         self.location = location
-        self.client = bigquery.Client(credentials=credentials)
         self._dataset_name = dataset_name
         self.username = username
 
-    def prepare(self, views, console):
-        dataset = self.create_dataset()
-        console.log(f"Created dataset {dataset.dataset_id}")
+    @property
+    def dataset_name(self):
+        return f"{self._dataset_name}_{self.username}" if self.username else self._dataset_name
 
     @property
     def sqlglot_dialect(self):
         return sqlglot.dialects.Dialects.BIGQUERY
 
     @property
-    def dataset_name(self):
-        return f"{self._dataset_name}_{self.username}" if self.username else self._dataset_name
+    def client(self):
+        return bigquery.Client(credentials=credentials)
+
+    def prepare(self, views, console):
+        dataset = self.create_dataset()
+        console.log(f"Created dataset {dataset.dataset_id}")
 
     def create_dataset(self):
         from google.cloud import bigquery
@@ -61,7 +64,7 @@ class BigQuery(Client):
                     "destinationTable": {
                         "projectId": self.project_id,
                         "datasetId": self.dataset_name,
-                        "tableId": f"{self._make_view_path(view).split('.', 1)[1]}",
+                        "tableId": f"{self._make_table_reference(view.key).split('.', 1)[1]}",
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
                     "writeDisposition": "WRITE_TRUNCATE",
@@ -69,7 +72,7 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": view.schema,
-                    "job_table": f"{self._make_view_path(view).split('.', 1)[1]}",
+                    "job_table": f"{self._make_table_reference(view.key).split('.', 1)[1]}",
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -92,7 +95,7 @@ class BigQuery(Client):
 
         job = self.client.load_table_from_dataframe(
             dataframe,
-            f"{self.project_id}.{self._make_view_path(view)}",
+            f"{self.project_id}.{self._make_table_reference(view.key)}",
             job_config=job_config,
         )
         job.result()
@@ -114,7 +117,7 @@ class BigQuery(Client):
         }
 
     def delete_view(self, view: lea.views.View):
-        self.client.delete_table(f"{self.project_id}.{self._make_view_path(view)}")
+        self.client.delete_table(f"{self.project_id}.{self._make_table_reference(view.key)}")
 
     def get_tables(self):
         query = f"""
@@ -144,28 +147,18 @@ class BigQuery(Client):
         columns = self._load_sql_view(view)
         return columns
 
-    def _make_view_path(self, view: lea.views.View) -> str:
-        return f"{self.dataset_name}.{lea._SEP.join(view.key)}"
+    def _make_table_reference(self, view_key: tuple[str]) -> str:
+        """
 
-    def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
-        return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
-            table=self._make_view_path(view), column=column
-        )
+        >>> client = BigQuery(
+        ...     credentials=None,
+        ...     location="US",
+        ...     project_id="project",
+        ...     dataset_name="dataset",
+        ...     username=None
+        ... )
+        >>> client._make_table_reference(("schema", "table"))
+        'dataset.schema__table'
 
-    def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
-            table=self._make_view_path(view), column=column, by=by
-        )
-
-    def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
-            table=self._make_view_path(view), column=column
-        )
-
-    def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.SET).render(
-            table=self._make_view_path(view), column=column, elements=elements
-        )
+        """
+        return f"{self.dataset_name}.{lea._SEP.join(view_key)}"
