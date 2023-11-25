@@ -64,7 +64,7 @@ class BigQuery(Client):
                     "destinationTable": {
                         "projectId": self.project_id,
                         "datasetId": self.dataset_name,
-                        "tableId": f"{self._make_table_reference(view.key).split('.', 1)[1]}",
+                        "tableId": f"{self._key_to_reference(view.key).split('.', 1)[1]}",
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
                     "writeDisposition": "WRITE_TRUNCATE",
@@ -72,7 +72,7 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": view.schema,
-                    "job_table": f"{self._make_table_reference(view.key).split('.', 1)[1]}",
+                    "job_table": f"{self._key_to_reference(view.key).split('.', 1)[1]}",
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -95,7 +95,7 @@ class BigQuery(Client):
 
         job = self.client.load_table_from_dataframe(
             dataframe,
-            f"{self.project_id}.{self._make_table_reference(view.key)}",
+            f"{self.project_id}.{self._key_to_reference(view.key)}",
             job_config=job_config,
         )
         job.result()
@@ -110,19 +110,13 @@ class BigQuery(Client):
         query = self._render_view_query(view)
         return pd.read_gbq(query, credentials=self.client._credentials)
 
-    def list_existing_view_names(self):
-        return {
-            tuple(table.table_id.split("__")): table.table_id.split("__", 1)
-            for table in self.client.list_tables(self.dataset_name)
-        }
+    def delete_table_reference(self, table_reference: str):
+        self.client.delete_table(f"{self.project_id}.{table_reference}")
 
-    def delete_view(self, view: lea.views.View):
-        self.client.delete_table(f"{self.project_id}.{self._make_table_reference(view.key)}")
-
-    def get_tables(self):
+    def list_tables(self):
         query = f"""
         SELECT
-            table_name AS view_name,
+            FORMAT('%s.%s', table_schema, table_name) AS table_reference,
             total_rows AS n_rows,
             total_logical_bytes AS n_bytes
         FROM `region-{self.location.lower()}`.INFORMATION_SCHEMA.TABLE_STORAGE_BY_PROJECT
@@ -133,10 +127,10 @@ class BigQuery(Client):
         )
         return self._load_sql_view(view)
 
-    def get_columns(self) -> pd.DataFrame:
+    def list_columns(self) -> pd.DataFrame:
         query = f"""
         SELECT
-            table_name AS view_name,
+            FORMAT('%s.%s', table_schema, table_name) AS table_reference,
             column_name AS column,
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
@@ -147,7 +141,7 @@ class BigQuery(Client):
         columns = self._load_sql_view(view)
         return columns
 
-    def _make_table_reference(self, view_key: tuple[str]) -> str:
+    def _key_to_reference(self, view_key: tuple[str]) -> str:
         """
 
         >>> client = BigQuery(
@@ -157,8 +151,33 @@ class BigQuery(Client):
         ...     dataset_name="dataset",
         ...     username=None
         ... )
-        >>> client._make_table_reference(("schema", "table"))
+
+
+        >>> client._key_to_reference(("schema", "table"))
         'dataset.schema__table'
+
+        >>> client._key_to_reference(("schema", "subschema", "table"))
+        'dataset.schema__subschema__table'
 
         """
         return f"{self.dataset_name}.{lea._SEP.join(view_key)}"
+
+    def _reference_to_key(self, table_reference: str) -> tuple[str]:
+        """
+
+        >>> client = BigQuery(
+        ...     credentials=None,
+        ...     location="US",
+        ...     project_id="project",
+        ...     dataset_name="dataset",
+        ...     username=None
+        ... )
+
+        >>> client._reference_to_key("dataset.schema__table")
+        ('schema', 'table')
+
+        >>> client._reference_to_key("dataset.schema__subschema__table")
+        ('schema', 'subschema', 'table')
+
+        """
+        return tuple(table_reference.split(".", 1)[1].split(lea._SEP))

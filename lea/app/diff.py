@@ -12,58 +12,58 @@ def get_schema_diff(
     origin_client: lea.clients.Client, target_client: lea.clients.Client
 ) -> pd.DataFrame:
     origin_columns = set(
-        map(tuple, origin_client.get_columns()[["view_name", "column"]].values.tolist())
+        map(tuple, origin_client.list_columns()[["table_reference", "column"]].values.tolist())
     )
     destination_columns = set(
-        map(tuple, target_client.get_columns()[["view_name", "column"]].values.tolist())
+        map(tuple, target_client.list_columns()[["table_reference", "column"]].values.tolist())
     )
 
     return pd.DataFrame(
         [
             {
-                "view_name": view_name,
+                "table_reference": table_reference,
                 "column": None,
                 "diff_kind": "ADDED",
             }
-            for view_name in {t for t, _ in origin_columns} - {t for t, _ in destination_columns}
+            for table_reference in {t for t, _ in origin_columns} - {t for t, _ in destination_columns}
         ]
         + [
             {
-                "view_name": view_name,
+                "table_reference": table_reference,
                 "column": column,
                 "diff_kind": "ADDED",
             }
-            for view_name, column in origin_columns - destination_columns
+            for table_reference, column in origin_columns - destination_columns
         ]
         + [
             {
-                "view_name": view_name,
+                "table_reference": table_reference,
                 "column": None,
                 "diff_kind": "REMOVED",
             }
-            for view_name in {t for t, _ in destination_columns} - {t for t, _ in origin_columns}
+            for table_reference in {t for t, _ in destination_columns} - {t for t, _ in origin_columns}
         ]
         + [
             {
-                "view_name": view_name,
+                "table_reference": table_reference,
                 "column": column,
                 "diff_kind": "REMOVED",
             }
-            for view_name, column in destination_columns - origin_columns
+            for table_reference, column in destination_columns - origin_columns
         ],
-        columns=["view_name", "column", "diff_kind"],
+        columns=["table_reference", "column", "diff_kind"],
     )
 
 
 def get_size_diff(
     origin_client: lea.clients.Client, target_client: lea.clients.Client
 ) -> pd.DataFrame:
-    origin_tables = origin_client.get_tables()[["view_name", "n_rows", "n_bytes"]]
-    target_tables = target_client.get_tables()[["view_name", "n_rows", "n_bytes"]]
+    origin_tables = origin_client.list_tables()[["table_reference", "n_rows", "n_bytes"]]
+    tarlist_tables = target_client.list_tables()[["table_reference", "n_rows", "n_bytes"]]
     comparison = pd.merge(
         origin_tables,
-        target_tables,
-        on="view_name",
+        tarlist_tables,
+        on="table_reference",
         suffixes=("_origin", "_destination"),
         how="outer",
     ).fillna(0)
@@ -85,30 +85,30 @@ def calculate_diff(origin_client: lea.clients.Client, target_client: lea.clients
     if schema_diff.empty and size_diff.empty:
         return "No schema or content change detected."
 
-    removed_view_names = set(
-        schema_diff[schema_diff.column.isnull() & (schema_diff.diff_kind == "REMOVED")].view_name
+    removed_table_references = set(
+        schema_diff[schema_diff.column.isnull() & (schema_diff.diff_kind == "REMOVED")].table_reference
     )
-    added_view_names = set(
-        schema_diff[schema_diff.column.isnull() & (schema_diff.diff_kind == "ADDED")].view_name
+    added_table_references = set(
+        schema_diff[schema_diff.column.isnull() & (schema_diff.diff_kind == "ADDED")].table_reference
     )
-    modified_view_names = set(size_diff.view_name)
+    modified_table_references = set(size_diff.table_reference)
 
     buffer = io.StringIO()
     print_ = functools.partial(print, file=buffer)
-    for view_name in sorted(removed_view_names | added_view_names | modified_view_names):
+    for table_reference in sorted(removed_table_references | added_table_references | modified_table_references):
         view_schema_diff = schema_diff[
-            schema_diff.column.notnull() & schema_diff.view_name.eq(view_name)
+            schema_diff.column.notnull() & schema_diff.table_reference.eq(table_reference)
         ]
-        view_size_diff = size_diff[size_diff.view_name.eq(view_name)].iloc[0]
+        view_size_diff = size_diff[size_diff.table_reference.eq(table_reference)].iloc[0]
 
-        if view_name in removed_view_names:
-            print_(f"- {view_name}")
-        elif view_name in added_view_names:
-            print_(f"+ {view_name}")
-        elif view_name in modified_view_names:
-            print_(f"  {view_name}")
+        if table_reference in removed_table_references:
+            print_(f"- {table_reference}")
+        elif table_reference in added_table_references:
+            print_(f"+ {table_reference}")
+        elif table_reference in modified_table_references:
+            print_(f"  {table_reference}")
 
-        if view_name in modified_view_names:
+        if table_reference in modified_table_references:
             # #rows changed
             if view_size_diff.n_rows_diff:
                 sign = "+" if view_size_diff.n_rows_diff > 0 else "-"

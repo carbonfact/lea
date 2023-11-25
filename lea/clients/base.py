@@ -34,7 +34,11 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _make_table_reference(self, view_key: tuple[str]) -> str:
+    def _key_to_reference(self, view_key: tuple[str]) -> str:
+        ...
+
+    @abc.abstractmethod
+    def _reference_to_key(self, table_reference: str) -> tuple[str]:
         ...
 
     @abc.abstractmethod
@@ -76,40 +80,36 @@ class Client(abc.ABC):
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
-    def delete_view(self, view: views.View):
+    def delete_table_reference(self, table_reference: str):
         ...
 
     @abc.abstractmethod
-    def list_existing_view_names(self) -> list[tuple[str, str]]:
+    def list_tables(self) -> pd.DataFrame:
         ...
 
     @abc.abstractmethod
-    def get_tables(self, schema: str) -> pd.DataFrame:
-        ...
-
-    @abc.abstractmethod
-    def get_columns(self, schema: str) -> pd.DataFrame:
+    def list_columns(self) -> pd.DataFrame:
         ...
 
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
         return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
-            table=self._make_table_reference(view.key), column=column
+            table=self._key_to_reference(view.key), column=column
         )
 
     def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
         return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
-            table=self._make_table_reference(view.key), column=column, by=by
+            table=self._key_to_reference(view.key), column=column, by=by
         )
 
     def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
         return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
-            table=self._make_table_reference(view.key), column=column
+            table=self._key_to_reference(view.key), column=column
         )
 
     def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
         schema, *leftover = view.key
         return self.load_assertion_test_template(AssertionTag.SET).render(
-            table=self._make_table_reference(view.key), column=column, elements=elements
+            table=self._key_to_reference(view.key), column=column, elements=elements
         )
 
     def load_assertion_test_template(self, tag: str) -> jinja2.Template:

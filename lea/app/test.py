@@ -16,10 +16,10 @@ def test(
     console: rich.console.Console,
 ):
     # List all the columns
-    columns = client.get_columns()
+    columns = client.list_columns()
     # HACK: we should have a cleaner way to handle schemas/views irrespective of the client
     if hasattr(client, "dataset_name"):
-        columns["view_name"] = f"{client.dataset_name}." + columns["view_name"]
+        columns["table_reference"] = f"{client.dataset_name}." + columns["table_reference"]
 
     # The client determines where the views will be written
 
@@ -31,7 +31,7 @@ def test(
     # List assertion tests
     assertion_tests = []
     for view in filter(lambda v: v.schema not in {"funcs", "tests"}, views):
-        view_columns = columns.query(f"view_name == '{client._make_table_reference(view.key)}'")[
+        view_columns = columns.query(f"table_reference == '{client._key_to_reference(view.key)}'")[
             "column"
         ].tolist()
         for test in client.discover_assertion_tests(view=view, view_columns=view_columns):
