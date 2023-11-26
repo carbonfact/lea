@@ -26,12 +26,12 @@ class DuckDB(Client):
         self.con = duckdb.connect(self.path)
 
     @property
-    def is_motherduck(self):
-        return self.path.startswith("md:")
-
-    @property
     def sqlglot_dialect(self):
         return sqlglot.dialects.Dialects.DUCKDB
+
+    @property
+    def is_motherduck(self):
+        return self.path.startswith("md:")
 
     def prepare(self, views, console):
         schemas = set(view.schema for view in views)
