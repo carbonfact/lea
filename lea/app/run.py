@@ -38,6 +38,7 @@ def run(
     client: lea.clients.Client,
     views: list[lea.views.View],
     select: list[str],
+    freeze_roots: bool,
     print_views: bool,
     dry: bool,
     silent: bool,
@@ -63,7 +64,7 @@ def run(
         frozen = set()
     else:
         whitelist = set(dag.keys())
-        frozen = dag.roots
+        frozen = dag.roots if freeze_roots else set()
     console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
