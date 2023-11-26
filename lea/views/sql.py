@@ -12,8 +12,6 @@ import jinja2
 import sqlglot
 import sqlglot.optimizer.scope
 
-import lea
-
 from .base import View
 
 

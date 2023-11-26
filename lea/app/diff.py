@@ -25,7 +25,8 @@ def get_schema_diff(
                 "column": None,
                 "diff_kind": "ADDED",
             }
-            for table_reference in {t for t, _ in origin_columns} - {t for t, _ in destination_columns}
+            for table_reference in {t for t, _ in origin_columns}
+            - {t for t, _ in destination_columns}
         ]
         + [
             {
@@ -41,7 +42,8 @@ def get_schema_diff(
                 "column": None,
                 "diff_kind": "REMOVED",
             }
-            for table_reference in {t for t, _ in destination_columns} - {t for t, _ in origin_columns}
+            for table_reference in {t for t, _ in destination_columns}
+            - {t for t, _ in origin_columns}
         ]
         + [
             {
@@ -86,16 +88,22 @@ def calculate_diff(origin_client: lea.clients.Client, target_client: lea.clients
         return "No schema or content change detected."
 
     removed_table_references = set(
-        schema_diff[schema_diff.column.isnull() & (schema_diff.diff_kind == "REMOVED")].table_reference
+        schema_diff[
+            schema_diff.column.isnull() & (schema_diff.diff_kind == "REMOVED")
+        ].table_reference
     )
     added_table_references = set(
-        schema_diff[schema_diff.column.isnull() & (schema_diff.diff_kind == "ADDED")].table_reference
+        schema_diff[
+            schema_diff.column.isnull() & (schema_diff.diff_kind == "ADDED")
+        ].table_reference
     )
     modified_table_references = set(size_diff.table_reference)
 
     buffer = io.StringIO()
     print_ = functools.partial(print, file=buffer)
-    for table_reference in sorted(removed_table_references | added_table_references | modified_table_references):
+    for table_reference in sorted(
+        removed_table_references | added_table_references | modified_table_references
+    ):
         view_schema_diff = schema_diff[
             schema_diff.column.notnull() & schema_diff.table_reference.eq(table_reference)
         ]

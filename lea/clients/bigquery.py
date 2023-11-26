@@ -7,13 +7,12 @@ import sqlglot
 
 import lea
 
-from .base import AssertionTag, Client
+from .base import Client
 
 
 class BigQuery(Client):
     def __init__(self, credentials, location, project_id, dataset_name, username):
-        from google.cloud import bigquery
-
+        self.credentials = credentials
         self.project_id = project_id
         self.location = location
         self._dataset_name = dataset_name
@@ -29,7 +28,9 @@ class BigQuery(Client):
 
     @property
     def client(self):
-        return bigquery.Client(credentials=credentials)
+        from google.cloud import bigquery
+
+        return bigquery.Client(credentials=self.credentials)
 
     def prepare(self, views, console):
         dataset = self.create_dataset()

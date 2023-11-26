@@ -6,8 +6,6 @@ import dotenv
 import rich.console
 import typer
 
-import lea
-
 app = typer.Typer()
 console = rich.console.Console()
 

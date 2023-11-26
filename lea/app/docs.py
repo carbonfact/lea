@@ -67,9 +67,9 @@ def docs(
                 "```sql\n" "SELECT *\n" f"FROM {client._key_to_reference(view.key)}\n" "```\n\n"
             )
             # Write down the columns
-            view_columns = columns.query(f"table_reference == '{client._key_to_reference(view.key)}'")[
-                ["column", "type"]
-            ]
+            view_columns = columns.query(
+                f"table_reference == '{client._key_to_reference(view.key)}'"
+            )[["column", "type"]]
             view_comments = view.extract_comments(columns=view_columns["column"].tolist())
             view_columns["Description"] = (
                 view_columns["column"]

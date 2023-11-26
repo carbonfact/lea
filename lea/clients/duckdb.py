@@ -8,7 +8,7 @@ import sqlglot
 
 import lea
 
-from .base import AssertionTag, Client
+from .base import Client
 
 
 class DuckDB(Client):

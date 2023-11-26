@@ -205,13 +205,13 @@ def run(
     console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
-    for table_reference in client.list_tables()['table_reference']:
+    for table_reference in client.list_tables()["table_reference"]:
         view_key = client._reference_to_key(table_reference)
         if view_key in dag:
             continue
         if not dry:
             client.delete_table_reference(table_reference)
-        console_log(f"Removed {'.'.join(key)}")
+        console_log(f"Removed {table_reference}")
 
     def display_progress() -> rich.table.Table:
         if print_to_cli:

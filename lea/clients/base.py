@@ -29,9 +29,11 @@ class Client(abc.ABC):
     def open_views(self, views_dir: str):
         return lea.views.open_views(views_dir=views_dir, sqlglot_dialect=self.sqlglot_dialect)
 
-    def make_dag(self, views: list[views.View]) -> views.DAGOfViews:
+    def make_dag(self, views: list[lea.views.View]) -> lea.views.DAGOfViews:
         graph = {
-            view.key: [self._reference_to_key(table_reference) for table_reference in view.dependencies]
+            view.key: [
+                self._reference_to_key(table_reference) for table_reference in view.dependencies
+            ]
             for view in views
         }
         return lea.views.DAGOfViews(views, graph)

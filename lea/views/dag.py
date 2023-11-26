@@ -4,8 +4,6 @@ import collections
 import graphlib
 import io
 
-import lea
-
 FOUR_SPACES = "    "
 
 
@@ -69,9 +67,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
 
         """
 
-        nodes = set(node for deps in self.graph.values() for node in deps) | set(
-            self.graph.keys()
-        )
+        nodes = set(node for deps in self.graph.values() for node in deps) | set(self.graph.keys())
 
         nested_schema = {}
 
