@@ -124,7 +124,7 @@ class BigQuery(Client):
         WHERE table_schema = '{self.dataset_name}'
         """
         view = lea.views.GenericSQLView(
-            schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect
+            query=query, sqlglot_dialect=self.sqlglot_dialect
         )
         return self._load_sql_view(view)
 
@@ -137,7 +137,7 @@ class BigQuery(Client):
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
         view = lea.views.GenericSQLView(
-            schema=None, name=None, query=query, sqlglot_dialect=self.sqlglot_dialect
+            query=query, sqlglot_dialect=self.sqlglot_dialect
         )
         columns = self._load_sql_view(view)
         return columns
