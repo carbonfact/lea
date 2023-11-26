@@ -79,7 +79,7 @@ class Client(abc.ABC):
         spec.loader.exec_module(module)
 
         # Step 2: Retrieve the variable from the module's namespace
-        dataframe = getattr(module, view.key[1], None)  # HACK
+        dataframe = getattr(module, view.key[-1], None)
         if dataframe is None:
             raise ValueError(f"Could not find variable {view.key[1]} in {view.path}")
         return dataframe

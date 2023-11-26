@@ -13,11 +13,11 @@ import rich.syntax
 
 import lea
 
+RUNNING = "[white]RUNNING"
 SUCCESS = "[green]SUCCESS"
-RUNNING = "[yellow]RUNNING"
 ERRORED = "[red]ERRORED"
-SKIPPED = "[blue]SKIPPED"
-
+SKIPPED = "[yellow]SKIPPED"
+FROZEN = "[cyan]FROZEN"
 
 def _do_nothing(*args, **kwargs):
     """This is a dummy function for dry runs"""
@@ -33,151 +33,13 @@ def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> st
     console.print(syntax)
 
 
-def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
-    """Make a whitelist of tables given a query.
-
-    These are the different queries to handle:
-
-    schema.table
-    schema.table+   (descendants)
-    +schema.table   (ancestors)
-    +schema.table+  (ancestors and descendants)
-    schema/         (all tables in schema)
-    schema/+        (all tables in schema with their descendants)
-    +schema/        (all tables in schema with their ancestors)
-    +schema/+       (all tables in schema with their ancestors and descendants)
-
-    Examples
-    --------
-
-    >>> import lea
-
-    >>> client = lea.clients.DuckDB(':memory:')
-    >>> views = client.open_views('examples/jaffle_shop/views')
-    >>> views = [v for v in views if v.schema != 'tests']
-    >>> dag = client.make_dag(views)
-
-    >>> def pprint(whitelist):
-    ...     for key in sorted(whitelist):
-    ...         print('.'.join(key))
-
-    schema.table
-
-    >>> pprint(make_whitelist('staging.orders', dag))
-    staging.orders
-
-    schema.table+ (descendants)
-
-    >>> pprint(make_whitelist('staging.orders+', dag))
-    analytics.finance.kpis
-    analytics.kpis
-    core.customers
-    core.orders
-    staging.orders
-
-    +schema.table (ancestors)
-
-    >>> pprint(make_whitelist('+core.customers', dag))
-    core.customers
-    staging.customers
-    staging.orders
-    staging.payments
-
-    +schema.table+ (ancestors and descendants)
-
-    >>> pprint(make_whitelist('+core.customers+', dag))
-    analytics.kpis
-    core.customers
-    staging.customers
-    staging.orders
-    staging.payments
-
-    schema/ (all tables in schema)
-
-    >>> pprint(make_whitelist('staging/', dag))
-    staging.customers
-    staging.orders
-    staging.payments
-
-    schema/+ (all tables in schema with their descendants)
-
-    >>> pprint(make_whitelist('staging/+', dag))
-    analytics.finance.kpis
-    analytics.kpis
-    core.customers
-    core.orders
-    staging.customers
-    staging.orders
-    staging.payments
-
-    +schema/ (all tables in schema with their ancestors)
-
-    >>> pprint(make_whitelist('+core/', dag))
-    core.customers
-    core.orders
-    staging.customers
-    staging.orders
-    staging.payments
-
-    +schema/+  (all tables in schema with their ancestors and descendants)
-
-    >>> pprint(make_whitelist('+core/+', dag))
-    analytics.finance.kpis
-    analytics.kpis
-    core.customers
-    core.orders
-    staging.customers
-    staging.orders
-    staging.payments
-
-    schema.subschema/
-
-    >>> pprint(make_whitelist('analytics.finance/', dag))
-    analytics.finance.kpis
-
-    """
-
-    def _yield_whitelist(query, include_ancestors, include_descendants):
-        if query.endswith("+"):
-            yield from _yield_whitelist(
-                query[:-1], include_ancestors=include_ancestors, include_descendants=True
-            )
-            return
-        if query.startswith("+"):
-            yield from _yield_whitelist(
-                query[1:], include_ancestors=True, include_descendants=include_descendants
-            )
-            return
-        if query.endswith("/"):
-            for key in dag:
-                if str(dag[key]).startswith(query[:-1]):
-                    yield from _yield_whitelist(
-                        ".".join(key),
-                        include_ancestors=include_ancestors,
-                        include_descendants=include_descendants,
-                    )
-        else:
-            key = tuple(query.split("."))
-            yield key
-            if include_ancestors:
-                yield from dag.list_ancestors(key)
-            if include_descendants:
-                yield from dag.list_descendants(key)
-
-    return {
-        key
-        for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
-        # Some nodes in the graph are not part of the views, such as third-party tables
-        if key in dag
-    }
-
-
 def run(
     client: lea.clients.Client,
     views: list[lea.views.View],
     select: list[str],
+    print_views: bool,
     dry: bool,
-    print_to_cli: bool,
+    silent: bool,
     fresh: bool,
     threads: int,
     show: int,
@@ -185,23 +47,22 @@ def run(
     console: rich.console.Console,
 ):
     # If print_to_cli, it means we only want to print out the view definitions, nothing else
-    console_log = _do_nothing if print_to_cli else console.log
+    silent = print_views or silent
+    console_log = _do_nothing if silent else console.log
 
     # List the relevant views
     console_log(f"{len(views):,d} view(s) in total")
 
     # Organize the views into a directed acyclic graph
     dag = client.make_dag(views)
-    dag.prepare()
 
-    # Determine which views need to be run
-    whitelist = (
-        # If multiple select queries are provided, we want to run the union of all the views they
-        # select. We use a set union to remove duplicates.
-        set.union(*(make_whitelist(query, dag) for query in select))
-        if select
-        else set(dag.keys())
-    )
+    # Let's determine which views need to be run.
+    if select:
+        whitelist = dag.query(select)
+        frozen = set()
+    else:
+        whitelist = set(dag.keys())
+        frozen = dag.roots
     console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
@@ -214,7 +75,7 @@ def run(
         console_log(f"Removed {table_reference}")
 
     def display_progress() -> rich.table.Table:
-        if print_to_cli:
+        if silent:
             return None
         table = rich.table.Table(box=None)
         table.add_column("#", header_style="italic")
@@ -222,24 +83,31 @@ def run(
         table.add_column("status", header_style="italic")
         table.add_column("duration", header_style="italic")
 
-        order_not_done = [node for node in order if node not in cache]
-        for i, node in list(enumerate(order_not_done, start=1))[-show:]:
-            status = SUCCESS if node in jobs_ended_at else RUNNING
-            status = ERRORED if node in exceptions else status
-            status = SKIPPED if node in skipped else status
+        not_done = [view_key for view_key in execution_order if view_key not in cache]
+        for i, view_key in list(enumerate(not_done, start=1))[-show:]:
+            if view_key in jobs_ended_at:
+                status = SUCCESS
+            elif view_key in exceptions:
+                status = ERRORED
+            elif view_key in skipped:
+                status = SKIPPED
+            elif view_key in frozen:
+                status = FROZEN
+            else:
+                status = RUNNING
             duration = (
-                (jobs_ended_at.get(node, dt.datetime.now()) - jobs_started_at[node])
-                if node in jobs_started_at
+                (jobs_ended_at.get(view_key, dt.datetime.now()) - jobs_started_at[view_key])
+                if view_key in jobs_started_at
                 else dt.timedelta(seconds=0)
             )
             rounded_seconds = int(duration.total_seconds())
-            table.add_row(str(i), str(dag[node]), status, f"{rounded_seconds}s")
+            table.add_row(str(i), str(dag[view_key]), status, f"{rounded_seconds}s")
 
         return table
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
     jobs = {}
-    order = []
+    execution_order = []
     jobs_started_at = {}
     jobs_ended_at = {}
     exceptions = {}
@@ -251,47 +119,49 @@ def run(
     console_log(f"{len(cache):,d} view(s) already done")
 
     with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
+        dag.prepare()
         while dag.is_active():
-            # We check if new views have been unlocked
-            # If so, we submit a job to create them
-            # We record the job in a dict, so that we can check when it's done
-            for node in dag.get_ready():
-                if (
-                    # Some nodes in the graph are not part of the views,
-                    # they're external dependencies which can be ignored
-                    node not in dag
-                    # Some nodes are blacklisted, so we skip them
-                    or node not in whitelist
-                ):
-                    dag.done(node)
+            for view_key in dag.get_ready():
+
+                # Check if the view_key can be skipped or not
+                if not view_key in whitelist:
+                    dag.done(view_key)
+                    continue
+                execution_order.append(view_key)
+
+                # A view can only be computed if all its dependencies have been computed
+                # succesfully
+                if any(dep in skipped or dep in exceptions for dep in dag[view_key].dependencies):
+                    skipped.add(view_key)
+                    dag.done(view_key)
                     continue
 
-                order.append(node)
-
-                # A node can only be computed if all its dependencies have been computed
-                # If all the dependencies have not been computed succesfully, we skip the node
-                if any(dep in skipped or dep in exceptions for dep in dag[node].dependencies):
-                    skipped.add(node)
-                    dag.done(node)
+                # Views that are frozen can be skipped. The views that depend on them will use
+                # the frozen version, instead of relying on the output made during this run
+                if view_key in frozen:
+                    dag.done(view_key)
                     continue
 
-                jobs[node] = executor.submit(
+                # Submit a job to create the view
+                jobs[view_key] = executor.submit(
                     _do_nothing
-                    if dry or node in cache
-                    else functools.partial(pretty_print_view, view=dag[node], console=console)
-                    if print_to_cli
-                    else functools.partial(client.create, view=dag[node])
+                    if dry or view_key in cache
+                    else functools.partial(pretty_print_view, view=dag[view_key], console=console)
+                    if print_views
+                    else functools.partial(client.create, view=dag[view_key])
                 )
-                jobs_started_at[node] = dt.datetime.now()
-            # We check if any jobs are done
-            # When a job is done, we notify the DAG, which will unlock the next views
-            for node in jobs_started_at:
-                if node not in jobs_ended_at and jobs[node].done():
-                    dag.done(node)
-                    jobs_ended_at[node] = dt.datetime.now()
+                jobs_started_at[view_key] = dt.datetime.now()
+
+            # Check if any jobs are done. We notify the DAG by calling done when a job is done,
+            # which will unlock the next views.
+            for view_key in jobs_started_at:
+                if view_key not in jobs_ended_at and jobs[view_key].done():
+                    dag.done(view_key)
+                    jobs_ended_at[view_key] = dt.datetime.now()
                     # Determine whether the job succeeded or not
-                    if exception := jobs[node].exception():
-                        exceptions[node] = exception
+                    if exception := jobs[view_key].exception():
+                        exceptions[view_key] = exception
+
             live.update(display_progress())
 
     # Save the cache
@@ -299,7 +169,7 @@ def run(
     cache = (
         set()
         if all_done
-        else cache | {node for node in order if node not in exceptions and node not in skipped}
+        else cache | {view_key for view_key in order if view_key not in exceptions and view_key not in skipped}
     )
     if cache:
         cache_path.write_bytes(pickle.dumps(cache))
@@ -307,7 +177,7 @@ def run(
         cache_path.unlink(missing_ok=True)
 
     # Summary statistics
-    if print_to_cli:
+    if silent:
         return
     console.log(f"Took {round(time.time() - tic)}s")
     summary = rich.table.Table()
@@ -319,12 +189,14 @@ def run(
         summary.add_row(ERRORED, f"{n:,d}")
     if n := len(skipped):
         summary.add_row(SKIPPED, f"{n:,d}")
+    if n := len(frozen):
+        summary.add_row(FROZEN, f"{n:,d}")
     console.print(summary)
 
     # Summary of errors
     if exceptions:
-        for node, exception in exceptions.items():
-            console.print(str(dag[node]), style="bold red")
+        for view_key, exception in exceptions.items():
+            console.print(str(dag[view_key]), style="bold red")
             console.print(exception)
 
         if fail_fast:

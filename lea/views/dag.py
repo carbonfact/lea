@@ -15,7 +15,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
 
     @property
     def schemas(self) -> set:
-        return set(schema for schema, *_ in self)
+        return {view.schema for view in self.values()}
 
     @property
     def schema_dependencies(self):
@@ -44,6 +44,167 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
                     yield from _list_descendants(parent)
 
         return list(_list_descendants(node))
+
+    @property
+    def roots(self):
+        """A root is a view that doesn't depend on any other view.
+
+        A root can depend on a table that is not part of the views, such as a third-party table. It
+        can also depend on nothing at all.
+
+        Roots are important because they are the only views that can be run without having to run
+        any other view first. If we want to do a run in a git branch, we don't need to run the
+        roots if they haven't been selected, because they are already available in production.
+
+        """
+        return {
+            view.key
+            for view in self.values()
+            if all(dependency[0] not in self.schemas for dependency in self.graph[view.key])
+        }
+
+    def select(self, *queries: str) -> set:
+        """Make a whitelist of tables given a query.
+
+        These are the different queries to handle:
+
+        schema.table
+        schema.table+   (descendants)
+        +schema.table   (ancestors)
+        +schema.table+  (ancestors and descendants)
+        schema/         (all tables in schema)
+        schema/+        (all tables in schema with their descendants)
+        +schema/        (all tables in schema with their ancestors)
+        +schema/+       (all tables in schema with their ancestors and descendants)
+
+        Examples
+        --------
+
+        >>> import lea
+
+        >>> client = lea.clients.DuckDB(':memory:')
+        >>> views = client.open_views('examples/jaffle_shop/views')
+        >>> views = [v for v in views if v.schema != 'tests']
+        >>> dag = client.make_dag(views)
+
+        >>> def pprint(whitelist):
+        ...     for key in sorted(whitelist):
+        ...         print('.'.join(key))
+
+        schema.table
+
+        >>> pprint(dag.select('staging.orders'))
+        staging.orders
+
+        schema.table+ (descendants)
+
+        >>> pprint(dag.select('staging.orders+'))
+        analytics.finance.kpis
+        analytics.kpis
+        core.customers
+        core.orders
+        staging.orders
+
+        +schema.table (ancestors)
+
+        >>> pprint(dag.select('+core.customers'))
+        core.customers
+        staging.customers
+        staging.orders
+        staging.payments
+
+        +schema.table+ (ancestors and descendants)
+
+        >>> pprint(dag.select('+core.customers+'))
+        analytics.kpis
+        core.customers
+        staging.customers
+        staging.orders
+        staging.payments
+
+        schema/ (all tables in schema)
+
+        >>> pprint(dag.select('staging/'))
+        staging.customers
+        staging.orders
+        staging.payments
+
+        schema/+ (all tables in schema with their descendants)
+
+        >>> pprint(dag.select('staging/+'))
+        analytics.finance.kpis
+        analytics.kpis
+        core.customers
+        core.orders
+        staging.customers
+        staging.orders
+        staging.payments
+
+        +schema/ (all tables in schema with their ancestors)
+
+        >>> pprint(dag.select('+core/'))
+        core.customers
+        core.orders
+        staging.customers
+        staging.orders
+        staging.payments
+
+        +schema/+  (all tables in schema with their ancestors and descendants)
+
+        >>> pprint(dag.select('+core/+'))
+        analytics.finance.kpis
+        analytics.kpis
+        core.customers
+        core.orders
+        staging.customers
+        staging.orders
+        staging.payments
+
+        schema.subschema/
+
+        >>> pprint(dag.select('analytics.finance/'))
+        analytics.finance.kpis
+
+        """
+
+        def _yield_whitelist(query, include_ancestors, include_descendants):
+            if query.endswith("+"):
+                yield from _yield_whitelist(
+                    query[:-1], include_ancestors=include_ancestors, include_descendants=True
+                )
+                return
+            if query.startswith("+"):
+                yield from _yield_whitelist(
+                    query[1:], include_ancestors=True, include_descendants=include_descendants
+                )
+                return
+            if query.endswith("/"):
+                for key in self:
+                    if str(self[key]).startswith(query[:-1]):
+                        yield from _yield_whitelist(
+                            ".".join(key),
+                            include_ancestors=include_ancestors,
+                            include_descendants=include_descendants,
+                        )
+            else:
+                key = tuple(query.split("."))
+                yield key
+                if include_ancestors:
+                    yield from self.list_ancestors(key)
+                if include_descendants:
+                    yield from self.list_descendants(key)
+
+        # If multiple select queries are provided, we want to run the union of all the views they
+        # select. We use a set union to remove duplicates.
+        if len(queries) > 1:
+            return set.union(*(self.select(query) for query in queries))
+
+        return {
+            key
+            for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
+            # Some nodes in the graph are not part of the views, such as third-party tables
+            if key in self
+        }
 
     @property
     def _nested_schema(self):

@@ -17,9 +17,6 @@ def test(
 ):
     # List all the columns
     columns = client.list_columns()
-    # HACK: we should have a cleaner way to handle schemas/views irrespective of the client
-    if hasattr(client, "dataset_name"):
-        columns["table_reference"] = f"{client.dataset_name}." + columns["table_reference"]
 
     # The client determines where the views will be written
 

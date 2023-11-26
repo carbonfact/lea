@@ -176,5 +176,12 @@ class BigQuery(Client):
         >>> client._reference_to_key("dataset.schema__subschema__table")
         ('schema', 'subschema', 'table')
 
+        >>> client._reference_to_key("external_dataset.schema__subschema__table")
+        ('external_dataset', 'schema', 'subschema', 'table')
+
         """
-        return tuple(table_reference.split(".", 1)[1].split(lea._SEP))
+        schema, parts = tuple(table_reference.split(".", 1))
+        parts = parts.split(lea._SEP)
+        if schema != self._dataset_name:
+            return (schema, *parts)
+        return tuple(parts)
