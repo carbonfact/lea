@@ -3,8 +3,10 @@ from __future__ import annotations
 import concurrent.futures
 import datetime as dt
 import functools
+import git
 import pathlib
 import pickle
+import re
 import time
 
 import rich.console
@@ -34,9 +36,36 @@ def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> st
     console.print(syntax)
 
 
+def determine_whitelist(dag: lea.views.DAGOfViews, views_dir: pathlib.Path, select: list[str]):
+    """
+
+    The whitelist is the list of views that will be run. This function's purpose is to determine
+    which views should be in the whitelist.
+
+    """
+
+    for query in select:
+
+        # Handle git-style selectors
+        if re.match(r'\+?git\+?', query):
+            repo = git.Repo('.')
+            main = repo.remote().refs.main
+            for diff in repo.index.diff(f"origin/main"):
+                diff_path = pathlib.Path(diff.a_path)
+                diff_rel_path = diff_path.relative_to(views_dir)
+                print(diff_rel_path)
+
+        whitelist = dag.query(select)
+        frozen = set()
+    else:
+        whitelist = set(dag.keys())
+        frozen = set()
+
+
+
 def run(
     client: lea.clients.Client,
-    views: list[lea.views.View],
+    views_dir: pathlib.Path,
     select: list[str],
     freeze_roots: bool,
     print_views: bool,
@@ -48,24 +77,24 @@ def run(
     fail_fast: bool,
     console: rich.console.Console,
 ):
+
     # If print_to_cli, it means we only want to print out the view definitions, nothing else
     silent = print_views or silent
     console_log = _do_nothing if silent else console.log
 
+    # Organize the views into a directed acyclic graph
+    views = client.open_views(views_dir)
+    views = [view for view in views if view.schema not in {"tests", "funcs"}]
+    dag = client.make_dag(views)
+
     # List the relevant views
     console_log(f"{len(views):,d} view(s) in total")
 
-    # Organize the views into a directed acyclic graph
-    dag = client.make_dag(views)
-
     # Let's determine which views need to be run.
-    if select:
-        whitelist = dag.query(select)
-        frozen = set()
-    else:
-        whitelist = set(dag.keys())
-        frozen = dag.roots if freeze_roots else set()
+    whitelist = determine_whitelist(dag, views_dir, select) if select else set(dag.keys())
     console_log(f"{len(whitelist):,d} view(s) selected")
+
+    return
 
     # Remove orphan views
     for table_reference in client.list_tables()["table_reference"]:

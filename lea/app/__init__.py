@@ -68,13 +68,9 @@ def run(
     # The client determines where the views will be written
     client = _make_client(production)
 
-    # Load views
-    views = client.open_views(views_dir)
-    views = [view for view in views if view.schema not in {"tests", "funcs"}]
-
     run(
         client=client,
-        views=views,
+        views_dir=pathlib.Path(views_dir),
         select=select,
         freeze_roots=freeze_roots,
         dry=dry,
