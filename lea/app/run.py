@@ -19,6 +19,7 @@ ERRORED = "[red]ERRORED"
 SKIPPED = "[yellow]SKIPPED"
 FROZEN = "[cyan]FROZEN"
 
+
 def _do_nothing(*args, **kwargs):
     """This is a dummy function for dry runs"""
 
@@ -122,9 +123,8 @@ def run(
         dag.prepare()
         while dag.is_active():
             for view_key in dag.get_ready():
-
                 # Check if the view_key can be skipped or not
-                if not view_key in whitelist:
+                if view_key not in whitelist:
                     dag.done(view_key)
                     continue
                 execution_order.append(view_key)
@@ -169,7 +169,8 @@ def run(
     cache = (
         set()
         if all_done
-        else cache | {view_key for view_key in order if view_key not in exceptions and view_key not in skipped}
+        else cache
+        | {view_key for view_key in execution_order if view_key not in exceptions and view_key not in skipped}
     )
     if cache:
         cache_path.write_bytes(pickle.dumps(cache))

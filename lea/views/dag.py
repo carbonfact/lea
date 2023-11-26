@@ -199,6 +199,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         if len(queries) > 1:
             return set.union(*(self.select(query) for query in queries))
 
+        query = queries[0]
         return {
             key
             for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
