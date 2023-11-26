@@ -3,17 +3,18 @@ from __future__ import annotations
 import os
 import pathlib
 
-import duckdb
 import pandas as pd
 import sqlglot
 
 import lea
 
-from .base import AssertionTag, Client
+from .base import Client
 
 
 class DuckDB(Client):
-    def __init__(self, path: str, username: str | None):
+    def __init__(self, path: str, username: str | None = None):
+        import duckdb
+
         if path.startswith("md:"):
             path = f"{path}_{username}" if username is not None else path
         else:
@@ -25,12 +26,12 @@ class DuckDB(Client):
         self.con = duckdb.connect(self.path)
 
     @property
-    def is_motherduck(self):
-        return self.path.startswith("md:")
-
-    @property
     def sqlglot_dialect(self):
         return sqlglot.dialects.Dialects.DUCKDB
+
+    @property
+    def is_motherduck(self):
+        return self.path.startswith("md:")
 
     def prepare(self, views, console):
         schemas = set(view.schema for view in views)
@@ -41,85 +42,69 @@ class DuckDB(Client):
     def _create_python_view(self, view: lea.views.PythonView):
         dataframe = self._load_python_view(view)  # noqa: F841
         self.con.sql(
-            f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS SELECT * FROM dataframe"
+            f"CREATE OR REPLACE TABLE {self._key_to_reference(view.key)} AS SELECT * FROM dataframe"
         )
 
     def _create_sql_view(self, view: lea.views.SQLView):
         query = view.query
-        self.con.sql(f"CREATE OR REPLACE TABLE {self._make_view_path(view)} AS ({query})")
+        self.con.sql(f"CREATE OR REPLACE TABLE {self._key_to_reference(view.key)} AS ({query})")
 
     def _load_sql_view(self, view: lea.views.SQLView):
         query = view.query
         return self.con.cursor().sql(query).df()
 
-    def delete_view(self, view: lea.views.View):
-        self.con.sql(f"DROP TABLE IF EXISTS {self._make_view_path(view)}")
+    def delete_table_reference(self, table_reference: str):
+        self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
 
     def teardown(self):
         os.remove(self.path)
 
-    def list_existing_view_names(self) -> list[tuple[str, str]]:
+    def list_tables(self) -> pd.DataFrame:
         query = """
         SELECT
-            table_schema,
-            table_name
-        FROM information_schema.tables
-        """
-        if self.is_motherduck:
-            database = self.path.split(":")[1]
-            query += f"\nWHERE table_catalog = '{database}'"
-        return {
-            (r["table_schema"], *r["table_name"].split(lea._SEP)): (
-                r["table_schema"],
-                r["table_name"],
-            )
-            for r in self.con.sql(query).df().to_dict(orient="records")
-        }
-
-    def get_tables(self):
-        query = """
-        SELECT
-            schema_name || '.' || table_name AS view_name,
+            schema_name || '.' || table_name AS table_reference,
             estimated_size AS n_rows,  -- TODO: Figure out how to get the exact number
             estimated_size AS n_bytes  -- TODO: Figure out how to get this
         FROM duckdb_tables()
         """
         return self.con.sql(query).df()
 
-    def get_columns(self) -> pd.DataFrame:
+    def list_columns(self) -> pd.DataFrame:
         query = """
         SELECT
-            table_schema || '.' || table_name AS view_name,
+            table_schema || '.' || table_name AS table_reference,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
         """
         return self.con.sql(query).df()
 
-    def _make_view_path(self, view: lea.views.View) -> str:
-        schema, *leftover = view.key
+    def _key_to_reference(self, view_key: tuple[str]) -> str:
+        """
+
+        >>> client = DuckDB(path=":memory:", username=None)
+
+        >>> client._key_to_reference(("schema", "table"))
+        'schema.table'
+
+        >>> client._key_to_reference(("schema", "subschema", "table"))
+        'schema.subschema__table'
+
+        """
+        schema, *leftover = view_key
         return f"{schema}.{lea._SEP.join(leftover)}"
 
-    def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column
-        )
+    def _reference_to_key(self, table_reference: str) -> tuple[str]:
+        """
 
-    def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column, by=by
-        )
+        >>> client = DuckDB(path=":memory:", username=None)
 
-    def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column
-        )
+        >>> client._reference_to_key("schema.table")
+        ('schema', 'table')
 
-    def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
-        schema, *leftover = view.key
-        return self.load_assertion_test_template(AssertionTag.SET).render(
-            table=f"{schema}.{lea._SEP.join(leftover)}", column=column, elements=elements
-        )
+        >>> client._reference_to_key("schema.subschema__table")
+        ('schema', 'subschema', 'table')
+
+        """
+        schema, leftover = table_reference.split(".", 1)
+        return (schema, *leftover.split(lea._SEP))

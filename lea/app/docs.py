@@ -18,17 +18,17 @@ def docs(
     output_dir = pathlib.Path(output_dir)
 
     # List all the relevant views
-    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
+    views = client.open_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
 
     # Organize the views into a directed acyclic graph
-    dag = lea.views.DAGOfViews(views)
+    dag = client.make_dag(views)
 
     # List all the columns
-    columns = client.get_columns()
+    columns = client.list_columns()
     # HACK: we should have a cleaner way to handle schemas/views irrespective of the client
     if hasattr(client, "dataset_name"):
-        columns["view_name"] = f"{client.dataset_name}." + columns["view_name"]
+        columns["table_reference"] = f"{client.dataset_name}." + columns["table_reference"]
 
     # Now we can generate the docs for each schema and view therein
     readme_content = io.StringIO()
@@ -64,12 +64,12 @@ def docs(
 
             # Write down the query
             content.write(
-                "```sql\n" "SELECT *\n" f"FROM {client._make_view_path(view)}\n" "```\n\n"
+                "```sql\n" "SELECT *\n" f"FROM {client._key_to_reference(view.key)}\n" "```\n\n"
             )
             # Write down the columns
-            view_columns = columns.query(f"view_name == '{client._make_view_path(view)}'")[
-                ["column", "type"]
-            ]
+            view_columns = columns.query(
+                f"table_reference == '{client._key_to_reference(view.key)}'"
+            )[["column", "type"]]
             view_comments = view.extract_comments(columns=view_columns["column"].tolist())
             view_columns["Description"] = (
                 view_columns["column"]

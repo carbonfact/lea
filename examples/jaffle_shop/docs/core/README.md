@@ -2,8 +2,8 @@
 
 ## Table of contents
 
-- [core.customers](#core.customers)
-- [core.orders](#core.orders)
+- [core.customers](#corecustomers)
+- [core.orders](#coreorders)
 
 ## Views
 

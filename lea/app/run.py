@@ -52,9 +52,10 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
 
     >>> import lea
 
-    >>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+    >>> client = lea.clients.DuckDB(':memory:')
+    >>> views = client.open_views('examples/jaffle_shop/views')
     >>> views = [v for v in views if v.schema != 'tests']
-    >>> dag = lea.views.DAGOfViews(views)
+    >>> dag = client.make_dag(views)
 
     >>> def pprint(whitelist):
     ...     for key in sorted(whitelist):
@@ -190,7 +191,7 @@ def run(
     console_log(f"{len(views):,d} view(s) in total")
 
     # Organize the views into a directed acyclic graph
-    dag = lea.views.DAGOfViews(views)
+    dag = client.make_dag(views)
     dag.prepare()
 
     # Determine which views need to be run
@@ -204,15 +205,13 @@ def run(
     console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
-    for key, (schema, table) in client.list_existing_view_names().items():
-        if key in dag:
+    for table_reference in client.list_tables()["table_reference"]:
+        view_key = client._reference_to_key(table_reference)
+        if view_key in dag:
             continue
         if not dry:
-            view_to_delete = lea.views.GenericSQLView(
-                schema=schema, name=table, query="", sqlglot_dialect=client.sqlglot_dialect
-            )
-            client.delete_view(view=view_to_delete)
-        console_log(f"Removed {'.'.join(key)}")
+            client.delete_table_reference(table_reference)
+        console_log(f"Removed {table_reference}")
 
     def display_progress() -> rich.table.Table:
         if print_to_cli:

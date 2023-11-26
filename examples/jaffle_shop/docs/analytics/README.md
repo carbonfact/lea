@@ -2,8 +2,8 @@
 
 ## Table of contents
 
-- [analytics.finance.kpis](#analytics.finance.kpis)
-- [analytics.kpis](#analytics.kpis)
+- [analytics.finance.kpis](#analyticsfinancekpis)
+- [analytics.kpis](#analyticskpis)
 
 ## Views
 

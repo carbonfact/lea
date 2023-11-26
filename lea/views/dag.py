@@ -4,17 +4,14 @@ import collections
 import graphlib
 import io
 
-import lea
-
 FOUR_SPACES = "    "
 
 
 class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
-    def __init__(self, views: list[lea.views.View]):
-        view_to_dependencies = {view.key: view.dependencies for view in views}
-        graphlib.TopologicalSorter.__init__(self, view_to_dependencies)
+    def __init__(self, views, graph):
+        graphlib.TopologicalSorter.__init__(self, graph)
         collections.UserDict.__init__(self, {view.key: view for view in views})
-        self.dependencies = view_to_dependencies
+        self.graph = graph
 
     @property
     def schemas(self) -> set:
@@ -23,7 +20,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
     @property
     def schema_dependencies(self):
         deps = collections.defaultdict(set)
-        for (src_schema, *_), dsts in self.dependencies.items():
+        for (src_schema, *_), dsts in self.graph.items():
             deps[src_schema].update([schema for schema, *_ in dsts if schema != src_schema])
         return deps
 
@@ -31,7 +28,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         """Returns a list of all the ancestors for a given node."""
 
         def _list_ancestors(node):
-            for child in self.dependencies.get(node, []):
+            for child in self.graph.get(node, []):
                 yield child
                 yield from _list_ancestors(child)
 
@@ -41,8 +38,8 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         """Returns a list of all the descendants for a given node."""
 
         def _list_descendants(node):
-            for parent in self.dependencies:
-                if node in self.dependencies[parent]:
+            for parent in self.graph:
+                if node in self.graph[parent]:
                     yield parent
                     yield from _list_descendants(parent)
 
@@ -56,10 +53,12 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         >>> import lea
         >>> from pprint import pprint
 
+        >>> client = lea.clients.DuckDB(":memory:")
+
         >>> views_dir = pathlib.Path(__file__).parent.parent.parent / "examples" / "jaffle_shop" / "views"
-        >>> views = lea.views.load_views(views_dir, sqlglot_dialect="duckdb")
+        >>> views = client.open_views(views_dir)
         >>> views = [view for view in views if view.schema not in {"tests"}]
-        >>> dag = lea.views.DAGOfViews(views)
+        >>> dag = client.make_dag(views)
 
         >>> pprint(dag._nested_schema)
         {'analytics': {'finance': {'kpis': {}}, 'kpis': {}},
@@ -68,9 +67,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
 
         """
 
-        nodes = set(node for deps in self.dependencies.values() for node in deps) | set(
-            self.dependencies.keys()
-        )
+        nodes = set(node for deps in self.graph.values() for node in deps) | set(self.graph.keys())
 
         nested_schema = {}
 
@@ -107,7 +104,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             output_subgraph(schema, values)
 
         # Print out the edges
-        for dst, srcs in sorted(self.dependencies.items()):
+        for dst, srcs in sorted(self.graph.items()):
             dst = ".".join(dst)
             for src in sorted(srcs):
                 src = ".".join(src)
@@ -136,10 +133,11 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
         >>> import pathlib
         >>> import lea
 
+        >>> client = lea.clients.DuckDB(":memory:")
         >>> views_dir = pathlib.Path(__file__).parent.parent.parent / "examples" / "jaffle_shop" / "views"
-        >>> views = lea.views.load_views(views_dir, sqlglot_dialect="duckdb")
+        >>> views = client.open_views(views_dir)
         >>> views = [view for view in views if view.schema not in {"tests"}]
-        >>> dag = lea.views.DAGOfViews(views)
+        >>> dag = client.make_dag(views)
 
         >>> print(dag.to_mermaid(schemas_only=True))
         %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%

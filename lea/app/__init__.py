@@ -6,8 +6,6 @@ import dotenv
 import rich.console
 import typer
 
-import lea
-
 app = typer.Typer()
 console = rich.console.Console()
 
@@ -31,7 +29,7 @@ ViewsDir = typer.Argument(default="views")
 @app.command()
 def prepare(views_dir: str = ViewsDir, production: bool = False, env: str = EnvPath):
     client = _make_client(production)
-    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
+    views = client.open_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
 
     client.prepare(views, console)
@@ -69,7 +67,7 @@ def run(
     client = _make_client(production)
 
     # Load views
-    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
+    views = client.open_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
 
     run(

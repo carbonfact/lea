@@ -351,19 +351,20 @@ lea is meant to be used as a CLI. But you can import it as a Python library too.
 ```py
 >>> import lea
 
->>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+>>> client = lea.clients.DuckDB(':memory:')
+>>> views = client.open_views('examples/jaffle_shop/views')
 >>> views = [v for v in views if v.schema != 'tests']
 >>> for view in sorted(views, key=str):
 ...     print(view)
 ...     print(sorted(view.dependencies))
 analytics.finance.kpis
-[('core', 'orders')]
+['core.orders']
 analytics.kpis
-[('core', 'customers'), ('core', 'orders')]
+['core.customers', 'core.orders']
 core.customers
-[('staging', 'customers'), ('staging', 'orders'), ('staging', 'payments')]
+['staging.customers', 'staging.orders', 'staging.payments']
 core.orders
-[('staging', 'orders'), ('staging', 'payments')]
+['staging.orders', 'staging.payments']
 staging.customers
 []
 staging.orders
@@ -378,9 +379,10 @@ staging.payments
 ```py
 >>> import lea
 
->>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+>>> client = lea.clients.DuckDB(':memory:')
+>>> views = client.open_views('examples/jaffle_shop/views')
 >>> views = [v for v in views if v.schema != 'tests']
->>> dag = lea.views.DAGOfViews(views)
+>>> dag = client.make_dag(views)
 >>> dag.prepare()
 
 >>> while dag.is_active():

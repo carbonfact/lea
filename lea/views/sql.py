@@ -12,8 +12,6 @@ import jinja2
 import sqlglot
 import sqlglot.optimizer.scope
 
-import lea
-
 from .base import View
 
 
@@ -53,7 +51,7 @@ class SQLView(View):
             return template.render(env=os.environ)
         return text
 
-    def parse_dependencies(self, query) -> set[tuple[str, str]]:
+    def parse_dependencies(self, query) -> set[str]:
         expression = sqlglot.parse_one(query, dialect=self.sqlglot_dialect)
         dependencies = set()
 
@@ -63,17 +61,7 @@ class SQLView(View):
                     not isinstance(table.this, sqlglot.exp.Func)
                     and sqlglot.exp.table_name(table) not in scope.cte_sources
                 ):
-                    if self.sqlglot_dialect is sqlglot.dialects.Dialects.BIGQUERY:
-                        parts = tuple(table.name.split(lea._SEP))
-                        # External tables that are not part of the dataset
-                        if len(parts) == 1:
-                            dependencies.add((table.db, *parts))
-                        else:
-                            dependencies.add(parts)
-                    elif self.sqlglot_dialect is sqlglot.dialects.Dialects.DUCKDB:
-                        dependencies.add((table.db, *table.name.split(lea._SEP)))
-                    else:
-                        raise ValueError(f"Unsupported SQL dialect: {self.sqlglot_dialect}")
+                    dependencies.add(sqlglot.exp.table_name(table))
 
         return dependencies
 
@@ -87,19 +75,12 @@ class SQLView(View):
             )
             dependencies = set()
             for match in re.finditer(
-                r"(JOIN|FROM)\s+(?P<schema>[a-z][a-z_]+[a-z])\.(?P<view>[a-z][a-z_]+[a-z])",
+                r"(JOIN|FROM)\s+(?P<schema>[a-z][a-z_\.]+[a-z])\.(?P<view>[a-z][a-z_]+[a-z])",
                 self.query,
                 re.IGNORECASE,
             ):
-                schema, view_name = (
-                    (
-                        match.group("view").split(lea._SEP)[0],
-                        match.group("view").split("__", 1)[1],
-                    )
-                    if "__" in match.group("view")
-                    else (match.group("schema"), match.group("view"))
-                )
-                dependencies.add((schema, view_name))
+                table_reference = f"{match.group('schema')}.{match.group('view')}"
+                dependencies.add(table_reference)
             return dependencies
 
     @property
@@ -173,11 +154,11 @@ class SQLView(View):
 
 
 class GenericSQLView(SQLView):
-    def __init__(self, schema, name, query, sqlglot_dialect):
-        self._schema = schema
-        self._name = name
+    def __init__(self, query, sqlglot_dialect, schema=None, name=None):
         self._query = textwrap.dedent(query)
         self._sqlglot_dialect = sqlglot_dialect
+        self._schema = schema
+        self._name = name
 
     @property
     def key(self):

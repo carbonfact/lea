@@ -16,22 +16,22 @@ def test(
     console: rich.console.Console,
 ):
     # List all the columns
-    columns = client.get_columns()
+    columns = client.list_columns()
     # HACK: we should have a cleaner way to handle schemas/views irrespective of the client
     if hasattr(client, "dataset_name"):
-        columns["view_name"] = f"{client.dataset_name}." + columns["view_name"]
+        columns["table_reference"] = f"{client.dataset_name}." + columns["table_reference"]
 
     # The client determines where the views will be written
 
     # List singular tests
-    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
+    views = client.open_views(views_dir)
     singular_tests = [view for view in views if view.schema == "tests"]
     console.log(f"Found {len(singular_tests):,d} singular tests")
 
     # List assertion tests
     assertion_tests = []
     for view in filter(lambda v: v.schema not in {"funcs", "tests"}, views):
-        view_columns = columns.query(f"view_name == '{client._make_view_path(view)}'")[
+        view_columns = columns.query(f"table_reference == '{client._key_to_reference(view.key)}'")[
             "column"
         ].tolist()
         for test in client.discover_assertion_tests(view=view, view_columns=view_columns):
