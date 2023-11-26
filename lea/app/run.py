@@ -170,7 +170,11 @@ def run(
         set()
         if all_done
         else cache
-        | {view_key for view_key in execution_order if view_key not in exceptions and view_key not in skipped}
+        | {
+            view_key
+            for view_key in execution_order
+            if view_key not in exceptions and view_key not in skipped
+        }
     )
     if cache:
         cache_path.write_bytes(pickle.dumps(cache))
