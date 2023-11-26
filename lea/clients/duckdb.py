@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import pathlib
 
-import duckdb
 import pandas as pd
 import sqlglot
 
@@ -13,7 +12,9 @@ from .base import AssertionTag, Client
 
 
 class DuckDB(Client):
-    def __init__(self, path: str, username: str | None):
+    def __init__(self, path: str, username: str | None = None):
+        import duckdb
+
         if path.startswith("md:"):
             path = f"{path}_{username}" if username is not None else path
         else:

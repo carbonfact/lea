@@ -10,7 +10,7 @@ from .python import PythonView
 from .sql import GenericSQLView, SQLView
 
 
-def load_views(
+def open_views(
     views_dir: pathlib.Path | str, sqlglot_dialect: sqlglot.dialects.Dialect | str
 ) -> list[View]:
     # Massage the inputs

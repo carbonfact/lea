@@ -8,7 +8,7 @@ import re
 import jinja2
 import pandas as pd
 
-from lea import views
+import lea
 
 
 class AssertionTag:
@@ -26,6 +26,16 @@ class Client(abc.ABC):
 
     """
 
+    def open_views(self, views_dir: str):
+        return lea.views.open_views(views_dir=views_dir, sqlglot_dialect=self.sqlglot_dialect)
+
+    def make_dag(self, views: list[views.View]) -> views.DAGOfViews:
+        graph = {
+            view.key: [self._reference_to_key(table_reference) for table_reference in view.dependencies]
+            for view in views
+        }
+        return lea.views.DAGOfViews(views, graph)
+
     def prepare(self):
         ...
 
@@ -42,25 +52,25 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _create_sql_view(self, view: views.SQLView):
+    def _create_sql_view(self, view: lea.views.SQLView):
         ...
 
     @abc.abstractmethod
-    def _create_python_view(self, view: views.PythonView):
+    def _create_python_view(self, view: lea.views.PythonView):
         ...
 
-    def create(self, view: views.View):
-        if isinstance(view, views.SQLView):
+    def create(self, view: lea.views.View):
+        if isinstance(view, lea.views.SQLView):
             return self._create_sql_view(view)
-        elif isinstance(view, views.PythonView):
+        elif isinstance(view, lea.views.PythonView):
             return self._create_python_view(view)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
-    def _load_sql_view(self, view: views.SQLView):
+    def _load_sql_view(self, view: lea.views.SQLView):
         ...
 
-    def _load_python_view(self, view: views.PythonView):
+    def _load_python_view(self, view: lea.views.PythonView):
         module_name = view.path.stem
         spec = importlib.util.spec_from_file_location(module_name, view.path)
         module = importlib.util.module_from_spec(spec)
@@ -72,10 +82,10 @@ class Client(abc.ABC):
             raise ValueError(f"Could not find variable {view.key[1]} in {view.path}")
         return dataframe
 
-    def load(self, view: views.View):
-        if isinstance(view, views.SQLView):
+    def load(self, view: lea.views.View):
+        if isinstance(view, lea.views.SQLView):
             return self._load_sql_view(view=view)
-        elif isinstance(view, views.PythonView):
+        elif isinstance(view, lea.views.PythonView):
             return self._load_python_view(view=view)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
@@ -121,7 +131,7 @@ class Client(abc.ABC):
 
     def discover_assertion_tests(self, view, view_columns):
         # Unit tests in Python views are not handled yet
-        if isinstance(view, views.PythonView):
+        if isinstance(view, lea.views.PythonView):
             return
             yield
 
@@ -132,14 +142,14 @@ class Client(abc.ABC):
                 if "@" not in comment.text:
                     continue
                 if comment.text == AssertionTag.NO_NULLS:
-                    yield views.GenericSQLView(
+                    yield lea.views.GenericSQLView(
                         schema="tests",
                         name=f"{view}.{column}{AssertionTag.NO_NULLS}",
                         query=self.make_column_test_no_nulls(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
                 elif comment.text == AssertionTag.UNIQUE:
-                    yield views.GenericSQLView(
+                    yield lea.views.GenericSQLView(
                         schema="tests",
                         name=f"{view}.{column}{AssertionTag.UNIQUE}",
                         query=self.make_column_test_unique(view, column),
@@ -149,7 +159,7 @@ class Client(abc.ABC):
                     rf"{AssertionTag.UNIQUE_BY}\((?P<by>.+)\)", comment.text
                 ):
                     by = unique_by.group("by")
-                    yield views.GenericSQLView(
+                    yield lea.views.GenericSQLView(
                         schema="tests",
                         name=f"{view}.{column}{AssertionTag.UNIQUE_BY}{by}",
                         query=self.make_column_test_unique_by(view, column, by),
@@ -159,7 +169,7 @@ class Client(abc.ABC):
                     AssertionTag.SET + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", comment.text
                 ):
                     elements = {element.strip() for element in set_.group("elements").split(",")}
-                    yield views.GenericSQLView(
+                    yield lea.views.GenericSQLView(
                         schema="tests",
                         name=f"{view}.{column}{AssertionTag.SET}",
                         query=self.make_column_test_set(view, column, elements),

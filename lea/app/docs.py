@@ -18,11 +18,11 @@ def docs(
     output_dir = pathlib.Path(output_dir)
 
     # List all the relevant views
-    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
+    views = client.open_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
 
     # Organize the views into a directed acyclic graph
-    dag = lea.views.DAGOfViews(views)
+    dag = client.make_dag(views)
 
     # List all the columns
     columns = client.list_columns()

@@ -24,7 +24,7 @@ def test(
     # The client determines where the views will be written
 
     # List singular tests
-    views = lea.views.load_views(views_dir, sqlglot_dialect=client.sqlglot_dialect)
+    views = client.open_views(views_dir)
     singular_tests = [view for view in views if view.schema == "tests"]
     console.log(f"Found {len(singular_tests):,d} singular tests")
 

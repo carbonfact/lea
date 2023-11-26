@@ -52,9 +52,10 @@ def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
 
     >>> import lea
 
-    >>> views = lea.views.load_views('examples/jaffle_shop/views', sqlglot_dialect='duckdb')
+    >>> client = lea.clients.DuckDB(':memory:')
+    >>> views = client.open_views('examples/jaffle_shop/views')
     >>> views = [v for v in views if v.schema != 'tests']
-    >>> dag = lea.views.DAGOfViews(views)
+    >>> dag = client.make_dag(views)
 
     >>> def pprint(whitelist):
     ...     for key in sorted(whitelist):
@@ -190,7 +191,7 @@ def run(
     console_log(f"{len(views):,d} view(s) in total")
 
     # Organize the views into a directed acyclic graph
-    dag = lea.views.DAGOfViews(views)
+    dag = client.make_dag(views)
     dag.prepare()
 
     # Determine which views need to be run

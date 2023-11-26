@@ -11,8 +11,6 @@ import lea
     [
         pytest.param(
             lea.views.GenericSQLView(
-                schema=None,
-                name=None,
                 query=query,
                 sqlglot_dialect=sqlglot_dialect,
             ),
@@ -27,7 +25,7 @@ import lea
                         FROM dataset.schema__table
 
                         """,
-                    {("schema", "table")},
+                    {"dataset.schema__table"},
                 ),
                 (
                     """
@@ -35,7 +33,7 @@ import lea
                         FROM dataset.schema__sub_schema__table
 
                         """,
-                    {("schema", "sub_schema", "table")},
+                    {"dataset.schema__sub_schema__table"},
                 ),
             ],
             sqlglot.dialects.Dialects.DUCKDB: [
@@ -45,7 +43,7 @@ import lea
                         FROM schema.table
 
                         """,
-                    {("schema", "table")},
+                    {"schema.table"},
                 ),
                 (
                     """
@@ -53,7 +51,7 @@ import lea
                         FROM schema.sub_schema__table
 
                         """,
-                    {("schema", "sub_schema", "table")},
+                    {"schema.sub_schema__table"},
                 ),
             ],
         }.items()

@@ -4,6 +4,9 @@ import getpass
 import json
 import os
 
+from .bigquery import BigQuery
+from .duckdb import DuckDB
+
 
 def make_client(production: bool):
     warehouse = os.environ["LEA_WAREHOUSE"]
@@ -12,8 +15,6 @@ def make_client(production: bool):
     if warehouse == "bigquery":
         # Do imports here to avoid loading them all the time
         from google.oauth2 import service_account
-
-        from lea.clients.bigquery import BigQuery
 
         scopes_str = os.environ.get("LEA_BQ_SCOPES", "https://www.googleapis.com/auth/bigquery")
         scopes = scopes_str.split(",")
@@ -29,8 +30,6 @@ def make_client(production: bool):
             username=username,
         )
     elif warehouse == "duckdb":
-        from lea.clients.duckdb import DuckDB
-
         return DuckDB(
             path=os.environ["LEA_DUCKDB_PATH"],
             username=username,
