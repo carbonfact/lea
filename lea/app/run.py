@@ -52,14 +52,21 @@ def determine_whitelist(dag: lea.views.DAGOfViews, views_dir: pathlib.Path, sele
             main = repo.remote().refs.main
             for diff in repo.index.diff(f"origin/main"):
                 diff_path = pathlib.Path(diff.a_path)
-                diff_rel_path = diff_path.relative_to(views_dir)
-                print(diff_rel_path)
+                if diff_path.is_relative_to(views_dir):
+                    view = lea.views.open_view_from_path(
+                        path=diff_path,
+                        origin=views_dir,
+                        sqlglot_dialect=None
+                    )
+                    print(diff_path)
 
-        whitelist = dag.query(select)
-        frozen = set()
+        #whitelist = dag.select(query)
+        #frozen = set()
     else:
-        whitelist = set(dag.keys())
+        #whitelist = set(dag.keys())
         frozen = set()
+
+    return []
 
 
 
