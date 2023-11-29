@@ -152,21 +152,32 @@ class SQLView(View):
 
         return var_comments
 
+    def rename_table_references(self, table_reference_mapping: dict[str, str]) -> GenericSQLView:
+        query = self.query
+        # TODO: could be done faster with Aho–Corasick algorithm
+        # Maybe try out https://github.com/vi3k6i5/flashtext
+        for k, v in table_reference_mapping.items():
+            query = query.replace(k, v)
+        return GenericSQLView(
+            query=query,
+            sqlglot_dialect=self.sqlglot_dialect,
+            key=self.key
+        )
+
 
 class GenericSQLView(SQLView):
-    def __init__(self, query, sqlglot_dialect, schema=None, name=None):
+    def __init__(self, query, sqlglot_dialect, key=None):
         self._query = textwrap.dedent(query)
         self._sqlglot_dialect = sqlglot_dialect
-        self._schema = schema
-        self._name = name
-
-    @property
-    def key(self):
-        return (self._schema, self._name)
+        self._key = key
 
     @property
     def query(self):
         return self._query
+
+    @property
+    def key(self):
+        return self._key
 
     @property
     def sqlglot_dialect(self):

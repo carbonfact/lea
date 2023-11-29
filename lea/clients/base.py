@@ -32,7 +32,7 @@ class Client(abc.ABC):
     def make_dag(self, views: list[lea.views.View]) -> lea.views.DAGOfViews:
         graph = {
             view.key: [
-                self._reference_to_key(table_reference) for table_reference in view.dependencies
+                self._table_reference_to_view_key(table_reference) for table_reference in view.dependencies
             ]
             for view in views
         }
@@ -46,42 +46,34 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _key_to_reference(self, view_key: tuple[str]) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_username: bool) -> str:
         ...
 
     @abc.abstractmethod
-    def _reference_to_key(self, table_reference: str) -> tuple[str]:
+    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
         ...
 
     @abc.abstractmethod
-    def _create_sql_view(self, view: lea.views.SQLView, **replacements):
+    def _materialize_sql_query(self, view_key: tuple[str], query: str):
         ...
 
     @abc.abstractmethod
-    def _create_python_view(self, view: lea.views.PythonView, **replacements):
+    def _materialize_pandas_dataframe(self, dataframe: pd.DataFrame):
         ...
 
-    @abc.abstractmethod
-    def _make_replacements(self, frozen_view_keys: set[tuple[str]]) -> dict[str, str]:
-        ...
-
-    def edit_view(self, view: lea.views.View, frozen_view_keys: set[tuple[str]] = None):
-        replacements = self._make_replacements(frozen_view_keys=frozen_view_keys)
-
-    def create(self, view: lea.views.View, frozen_view_keys: set[tuple[str]] = None):
-        replacements = self._make_replacements(frozen_view_keys=frozen_view_keys)
-        # TODO: handle replacements
+    def materialize_view(self, view: lea.views.View):
         if isinstance(view, lea.views.SQLView):
-            return self._create_sql_view(view)
+            return self._materialize_sql_query(view_key=view.key, query=view.query)
         elif isinstance(view, lea.views.PythonView):
-            return self._create_python_view(view)
+            dataframe = self._read_python_view(view=view)
+            return self._materialize_pandas_dataframe(view_key=view.key, dataframe=dataframe)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
-    def _load_sql_view(self, view: lea.views.SQLView):
+    def _read_sql_view(self, view: lea.views.SQLView) -> pd.DataFrame:
         ...
 
-    def _load_python_view(self, view: lea.views.PythonView):
+    def _read_python_view(self, view: lea.views.PythonView) -> pd.Dataframe:
         module_name = view.path.stem
         spec = importlib.util.spec_from_file_location(module_name, view.path)
         module = importlib.util.module_from_spec(spec)
@@ -95,9 +87,9 @@ class Client(abc.ABC):
 
     def load(self, view: lea.views.View):
         if isinstance(view, lea.views.SQLView):
-            return self._load_sql_view(view=view)
+            return self._read_sql_view(view=view)
         elif isinstance(view, lea.views.PythonView):
-            return self._load_python_view(view=view)
+            return self._read_python_view(view=view)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
@@ -114,23 +106,23 @@ class Client(abc.ABC):
 
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
         return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
-            table=self._key_to_reference(view.key), column=column
+            table=self._view_key_to_table_reference(view.key), column=column
         )
 
     def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
         return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
-            table=self._key_to_reference(view.key), column=column, by=by
+            table=self._view_key_to_table_reference(view.key), column=column, by=by
         )
 
     def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
         return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
-            table=self._key_to_reference(view.key), column=column
+            table=self._view_key_to_table_reference(view.key), column=column
         )
 
     def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
         schema, *leftover = view.key
         return self.load_assertion_test_template(AssertionTag.SET).render(
-            table=self._key_to_reference(view.key), column=column, elements=elements
+            table=self._view_key_to_table_reference(view.key), column=column, elements=elements
         )
 
     def load_assertion_test_template(self, tag: str) -> jinja2.Template:
@@ -154,15 +146,13 @@ class Client(abc.ABC):
                     continue
                 if comment.text == AssertionTag.NO_NULLS:
                     yield lea.views.GenericSQLView(
-                        schema="tests",
-                        name=f"{view}.{column}{AssertionTag.NO_NULLS}",
+                        key=(*view.key, f"{column}{AssertionTag.NO_NULLS}"),
                         query=self.make_column_test_no_nulls(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
                 elif comment.text == AssertionTag.UNIQUE:
                     yield lea.views.GenericSQLView(
-                        schema="tests",
-                        name=f"{view}.{column}{AssertionTag.UNIQUE}",
+                        key=(*view.key, f"{column}{AssertionTag.UNIQUE}"),
                         query=self.make_column_test_unique(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
@@ -171,8 +161,7 @@ class Client(abc.ABC):
                 ):
                     by = unique_by.group("by")
                     yield lea.views.GenericSQLView(
-                        schema="tests",
-                        name=f"{view}.{column}{AssertionTag.UNIQUE_BY}{by}",
+                        key=(*view.key, f"{column}{AssertionTag.UNIQUE_BY}({by})"),
                         query=self.make_column_test_unique_by(view, column, by),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
@@ -181,8 +170,7 @@ class Client(abc.ABC):
                 ):
                     elements = {element.strip() for element in set_.group("elements").split(",")}
                     yield lea.views.GenericSQLView(
-                        schema="tests",
-                        name=f"{view}.{column}{AssertionTag.SET}",
+                        key=(*view.key, f"{column}{AssertionTag.SET}"),
                         query=self.make_column_test_set(view, column, elements),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )

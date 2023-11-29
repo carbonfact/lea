@@ -39,22 +39,20 @@ class DuckDB(Client):
             self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
             console.log(f"Created schema {schema}")
 
-    def _create_python_view(self, view: lea.views.PythonView):
-        dataframe = self._load_python_view(view)  # noqa: F841
+    def _materialize_pandas_dataframe(self, dataframe: pd.DataFrame):
         self.con.sql(
-            f"CREATE OR REPLACE TABLE {self._key_to_reference(view.key)} AS SELECT * FROM dataframe"
+            f"CREATE OR REPLACE TABLE {self._view_key_to_table_reference(view.key)} AS SELECT * FROM dataframe"
         )
 
-    def _create_sql_view(self, view: lea.views.SQLView):
-        query = view.query
-        self.con.sql(f"CREATE OR REPLACE TABLE {self._key_to_reference(view.key)} AS ({query})")
+    def _materialize_sql_query(self, view_key: tuple[str], query: str):
+        self.con.sql(f"CREATE OR REPLACE TABLE {self._view_key_to_table_reference(view_key)} AS ({query})")
 
-    def _load_sql_view(self, view: lea.views.SQLView):
+    def _read_sql_view(self, view: lea.views.SQLView):
         query = view.query
         return self.con.cursor().sql(query).df()
 
     def delete_view_key(self, view_key: tuple[str]):
-        table_reference = self._key_to_reference(view_key)
+        table_reference = self._view_key_to_table_reference(view_key)
         self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
 
     def teardown(self):
@@ -80,30 +78,30 @@ class DuckDB(Client):
         """
         return self.con.sql(query).df()
 
-    def _key_to_reference(self, view_key: tuple[str]) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str]) -> str:
         """
 
         >>> client = DuckDB(path=":memory:", username=None)
 
-        >>> client._key_to_reference(("schema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "table"))
         'schema.table'
 
-        >>> client._key_to_reference(("schema", "subschema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "subschema", "table"))
         'schema.subschema__table'
 
         """
         schema, *leftover = view_key
         return f"{schema}.{lea._SEP.join(leftover)}"
 
-    def _reference_to_key(self, table_reference: str) -> tuple[str]:
+    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
         """
 
         >>> client = DuckDB(path=":memory:", username=None)
 
-        >>> client._reference_to_key("schema.table")
+        >>> client._table_reference_to_view_key("schema.table")
         ('schema', 'table')
 
-        >>> client._reference_to_key("schema.subschema__table")
+        >>> client._table_reference_to_view_key("schema.subschema__table")
         ('schema', 'subschema', 'table')
 
         """

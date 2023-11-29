@@ -37,15 +37,14 @@ def prepare(views_dir: str = ViewsDir, production: bool = False, env: str = EnvP
 
 @app.command()
 def teardown(production: bool = False, env: str = EnvPath):
-    """ """
-
     if production:
-        raise ValueError("This is a dangerous operation, so it is not allowed in production.")
+        raise ValueError("""
+        This is a dangerous operation, so it is not allowed in production. If you really want to
+        do this, then do so manually.
+        """)
 
     client = _make_client(production)
-
-    # Create the dataset
-    client.teardown()
+    client.teardown(console)
 
 
 @app.command()
@@ -87,7 +86,8 @@ def run(
 @app.command()
 def test(
     views_dir: str = ViewsDir,
-    select: list[str] = typer.Option(None),
+    select_views: list[str] = typer.Option(None),
+    freeze_unselected: bool = False,
     threads: int = 8,
     production: bool = False,
     fail_fast: bool = False,
@@ -101,7 +101,8 @@ def test(
     test(
         client=client,
         views_dir=views_dir,
-        select=select,
+        select_views=select_views,
+        freeze_unselected=freeze_unselected,
         threads=threads,
         fail_fast=fail_fast,
         console=console,

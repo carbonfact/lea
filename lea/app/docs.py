@@ -61,11 +61,11 @@ def docs(
 
             # Write down the query
             content.write(
-                "```sql\n" "SELECT *\n" f"FROM {client._key_to_reference(view.key)}\n" "```\n\n"
+                "```sql\n" "SELECT *\n" f"FROM {client._view_key_to_table_reference(view.key)}\n" "```\n\n"
             )
             # Write down the columns
             view_columns = columns.query(
-                f"table_reference == '{client._key_to_reference(view.key)}'"
+                f"table_reference == '{client._view_key_to_table_reference(view.key, with_username=True)}'"
             )[["column", "type"]]
             view_comments = view.extract_comments(columns=view_columns["column"].tolist())
             view_columns["Description"] = (
