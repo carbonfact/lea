@@ -102,7 +102,7 @@ def test(
 
     test(
         client=client,
-        views_dir=views_dir,
+        views_dir=pathlib.Path(views_dir),
         select_views=select_views,
         freeze_unselected=freeze_unselected,
         threads=threads,

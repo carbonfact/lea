@@ -3,11 +3,14 @@ from __future__ import annotations
 import concurrent.futures
 import datetime as dt
 import functools
+import itertools
 import pathlib
 import pickle
+import re
 import time
 import warnings
 
+import git
 import rich.console
 import rich.live
 import rich.syntax
@@ -32,6 +35,59 @@ def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> st
     else:
         raise NotImplementedError
     console.print(syntax)
+
+
+def _determine_selected_view_keys(
+    client: lea.clients.Client,
+    dag: lea.views.DAGOfViews,
+    select: list[str],
+    views_dir: pathlib.Path
+) -> set[tuple[str]]:
+    """
+
+    Examples
+    --------
+
+    >>> import lea
+
+    >>> client = lea.clients.DuckDB('examples/jaffle_shop/jaffle_shop.db', username='max')
+    >>> views = client.open_views('examples/jaffle_shop/views')
+    >>> views = [v for v in views if v.schema != 'tests']
+    >>> dag = client.make_dag(views)
+
+
+
+    """
+
+    def _expand_select(select):
+
+        # It's possible to select views via git. For example:
+        # * `git` will select all the views that have been modified compared to the main branch.
+        # * `git+` will select all the modified views, and their descendants.
+        # * `+git` will select all the modified views, and their ancestors.
+        # * `+git+` will select all the modified views, with their ancestors and descendants.
+        if m := re.match(r'(?P<ancestors>\+?)git(?P<descendants>\+?)', select):
+            ancestors = m.group('ancestors') == '+'
+            descendants = m.group('descendants') == '+'
+
+            repo = git.Repo('.')
+            staged_diffs = repo.index.diff(repo.refs.main.commit)  # changes that have been committed
+            unstage_diffs = repo.head.commit.diff(None)  # changes that have not been committed
+            for diff in staged_diffs + unstage_diffs:
+                # We only care about changes to views
+                # TODO: here we only check the file's location. We don't check whether the file
+                # is actually a view or not.
+                # One thing to note is that we don't filter out deleted views. This is because
+                # these views will get filtered out by dag.select anyway.
+                diff_path = pathlib.Path(diff.a_path)
+                if diff_path.is_relative_to(views_dir):
+                    view = lea.views.open_view_from_path(diff_path, views_dir, client.sqlglot_dialect)
+                    yield ('+' if ancestors else '') + str(view) + ('+' if descendants else '')
+        else:
+            yield select
+
+    expanded_select = list(itertools.chain.from_iterable(map(_expand_select, select)))
+    return dag.select(*expanded_select) if expanded_select else set(dag.keys())
 
 
 def _make_table_reference_mapping(
@@ -153,7 +209,9 @@ def run(
     dag = client.make_dag(views)
 
     # Let's determine which views need to be run
-    selected_view_keys = dag.select(*select) if select else dag.keys()
+    selected_view_keys = _determine_selected_view_keys(
+        client=client, dag=dag, select=select, views_dir=views_dir
+    )
 
     # Let the user know the views we've decided which views will run
     views_sp = "views" if len(selected_view_keys) > 1 else "view"
@@ -272,7 +330,6 @@ def run(
                     jobs_ended_at[view_key] = dt.datetime.now()
                     # Determine whether the job succeeded or not
                     if exception := jobs[view_key].exception():
-                        raise exception
                         exceptions[view_key] = exception
 
             live.update(display_progress())

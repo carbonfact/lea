@@ -6,12 +6,12 @@ import rich.console
 
 import lea
 
-from .run import _make_table_reference_mapping  # HACK
+from .run import _make_table_reference_mapping, _determine_selected_view_keys  # HACK
 
 
 def test(
     client: lea.clients.Client,
-    views_dir: str,
+    views_dir: pathlib.Path,
     select_views: list[str],
     freeze_unselected: bool,
     threads: int,
@@ -29,7 +29,12 @@ def test(
     # Let's determine which views need to be run
     regular_views = [view for view in views if view.schema not in {"tests", "func"}]
     dag = client.make_dag(regular_views)
-    selected_view_keys = dag.select(*select_views) if select_views else dag.keys()
+    selected_view_keys = _determine_selected_view_keys(
+        dag=dag,
+        select=select_views,
+        client=client,
+        views_dir=views_dir
+    )
 
     # Now we determine the table reference mapping
     table_reference_mapping = _make_table_reference_mapping(
