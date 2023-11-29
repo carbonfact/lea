@@ -6,6 +6,7 @@ import functools
 import pathlib
 import pickle
 import time
+import warnings
 
 import rich.console
 import rich.live
@@ -13,10 +14,10 @@ import rich.syntax
 
 import lea
 
+RUNNING = "[cyan]RUNNING"
 SUCCESS = "[green]SUCCESS"
-RUNNING = "[yellow]RUNNING"
 ERRORED = "[red]ERRORED"
-SKIPPED = "[blue]SKIPPED"
+SKIPPED = "[yellow]SKIPPED"
 
 
 def _do_nothing(*args, **kwargs):
@@ -33,151 +34,55 @@ def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> st
     console.print(syntax)
 
 
-def make_whitelist(query: str, dag: lea.views.DAGOfViews) -> set:
-    """Make a whitelist of tables given a query.
+def _make_table_reference_mapping(
+    dag: lea.views.DAGOfViews,
+    client: lea.clients.Client,
+    selected_view_keys: set[tuple[str]],
+    freeze_unselected: bool,
+) -> dict[str, str]:
+    """
 
-    These are the different queries to handle:
-
-    schema.table
-    schema.table+   (descendants)
-    +schema.table   (ancestors)
-    +schema.table+  (ancestors and descendants)
-    schema/         (all tables in schema)
-    schema/+        (all tables in schema with their descendants)
-    +schema/        (all tables in schema with their ancestors)
-    +schema/+       (all tables in schema with their ancestors and descendants)
-
-    Examples
-    --------
-
-    >>> import lea
-
-    >>> client = lea.clients.DuckDB(':memory:')
-    >>> views = client.open_views('examples/jaffle_shop/views')
-    >>> views = [v for v in views if v.schema != 'tests']
-    >>> dag = client.make_dag(views)
-
-    >>> def pprint(whitelist):
-    ...     for key in sorted(whitelist):
-    ...         print('.'.join(key))
-
-    schema.table
-
-    >>> pprint(make_whitelist('staging.orders', dag))
-    staging.orders
-
-    schema.table+ (descendants)
-
-    >>> pprint(make_whitelist('staging.orders+', dag))
-    analytics.finance.kpis
-    analytics.kpis
-    core.customers
-    core.orders
-    staging.orders
-
-    +schema.table (ancestors)
-
-    >>> pprint(make_whitelist('+core.customers', dag))
-    core.customers
-    staging.customers
-    staging.orders
-    staging.payments
-
-    +schema.table+ (ancestors and descendants)
-
-    >>> pprint(make_whitelist('+core.customers+', dag))
-    analytics.kpis
-    core.customers
-    staging.customers
-    staging.orders
-    staging.payments
-
-    schema/ (all tables in schema)
-
-    >>> pprint(make_whitelist('staging/', dag))
-    staging.customers
-    staging.orders
-    staging.payments
-
-    schema/+ (all tables in schema with their descendants)
-
-    >>> pprint(make_whitelist('staging/+', dag))
-    analytics.finance.kpis
-    analytics.kpis
-    core.customers
-    core.orders
-    staging.customers
-    staging.orders
-    staging.payments
-
-    +schema/ (all tables in schema with their ancestors)
-
-    >>> pprint(make_whitelist('+core/', dag))
-    core.customers
-    core.orders
-    staging.customers
-    staging.orders
-    staging.payments
-
-    +schema/+  (all tables in schema with their ancestors and descendants)
-
-    >>> pprint(make_whitelist('+core/+', dag))
-    analytics.finance.kpis
-    analytics.kpis
-    core.customers
-    core.orders
-    staging.customers
-    staging.orders
-    staging.payments
-
-    schema.subschema/
-
-    >>> pprint(make_whitelist('analytics.finance/', dag))
-    analytics.finance.kpis
+    There are two types of table_references: those that refer to a table in the current database,
+    and those that refer to a table in another database. The next goal is to determine how to
+    rename the table references in each view.
 
     """
 
-    def _yield_whitelist(query, include_ancestors, include_descendants):
-        if query.endswith("+"):
-            yield from _yield_whitelist(
-                query[:-1], include_ancestors=include_ancestors, include_descendants=True
+    # By default, we replace all
+    # table_references to the current database, but we leave the others untouched.
+    if not freeze_unselected:
+        return {
+            client._view_key_to_table_reference(view_key): client._view_key_to_table_reference(
+                view_key, with_username=True
             )
-            return
-        if query.startswith("+"):
-            yield from _yield_whitelist(
-                query[1:], include_ancestors=True, include_descendants=include_descendants
-            )
-            return
-        if query.endswith("/"):
-            for key in dag:
-                if str(dag[key]).startswith(query[:-1]):
-                    yield from _yield_whitelist(
-                        ".".join(key),
-                        include_ancestors=include_ancestors,
-                        include_descendants=include_descendants,
-                    )
-        else:
-            key = tuple(query.split("."))
-            yield key
-            if include_ancestors:
-                yield from dag.list_ancestors(key)
-            if include_descendants:
-                yield from dag.list_descendants(key)
+            for view_key in dag
+        }
 
+    # When freeze_unselected is specified, it means we want our views to target the production
+    # database. Therefore, we only have to rename the table references for the views that were
+    # selected.
+
+    # Note the case where the select list is empty. That means all the views should be refreshed.
+    # If freeze_unselected is specified, then it means all the views will target the production
+    # database, which is basically equivalent to copying over the data.
+    if not selected_view_keys:
+        warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
     return {
-        key
-        for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
-        # Some nodes in the graph are not part of the views, such as third-party tables
-        if key in dag
+        client._view_key_to_table_reference(view_key): client._view_key_to_table_reference(
+            view_key, with_username=True
+        )
+        for view_key in selected_view_keys
     }
 
 
 def run(
     client: lea.clients.Client,
-    views: list[lea.views.View],
+    views_dir: pathlib.Path,
     select: list[str],
+    freeze_unselected: bool,
+    print_views: bool,
     dry: bool,
-    print_to_cli: bool,
+    silent: bool,
     fresh: bool,
     threads: int,
     show: int,
@@ -185,37 +90,40 @@ def run(
     console: rich.console.Console,
 ):
     # If print_to_cli, it means we only want to print out the view definitions, nothing else
-    console_log = _do_nothing if print_to_cli else console.log
-
-    # List the relevant views
-    console_log(f"{len(views):,d} view(s) in total")
+    silent = print_views or silent
+    console_log = _do_nothing if silent else console.log
 
     # Organize the views into a directed acyclic graph
+    views = client.open_views(views_dir)
+    views = [view for view in views if view.schema not in {"tests", "funcs"}]
     dag = client.make_dag(views)
-    dag.prepare()
 
-    # Determine which views need to be run
-    whitelist = (
-        # If multiple select queries are provided, we want to run the union of all the views they
-        # select. We use a set union to remove duplicates.
-        set.union(*(make_whitelist(query, dag) for query in select))
-        if select
-        else set(dag.keys())
+    # Let's determine which views need to be run
+    selected_view_keys = dag.select(*select) if select else dag.keys()
+
+    # Let the user know the views we've decided which views will run
+    views_sp = "views" if len(selected_view_keys) > 1 else "view"
+    console_log(f"{len(selected_view_keys):,d} {views_sp} out of {len(views):,d} selected")
+
+    # Now we determine the table reference mapping
+    table_reference_mapping = _make_table_reference_mapping(
+        dag=dag,
+        client=client,
+        selected_view_keys=selected_view_keys,
+        freeze_unselected=freeze_unselected,
     )
-    console_log(f"{len(whitelist):,d} view(s) selected")
 
     # Remove orphan views
-    # TODO
-    # for table_reference in client.list_tables()["table_reference"]:
-    #     view_key = client._reference_to_key(table_reference)
-    #     if view_key in dag:
-    #         continue
-    #     if not dry:
-    #         client.delete_table_reference(table_reference)
-    #     console_log(f"Removed {table_reference}")
+    for table_reference in client.list_tables()["table_reference"]:
+        view_key = client._table_reference_to_view_key(table_reference)
+        if view_key in dag:
+            continue
+        if not dry:
+            client.delete_view_key(view_key)
+        console_log(f"Removed {table_reference}")
 
     def display_progress() -> rich.table.Table:
-        if print_to_cli:
+        if silent:
             return None
         table = rich.table.Table(box=None)
         table.add_column("#", header_style="italic")
@@ -223,24 +131,30 @@ def run(
         table.add_column("status", header_style="italic")
         table.add_column("duration", header_style="italic")
 
-        order_not_done = [node for node in order if node not in cache]
-        for i, node in list(enumerate(order_not_done, start=1))[-show:]:
-            status = SUCCESS if node in jobs_ended_at else RUNNING
-            status = ERRORED if node in exceptions else status
-            status = SKIPPED if node in skipped else status
+        not_done = [view_key for view_key in execution_order if view_key not in cache]
+        for i, view_key in list(enumerate(not_done, start=1))[-show:]:
+            if view_key in exceptions:
+                status = ERRORED
+            elif view_key in skipped:
+                status = SKIPPED
+            elif view_key in jobs_ended_at:
+                status = SUCCESS
+            else:
+                status = RUNNING
             duration = (
-                (jobs_ended_at.get(node, dt.datetime.now()) - jobs_started_at[node])
-                if node in jobs_started_at
-                else dt.timedelta(seconds=0)
+                (jobs_ended_at.get(view_key, dt.datetime.now()) - jobs_started_at[view_key])
+                if view_key in jobs_started_at
+                else None
             )
-            rounded_seconds = int(duration.total_seconds())
-            table.add_row(str(i), str(dag[node]), status, f"{rounded_seconds}s")
+            # Round to the closest second
+            duration_str = f"{int(round(duration.total_seconds()))}s" if duration else ""
+            table.add_row(str(i), str(dag[view_key]), status, duration_str)
 
         return table
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
     jobs = {}
-    order = []
+    execution_order = []
     jobs_started_at = {}
     jobs_ended_at = {}
     exceptions = {}
@@ -249,50 +163,64 @@ def run(
     cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
     tic = time.time()
 
-    console_log(f"{len(cache):,d} view(s) already done")
+    views_sp = "views" if len(cache) > 1 else "view"
+    console_log(f"{len(cache):,d} {views_sp} already done")
 
     with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
+        dag.prepare()
         while dag.is_active():
-            # We check if new views have been unlocked
-            # If so, we submit a job to create them
-            # We record the job in a dict, so that we can check when it's done
-            for node in dag.get_ready():
-                if (
-                    # Some nodes in the graph are not part of the views,
-                    # they're external dependencies which can be ignored
-                    node not in dag
-                    # Some nodes are blacklisted, so we skip them
-                    or node not in whitelist
+            for view_key in dag.get_ready():
+                # Check if the view_key can be skipped or not
+                if view_key not in selected_view_keys:
+                    dag.done(view_key)
+                    continue
+                execution_order.append(view_key)
+
+                # A view can only be computed if all its dependencies have been computed
+                # succesfully
+
+                if any(
+                    dep_key in skipped or dep_key in exceptions
+                    for dep_key in map(
+                        client._table_reference_to_view_key, dag[view_key].dependencies
+                    )
                 ):
-                    dag.done(node)
+                    skipped.add(view_key)
+                    dag.done(view_key)
                     continue
 
-                order.append(node)
+                # Submit a job, or print, or do nothing
+                if dry or view_key in cache:
+                    job = _do_nothing
+                elif print_views:
+                    job = functools.partial(
+                        pretty_print_view,
+                        view=dag[view_key].rename_table_references(
+                            table_reference_mapping=table_reference_mapping
+                        ),
+                        console=console,
+                    )
+                else:
+                    job = functools.partial(
+                        client.materialize_view,
+                        view=dag[view_key].rename_table_references(
+                            table_reference_mapping=table_reference_mapping
+                        ),
+                    )
+                jobs[view_key] = executor.submit(job)
+                jobs_started_at[view_key] = dt.datetime.now()
 
-                # A node can only be computed if all its dependencies have been computed
-                # If all the dependencies have not been computed succesfully, we skip the node
-                if any(dep in skipped or dep in exceptions for dep in dag[node].dependencies):
-                    skipped.add(node)
-                    dag.done(node)
-                    continue
-
-                jobs[node] = executor.submit(
-                    _do_nothing
-                    if dry or node in cache
-                    else functools.partial(pretty_print_view, view=dag[node], console=console)
-                    if print_to_cli
-                    else functools.partial(client.create, view=dag[node])
-                )
-                jobs_started_at[node] = dt.datetime.now()
-            # We check if any jobs are done
-            # When a job is done, we notify the DAG, which will unlock the next views
-            for node in jobs_started_at:
-                if node not in jobs_ended_at and jobs[node].done():
-                    dag.done(node)
-                    jobs_ended_at[node] = dt.datetime.now()
+            # Check if any jobs are done. We notify the DAG by calling done when a job is done,
+            # which will unlock the next views.
+            for view_key in jobs_started_at:
+                if view_key not in jobs_ended_at and jobs[view_key].done():
+                    dag.done(view_key)
+                    jobs_ended_at[view_key] = dt.datetime.now()
                     # Determine whether the job succeeded or not
-                    if exception := jobs[node].exception():
-                        exceptions[node] = exception
+                    if exception := jobs[view_key].exception():
+                        raise exception
+                        exceptions[view_key] = exception
+
             live.update(display_progress())
 
     # Save the cache
@@ -300,7 +228,12 @@ def run(
     cache = (
         set()
         if all_done
-        else cache | {node for node in order if node not in exceptions and node not in skipped}
+        else cache
+        | {
+            view_key
+            for view_key in execution_order
+            if view_key not in exceptions and view_key not in skipped
+        }
     )
     if cache:
         cache_path.write_bytes(pickle.dumps(cache))
@@ -308,7 +241,7 @@ def run(
         cache_path.unlink(missing_ok=True)
 
     # Summary statistics
-    if print_to_cli:
+    if silent:
         return
     console.log(f"Took {round(time.time() - tic)}s")
     summary = rich.table.Table()
@@ -324,8 +257,8 @@ def run(
 
     # Summary of errors
     if exceptions:
-        for node, exception in exceptions.items():
-            console.print(str(dag[node]), style="bold red")
+        for view_key, exception in exceptions.items():
+            console.print(str(dag[view_key]), style="bold red")
             console.print(exception)
 
         if fail_fast:

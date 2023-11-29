@@ -217,14 +217,13 @@ class MockRichConsole:
 )
 def test_duckdb_assertions(test_data, query, ok, client):
     view = lea.views.GenericSQLView(
-        schema="tests",
-        name="test_assertion",
+        key=("tests", "assertion"),
         query=query,
         sqlglot_dialect=client.sqlglot_dialect,
     )
     dummy_console = MockRichConsole()
     client.prepare([view], console=dummy_console)
-    client.create(view)
+    client.materialize_view(view)
 
     for test in client.discover_assertion_tests(view, test_data.columns):
         conflicts = client.load(test)

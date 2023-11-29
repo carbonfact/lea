@@ -10,6 +10,14 @@ from .python import PythonView
 from .sql import GenericSQLView, SQLView
 
 
+def open_view_from_path(path, origin, sqlglot_dialect):
+    relative_path = path.relative_to(origin)
+    if path.suffix == ".py":
+        return PythonView(origin, relative_path)
+    if path.suffix == ".sql" or path.suffixes == [".sql", ".jinja"]:
+        return SQLView(origin, relative_path, sqlglot_dialect=sqlglot_dialect)
+
+
 def open_views(
     views_dir: pathlib.Path | str, sqlglot_dialect: sqlglot.dialects.Dialect | str
 ) -> list[View]:
@@ -19,15 +27,8 @@ def open_views(
     if isinstance(sqlglot_dialect, str):
         sqlglot_dialect = sqlglot.dialects.Dialects(sqlglot_dialect)
 
-    def _load_view_from_path(path, origin, sqlglot_dialect):
-        relative_path = path.relative_to(origin)
-        if path.suffix == ".py":
-            return PythonView(origin, relative_path)
-        if path.suffix == ".sql" or path.suffixes == [".sql", ".jinja"]:
-            return SQLView(origin, relative_path, sqlglot_dialect=sqlglot_dialect)
-
     return [
-        _load_view_from_path(path, origin=views_dir, sqlglot_dialect=sqlglot_dialect)
+        open_view_from_path(path, origin=views_dir, sqlglot_dialect=sqlglot_dialect)
         for schema_dir in (d for d in views_dir.iterdir() if d.is_dir())
         for path in schema_dir.rglob("*")
         if not path.is_dir()
@@ -38,7 +39,8 @@ def open_views(
 
 
 __all__ = [
-    "load_views",
+    "open_views",
+    "open_view_from_path",
     "DAGOfViews",
     "View",
     "PythonView",

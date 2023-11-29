@@ -9,10 +9,13 @@ from .sql import SQLView
 
 class PythonView(View):
     @property
+    def source_code(self):
+        return self.path.read_text()
+
+    @property
     def dependencies(self):
         def _dependencies():
-            code = self.path.read_text()
-            for node in ast.walk(ast.parse(code)):
+            for node in ast.walk(ast.parse(self.source_code)):
                 # pd.read_gbq
                 try:
                     if (
@@ -46,3 +49,7 @@ class PythonView(View):
 
     def __repr__(self):
         return ".".join(self.key)
+
+    def rename_table_references(self, table_reference_mapping: dict[str, str]):
+        # TODO: for now we pass through...
+        return self

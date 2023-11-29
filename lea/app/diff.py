@@ -11,12 +11,19 @@ import lea
 def get_schema_diff(
     origin_client: lea.clients.Client, target_client: lea.clients.Client
 ) -> pd.DataFrame:
-    origin_columns = set(
-        map(tuple, origin_client.list_columns()[["table_reference", "column"]].values.tolist())
+    origin_columns = origin_client.list_columns()[["table_reference", "column"]]
+    target_columns = target_client.list_columns()[["table_reference", "column"]]
+
+    # HACK: remove the username
+    origin_columns["table_reference"] = origin_columns["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
     )
-    destination_columns = set(
-        map(tuple, target_client.list_columns()[["table_reference", "column"]].values.tolist())
+    target_columns["table_reference"] = target_columns["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
     )
+
+    origin_columns = set(map(tuple, origin_columns.values.tolist()))
+    target_columns = set(map(tuple, target_columns.values.tolist()))
 
     return pd.DataFrame(
         [
@@ -25,8 +32,7 @@ def get_schema_diff(
                 "column": None,
                 "diff_kind": "ADDED",
             }
-            for table_reference in {t for t, _ in origin_columns}
-            - {t for t, _ in destination_columns}
+            for table_reference in {t for t, _ in origin_columns} - {t for t, _ in target_columns}
         ]
         + [
             {
@@ -34,7 +40,7 @@ def get_schema_diff(
                 "column": column,
                 "diff_kind": "ADDED",
             }
-            for table_reference, column in origin_columns - destination_columns
+            for table_reference, column in origin_columns - target_columns
         ]
         + [
             {
@@ -42,8 +48,7 @@ def get_schema_diff(
                 "column": None,
                 "diff_kind": "REMOVED",
             }
-            for table_reference in {t for t, _ in destination_columns}
-            - {t for t, _ in origin_columns}
+            for table_reference in {t for t, _ in target_columns} - {t for t, _ in origin_columns}
         ]
         + [
             {
@@ -51,7 +56,7 @@ def get_schema_diff(
                 "column": column,
                 "diff_kind": "REMOVED",
             }
-            for table_reference, column in destination_columns - origin_columns
+            for table_reference, column in target_columns - origin_columns
         ],
         columns=["table_reference", "column", "diff_kind"],
     )
@@ -61,10 +66,19 @@ def get_size_diff(
     origin_client: lea.clients.Client, target_client: lea.clients.Client
 ) -> pd.DataFrame:
     origin_tables = origin_client.list_tables()[["table_reference", "n_rows", "n_bytes"]]
-    tarlist_tables = target_client.list_tables()[["table_reference", "n_rows", "n_bytes"]]
+    target_tables = target_client.list_tables()[["table_reference", "n_rows", "n_bytes"]]
+
+    # HACK: remove the username
+    origin_tables["table_reference"] = origin_tables["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
+    )
+    target_tables["table_reference"] = target_tables["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
+    )
+
     comparison = pd.merge(
         origin_tables,
-        tarlist_tables,
+        target_tables,
         on="table_reference",
         suffixes=("_origin", "_destination"),
         how="outer",

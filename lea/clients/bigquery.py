@@ -33,10 +33,6 @@ class BigQuery(Client):
         return bigquery.Client(credentials=self.credentials)
 
     def prepare(self, views, console):
-        dataset = self.create_dataset()
-        console.log(f"Created dataset {dataset.dataset_id}")
-
-    def create_dataset(self):
         from google.cloud import bigquery
 
         dataset_ref = bigquery.DatasetReference(
@@ -45,49 +41,45 @@ class BigQuery(Client):
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset = self.client.create_dataset(dataset, exists_ok=True)
-        return dataset
+        console.log(f"Created dataset {dataset.dataset_id}")
 
-    def teardown(self):
+    def teardown(self, console):
         from google.cloud import bigquery
 
         dataset_ref = self.client.dataset(self.dataset_name)
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
+        console.log(f"Deleted dataset {dataset.dataset_id}")
 
-    def _make_job(self, view: lea.views.SQLView):
-        query = view.query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
-
-        return self.client.create_job(
+    def _materialize_sql_query(self, view_key: tuple[str], query: str):
+        table_reference = self._view_key_to_table_reference(view_key)
+        schema, table_reference = table_reference.split(".", 1)
+        job = self.client.create_job(
             {
                 "query": {
                     "query": query,
                     "destinationTable": {
                         "projectId": self.project_id,
                         "datasetId": self.dataset_name,
-                        "tableId": f"{self._key_to_reference(view.key).split('.', 1)[1]}",
+                        "tableId": table_reference,
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
                     "writeDisposition": "WRITE_TRUNCATE",
                 },
                 "labels": {
                     "job_dataset": self.dataset_name,
-                    "job_schema": view.schema,
-                    "job_table": f"{self._key_to_reference(view.key).split('.', 1)[1]}",
+                    "job_schema": schema,
+                    "job_table": table_reference,
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
             }
         )
-
-    def _create_sql_view(self, view: lea.views.SQLView):
-        job = self._make_job(view)
         job.result()
 
-    def _create_python_view(self, view: lea.views.PythonView):
+    def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame):
         from google.cloud import bigquery
-
-        dataframe = self._load_python_view(view)
 
         job_config = bigquery.LoadJobConfig(
             schema=[],
@@ -96,23 +88,17 @@ class BigQuery(Client):
 
         job = self.client.load_table_from_dataframe(
             dataframe,
-            f"{self.project_id}.{self._key_to_reference(view.key)}",
+            f"{self.project_id}.{self._view_key_to_table_reference(view_key)}",
             job_config=job_config,
         )
         job.result()
 
-    def _render_view_query(self, view: lea.views.SQLView) -> str:
-        query = view.query
-        if self.username:
-            query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
-        return query
-
-    def _load_sql_view(self, view: lea.views.SQLView) -> pd.DataFrame:
-        query = self._render_view_query(view)
-        return pd.read_gbq(query, credentials=self.client._credentials)
-
-    def delete_table_reference(self, table_reference: str):
+    def delete_view_key(self, view_key: tuple[str]):
+        table_reference = self._view_key_to_table_reference(view_key, with_username=True)
         self.client.delete_table(f"{self.project_id}.{table_reference}")
+
+    def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
+        return pd.read_gbq(view.query, credentials=self.client._credentials)
 
     def list_tables(self):
         query = f"""
@@ -122,9 +108,10 @@ class BigQuery(Client):
             total_logical_bytes AS n_bytes
         FROM `region-{self.location.lower()}`.INFORMATION_SCHEMA.TABLE_STORAGE_BY_PROJECT
         WHERE table_schema = '{self.dataset_name}'
+        AND total_rows > 0
         """
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
-        return self._load_sql_view(view)
+        return self._read_sql_view(view)
 
     def list_columns(self) -> pd.DataFrame:
         query = f"""
@@ -135,10 +122,9 @@ class BigQuery(Client):
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
-        columns = self._load_sql_view(view)
-        return columns
+        return self._read_sql_view(view)
 
-    def _key_to_reference(self, view_key: tuple[str]) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_username=False) -> str:
         """
 
         >>> client = BigQuery(
@@ -146,20 +132,27 @@ class BigQuery(Client):
         ...     location="US",
         ...     project_id="project",
         ...     dataset_name="dataset",
-        ...     username=None
+        ...     username="max"
         ... )
 
-
-        >>> client._key_to_reference(("schema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "table"))
         'dataset.schema__table'
 
-        >>> client._key_to_reference(("schema", "subschema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "subschema", "table"))
         'dataset.schema__subschema__table'
 
-        """
-        return f"{self.dataset_name}.{lea._SEP.join(view_key)}"
+        >>> client._view_key_to_table_reference(("schema", "table"))
+        'dataset.schema__table'
 
-    def _reference_to_key(self, table_reference: str) -> tuple[str]:
+        >>> client._view_key_to_table_reference(("schema", "table"), with_username=True)
+        'dataset_max.schema__table'
+
+        """
+        if with_username:
+            return f"{self.dataset_name}.{lea._SEP.join(view_key)}"
+        return f"{self._dataset_name}.{lea._SEP.join(view_key)}"
+
+    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
         """
 
         >>> client = BigQuery(
@@ -167,14 +160,23 @@ class BigQuery(Client):
         ...     location="US",
         ...     project_id="project",
         ...     dataset_name="dataset",
-        ...     username=None
+        ...     username="max"
         ... )
 
-        >>> client._reference_to_key("dataset.schema__table")
+        >>> client._table_reference_to_view_key("dataset.schema__table")
         ('schema', 'table')
 
-        >>> client._reference_to_key("dataset.schema__subschema__table")
+        >>> client._table_reference_to_view_key("dataset.schema__subschema__table")
         ('schema', 'subschema', 'table')
 
+        >>> client._table_reference_to_view_key("external_dataset.schema__subschema__table")
+        ('external_dataset', 'schema', 'subschema', 'table')
+
+        >>> client._table_reference_to_view_key("dataset_max.schema__table")
+        ('schema', 'table')
+
         """
-        return tuple(table_reference.split(".", 1)[1].split(lea._SEP))
+        dataset, leftover = tuple(table_reference.split(".", 1))
+        if dataset in {self._dataset_name, self.dataset_name}:
+            return tuple(leftover.split(lea._SEP))
+        return (dataset, *leftover.split(lea._SEP))
