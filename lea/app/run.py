@@ -69,11 +69,15 @@ def _determine_selected_view_keys(
             ancestors = m.group("ancestors") == "+"
             descendants = m.group("descendants") == "+"
 
-            repo = git.Repo(".")
+            repo = git.Repo(".")  # TODO: is using "." always correct? Probably not.
+            # Changes that have been committed
             staged_diffs = repo.index.diff(
-                repo.remotes.origin.refs.main.commit
-            )  # changes that have been committed
-            unstage_diffs = repo.head.commit.diff(None)  # changes that have not been committed
+                repo.refs.main.commit
+                # repo.remotes.origin.refs.main.commit
+            )
+            # Changes that have not been committed
+            unstage_diffs = repo.head.commit.diff(None)
+
             for diff in staged_diffs + unstage_diffs:
                 # We only care about changes to views
                 # TODO: here we only check the file's location. We don't check whether the file
