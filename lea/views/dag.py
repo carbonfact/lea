@@ -167,21 +167,21 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
 
         """
 
-        def _yield_whitelist(query, include_ancestors, include_descendants):
+        def _select(query, include_ancestors, include_descendants):
             if query.endswith("+"):
-                yield from _yield_whitelist(
+                yield from _select(
                     query[:-1], include_ancestors=include_ancestors, include_descendants=True
                 )
                 return
             if query.startswith("+"):
-                yield from _yield_whitelist(
+                yield from _select(
                     query[1:], include_ancestors=True, include_descendants=include_descendants
                 )
                 return
             if query.endswith("/"):
                 for key in self:
                     if str(self[key]).startswith(query[:-1]):
-                        yield from _yield_whitelist(
+                        yield from _select(
                             ".".join(key),
                             include_ancestors=include_ancestors,
                             include_descendants=include_descendants,
@@ -206,7 +206,7 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             query = queries[0]
             return {
                 key
-                for key in _yield_whitelist(
+                for key in _select(
                     query, include_ancestors=False, include_descendants=False
                 )
                 # Some nodes in the graph are not part of the views, such as third-party tables

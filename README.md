@@ -269,7 +269,13 @@ SELECT
 FROM core.users
 ```
 
-As with the `run` command, there is a `--production` flag to disable the `<user>` suffix and thus test production data.
+As with the `run` command, there is a `--production` flag to disable the `<user>` suffix, and therefore target production data.
+
+You can select a subset views, which will thus run the tests that depend on them:
+
+```sh
+lea test --select-views core.users
+```
 
 ### `lea docs`
 
