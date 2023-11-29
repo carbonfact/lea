@@ -204,6 +204,7 @@ def run(
                     jobs_ended_at[view_key] = dt.datetime.now()
                     # Determine whether the job succeeded or not
                     if exception := jobs[view_key].exception():
+                        raise exception
                         exceptions[view_key] = exception
 
             live.update(display_progress())

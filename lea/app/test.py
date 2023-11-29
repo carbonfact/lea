@@ -42,6 +42,7 @@ def test(
     # List assertion tests
     assertion_tests = []
     for view in filter(lambda v: v.schema not in {"funcs", "tests"}, views):
+        # HACK: this is a bit of a hack to get the columns of the view
         view_columns = columns.query(f"table_reference == '{client._view_key_to_table_reference(view.key, with_username=True)}'")[
             "column"
         ].tolist()
