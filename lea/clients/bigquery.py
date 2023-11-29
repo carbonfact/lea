@@ -54,7 +54,7 @@ class BigQuery(Client):
 
     def _materialize_sql_query(self, view_key: tuple[str], query: str):
         table_reference = self._view_key_to_table_reference(view_key)
-        schema, table_reference = table_reference.split('.', 1)
+        schema, table_reference = table_reference.split(".", 1)
         job = self.client.create_job(
             {
                 "query": {
@@ -62,7 +62,7 @@ class BigQuery(Client):
                     "destinationTable": {
                         "projectId": self.project_id,
                         "datasetId": self.dataset_name,
-                        "tableId": table_reference
+                        "tableId": table_reference,
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
                     "writeDisposition": "WRITE_TRUNCATE",
@@ -97,7 +97,7 @@ class BigQuery(Client):
         table_reference = self._view_key_to_table_reference(view_key, with_username=True)
         self.client.delete_table(f"{self.project_id}.{table_reference}")
 
-    def _read_sql_view(self, view: views.View) -> pd.DataFrame:
+    def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
         return pd.read_gbq(view.query, credentials=self.client._credentials)
 
     def list_tables(self):

@@ -38,10 +38,12 @@ def prepare(views_dir: str = ViewsDir, production: bool = False, env: str = EnvP
 @app.command()
 def teardown(production: bool = False, env: str = EnvPath):
     if production:
-        raise ValueError("""
+        raise ValueError(
+            """
         This is a dangerous operation, so it is not allowed in production. If you really want to
         do this, then do so manually.
-        """)
+        """
+        )
 
     client = _make_client(production)
     client.teardown(console)

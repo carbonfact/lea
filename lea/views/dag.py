@@ -206,7 +206,9 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
             query = queries[0]
             return {
                 key
-                for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
+                for key in _yield_whitelist(
+                    query, include_ancestors=False, include_descendants=False
+                )
                 # Some nodes in the graph are not part of the views, such as third-party tables
                 if key in self
             }

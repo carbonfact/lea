@@ -36,16 +36,16 @@ def test(
         dag=dag,
         client=client,
         selected_view_keys=selected_view_keys,
-        freeze_unselected=freeze_unselected
+        freeze_unselected=freeze_unselected,
     )
 
     # List assertion tests
     assertion_tests = []
     for view in filter(lambda v: v.schema not in {"funcs", "tests"}, views):
         # HACK: this is a bit of a hack to get the columns of the view
-        view_columns = columns.query(f"table_reference == '{client._view_key_to_table_reference(view.key, with_username=True)}'")[
-            "column"
-        ].tolist()
+        view_columns = columns.query(
+            f"table_reference == '{client._view_key_to_table_reference(view.key, with_username=True)}'"
+        )["column"].tolist()
         for test in client.discover_assertion_tests(view=view, view_columns=view_columns):
             assertion_tests.append(test)
     console.log(f"Found {len(assertion_tests):,d} assertion tests")
@@ -56,17 +56,15 @@ def test(
         for test in singular_tests + assertion_tests
         if (
             # Run tests without any dependency whatsoever
-            not (test_dependencies := list(map(client._table_reference_to_view_key, test.dependencies)))
+            not (
+                test_dependencies := list(
+                    map(client._table_reference_to_view_key, test.dependencies)
+                )
+            )
             # Run tests which don't depend on any table in the views directory
-            or all(
-                test_dep[0] not in dag.schemas
-                for test_dep in test_dependencies
-            )
+            or all(test_dep[0] not in dag.schemas for test_dep in test_dependencies)
             # Run tests which have at least one dependency with the selected views
-            or any(
-                test_dep in selected_view_keys
-                for test_dep in test_dependencies
-            )
+            or any(test_dep in selected_view_keys for test_dep in test_dependencies)
         )
     ]
     tests_sp = "tests" if len(tests) > 1 else "test"
@@ -74,7 +72,12 @@ def test(
 
     # Run tests concurrently
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        jobs = {executor.submit(client.load, test): test.rename_table_references(table_reference_mapping=table_reference_mapping) for test in tests}
+        jobs = {
+            executor.submit(client.load, test): test.rename_table_references(
+                table_reference_mapping=table_reference_mapping
+            )
+            for test in tests
+        }
         for job in concurrent.futures.as_completed(jobs):
             test = jobs[job]
             conflicts = job.result()

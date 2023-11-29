@@ -158,11 +158,7 @@ class SQLView(View):
         # Maybe try out https://github.com/vi3k6i5/flashtext
         for k, v in table_reference_mapping.items():
             query = query.replace(k, v)
-        return GenericSQLView(
-            query=query,
-            sqlglot_dialect=self.sqlglot_dialect,
-            key=self.key
-        )
+        return GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect, key=self.key)
 
 
 class GenericSQLView(SQLView):

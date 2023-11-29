@@ -15,15 +15,15 @@ def get_schema_diff(
     target_columns = target_client.list_columns()[["table_reference", "column"]]
 
     # HACK: remove the username
-    origin_columns["table_reference"] = origin_columns["table_reference"].apply(lambda x: x.split(".", 1)[1])
-    target_columns["table_reference"] = target_columns["table_reference"].apply(lambda x: x.split(".", 1)[1])
+    origin_columns["table_reference"] = origin_columns["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
+    )
+    target_columns["table_reference"] = target_columns["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
+    )
 
-    origin_columns = set(
-        map(tuple, origin_columns.values.tolist())
-    )
-    target_columns = set(
-        map(tuple, target_columns.values.tolist())
-    )
+    origin_columns = set(map(tuple, origin_columns.values.tolist()))
+    target_columns = set(map(tuple, target_columns.values.tolist()))
 
     return pd.DataFrame(
         [
@@ -32,8 +32,7 @@ def get_schema_diff(
                 "column": None,
                 "diff_kind": "ADDED",
             }
-            for table_reference in {t for t, _ in origin_columns}
-            - {t for t, _ in target_columns}
+            for table_reference in {t for t, _ in origin_columns} - {t for t, _ in target_columns}
         ]
         + [
             {
@@ -49,8 +48,7 @@ def get_schema_diff(
                 "column": None,
                 "diff_kind": "REMOVED",
             }
-            for table_reference in {t for t, _ in target_columns}
-            - {t for t, _ in origin_columns}
+            for table_reference in {t for t, _ in target_columns} - {t for t, _ in origin_columns}
         ]
         + [
             {
@@ -71,8 +69,12 @@ def get_size_diff(
     target_tables = target_client.list_tables()[["table_reference", "n_rows", "n_bytes"]]
 
     # HACK: remove the username
-    origin_tables["table_reference"] = origin_tables["table_reference"].apply(lambda x: x.split(".", 1)[1])
-    target_tables["table_reference"] = target_tables["table_reference"].apply(lambda x: x.split(".", 1)[1])
+    origin_tables["table_reference"] = origin_tables["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
+    )
+    target_tables["table_reference"] = target_tables["table_reference"].apply(
+        lambda x: x.split(".", 1)[1]
+    )
 
     comparison = pd.merge(
         origin_tables,

@@ -3,10 +3,8 @@ from __future__ import annotations
 import concurrent.futures
 import datetime as dt
 import functools
-import git
 import pathlib
 import pickle
-import re
 import time
 import warnings
 
@@ -15,7 +13,6 @@ import rich.live
 import rich.syntax
 
 import lea
-
 
 RUNNING = "[cyan]RUNNING"
 SUCCESS = "[green]SUCCESS"
@@ -37,7 +34,12 @@ def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> st
     console.print(syntax)
 
 
-def _make_table_reference_mapping(dag: lea.views.DAGOfViews, client: lea.clients.Client, selected_view_keys: set[tuple[str]], freeze_unselected: bool) -> dict[str, str]:
+def _make_table_reference_mapping(
+    dag: lea.views.DAGOfViews,
+    client: lea.clients.Client,
+    selected_view_keys: set[tuple[str]],
+    freeze_unselected: bool,
+) -> dict[str, str]:
     """
 
     There are two types of table_references: those that refer to a table in the current database,
@@ -50,7 +52,9 @@ def _make_table_reference_mapping(dag: lea.views.DAGOfViews, client: lea.clients
     # table_references to the current database, but we leave the others untouched.
     if not freeze_unselected:
         return {
-            client._view_key_to_table_reference(view_key): client._view_key_to_table_reference(view_key, with_username=True)
+            client._view_key_to_table_reference(view_key): client._view_key_to_table_reference(
+                view_key, with_username=True
+            )
             for view_key in dag
         }
 
@@ -61,12 +65,15 @@ def _make_table_reference_mapping(dag: lea.views.DAGOfViews, client: lea.clients
     # Note the case where the select list is empty. That means all the views should be refreshed.
     # If freeze_unselected is specified, then it means all the views will target the production
     # database, which is basically equivalent to copying over the data.
-    if not select:
+    if not selected_view_keys:
         warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
-    table_reference_mapping = {
-        client._view_key_to_table_reference(view_key): client._view_key_to_table_reference(view_key, with_username=True)
+    return {
+        client._view_key_to_table_reference(view_key): client._view_key_to_table_reference(
+            view_key, with_username=True
+        )
         for view_key in selected_view_keys
     }
+
 
 def run(
     client: lea.clients.Client,
@@ -82,7 +89,6 @@ def run(
     fail_fast: bool,
     console: rich.console.Console,
 ):
-
     # If print_to_cli, it means we only want to print out the view definitions, nothing else
     silent = print_views or silent
     console_log = _do_nothing if silent else console.log
@@ -104,7 +110,7 @@ def run(
         dag=dag,
         client=client,
         selected_view_keys=selected_view_keys,
-        freeze_unselected=freeze_unselected
+        freeze_unselected=freeze_unselected,
     )
 
     # Remove orphan views
@@ -164,7 +170,6 @@ def run(
         dag.prepare()
         while dag.is_active():
             for view_key in dag.get_ready():
-
                 # Check if the view_key can be skipped or not
                 if view_key not in selected_view_keys:
                     dag.done(view_key)
@@ -174,7 +179,12 @@ def run(
                 # A view can only be computed if all its dependencies have been computed
                 # succesfully
 
-                if any(dep_key in skipped or dep_key in exceptions for dep_key in map(client._table_reference_to_view_key, dag[view_key].dependencies)):
+                if any(
+                    dep_key in skipped or dep_key in exceptions
+                    for dep_key in map(
+                        client._table_reference_to_view_key, dag[view_key].dependencies
+                    )
+                ):
                     skipped.add(view_key)
                     dag.done(view_key)
                     continue
@@ -185,13 +195,17 @@ def run(
                 elif print_views:
                     job = functools.partial(
                         pretty_print_view,
-                        view=dag[view_key].rename_table_references(table_reference_mapping=table_reference_mapping),
-                        console=console
+                        view=dag[view_key].rename_table_references(
+                            table_reference_mapping=table_reference_mapping
+                        ),
+                        console=console,
                     )
                 else:
                     job = functools.partial(
                         client.materialize_view,
-                        view=dag[view_key].rename_table_references(table_reference_mapping=table_reference_mapping)
+                        view=dag[view_key].rename_table_references(
+                            table_reference_mapping=table_reference_mapping
+                        ),
                     )
                 jobs[view_key] = executor.submit(job)
                 jobs_started_at[view_key] = dt.datetime.now()

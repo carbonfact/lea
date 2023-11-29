@@ -45,7 +45,9 @@ class DuckDB(Client):
         )
 
     def _materialize_sql_query(self, view_key: tuple[str], query: str):
-        self.con.sql(f"CREATE OR REPLACE TABLE {self._view_key_to_table_reference(view_key)} AS ({query})")
+        self.con.sql(
+            f"CREATE OR REPLACE TABLE {self._view_key_to_table_reference(view_key)} AS ({query})"
+        )
 
     def _read_sql_view(self, view: lea.views.SQLView):
         query = view.query

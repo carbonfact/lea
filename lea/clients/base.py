@@ -32,7 +32,8 @@ class Client(abc.ABC):
     def make_dag(self, views: list[lea.views.View]) -> lea.views.DAGOfViews:
         graph = {
             view.key: [
-                self._table_reference_to_view_key(table_reference) for table_reference in view.dependencies
+                self._table_reference_to_view_key(table_reference)
+                for table_reference in view.dependencies
             ]
             for view in views
         }
