@@ -126,10 +126,10 @@ def run(
         if silent:
             return None
         table = rich.table.Table(box=None)
-        table.add_column("#", header_style="italic")
-        table.add_column("view", header_style="italic")
-        table.add_column("status", header_style="italic")
-        table.add_column("duration", header_style="italic")
+        table.add_column("#")
+        table.add_column("view")
+        table.add_column("status")
+        table.add_column("duration")
 
         not_done = [view_key for view_key in execution_order if view_key not in cache]
         for i, view_key in list(enumerate(not_done, start=1))[-show:]:
