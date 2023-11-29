@@ -194,18 +194,22 @@ class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
                 if include_descendants:
                     yield from self.list_descendants(key)
 
+        if not queries:
+            return set()
+
         # If multiple select queries are provided, we want to run the union of all the views they
         # select. We use a set union to remove duplicates.
-        if len(queries) > 1:
+        elif len(queries) > 1:
             return set.union(*(self.select(query) for query in queries))
 
-        query = queries[0]
-        return {
-            key
-            for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
-            # Some nodes in the graph are not part of the views, such as third-party tables
-            if key in self
-        }
+        else:
+            query = queries[0]
+            return {
+                key
+                for key in _yield_whitelist(query, include_ancestors=False, include_descendants=False)
+                # Some nodes in the graph are not part of the views, such as third-party tables
+                if key in self
+            }
 
     @property
     def _nested_schema(self):

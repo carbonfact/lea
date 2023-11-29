@@ -54,14 +54,23 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _create_sql_view(self, view: lea.views.SQLView):
+    def _create_sql_view(self, view: lea.views.SQLView, **replacements):
         ...
 
     @abc.abstractmethod
-    def _create_python_view(self, view: lea.views.PythonView):
+    def _create_python_view(self, view: lea.views.PythonView, **replacements):
         ...
 
-    def create(self, view: lea.views.View):
+    @abc.abstractmethod
+    def _make_replacements(self, frozen_view_keys: set[tuple[str]]) -> dict[str, str]:
+        ...
+
+    def edit_view(self, view: lea.views.View, frozen_view_keys: set[tuple[str]] = None):
+        replacements = self._make_replacements(frozen_view_keys=frozen_view_keys)
+
+    def create(self, view: lea.views.View, frozen_view_keys: set[tuple[str]] = None):
+        replacements = self._make_replacements(frozen_view_keys=frozen_view_keys)
+        # TODO: handle replacements
         if isinstance(view, lea.views.SQLView):
             return self._create_sql_view(view)
         elif isinstance(view, lea.views.PythonView):
@@ -92,7 +101,7 @@ class Client(abc.ABC):
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
-    def delete_table_reference(self, table_reference: str):
+    def delete_view_key(self, view_key: tuple[str]):
         ...
 
     @abc.abstractmethod

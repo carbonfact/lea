@@ -53,7 +53,8 @@ class DuckDB(Client):
         query = view.query
         return self.con.cursor().sql(query).df()
 
-    def delete_table_reference(self, table_reference: str):
+    def delete_view_key(self, view_key: tuple[str]):
+        table_reference = self._key_to_reference(view_key)
         self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
 
     def teardown(self):

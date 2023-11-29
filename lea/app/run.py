@@ -19,7 +19,6 @@ RUNNING = "[white]RUNNING"
 SUCCESS = "[green]SUCCESS"
 ERRORED = "[red]ERRORED"
 SKIPPED = "[yellow]SKIPPED"
-FROZEN = "[cyan]FROZEN"
 
 
 def _do_nothing(*args, **kwargs):
@@ -36,45 +35,12 @@ def pretty_print_view(view: lea.views.View, console: rich.console.Console) -> st
     console.print(syntax)
 
 
-def determine_whitelist(dag: lea.views.DAGOfViews, views_dir: pathlib.Path, select: list[str]):
-    """
-
-    The whitelist is the list of views that will be run. This function's purpose is to determine
-    which views should be in the whitelist.
-
-    """
-
-    for query in select:
-
-        # Handle git-style selectors
-        if re.match(r'\+?git\+?', query):
-            repo = git.Repo('.')
-            main = repo.remote().refs.main
-            for diff in repo.index.diff(f"origin/main"):
-                diff_path = pathlib.Path(diff.a_path)
-                if diff_path.is_relative_to(views_dir):
-                    view = lea.views.open_view_from_path(
-                        path=diff_path,
-                        origin=views_dir,
-                        sqlglot_dialect=None
-                    )
-                    print(diff_path)
-
-        #whitelist = dag.select(query)
-        #frozen = set()
-    else:
-        #whitelist = set(dag.keys())
-        frozen = set()
-
-    return []
-
-
 
 def run(
     client: lea.clients.Client,
     views_dir: pathlib.Path,
     select: list[str],
-    freeze_roots: bool,
+    freeze_unselected: bool,
     print_views: bool,
     dry: bool,
     silent: bool,
@@ -98,19 +64,22 @@ def run(
     console_log(f"{len(views):,d} view(s) in total")
 
     # Let's determine which views need to be run.
-    whitelist = determine_whitelist(dag, views_dir, select) if select else set(dag.keys())
+    whitelist = dag.select(*select)
+    frozen = dag.keys() - whitelist if freeze_unselected else set()
     console_log(f"{len(whitelist):,d} view(s) selected")
 
-    return
+    for view_key in dag:
+        print(view_key, client._key_to_reference(view_key))
 
     # Remove orphan views
-    for table_reference in client.list_tables()["table_reference"]:
-        view_key = client._reference_to_key(table_reference)
-        if view_key in dag:
-            continue
-        if not dry:
-            client.delete_table_reference(table_reference)
-        console_log(f"Removed {table_reference}")
+    # TODO
+    # for table_reference in client.list_tables()["table_reference"]:
+    #     view_key = client._reference_to_key(table_reference)
+    #     if view_key in dag:
+    #         continue
+    #     if not dry:
+    #         client.delete_view_key(view_key)
+    #     console_log(f"Removed {table_reference}")
 
     def display_progress() -> rich.table.Table:
         if silent:
@@ -129,8 +98,6 @@ def run(
                 status = ERRORED
             elif view_key in skipped:
                 status = SKIPPED
-            elif view_key in frozen:
-                status = FROZEN
             else:
                 status = RUNNING
             duration = (
@@ -231,8 +198,6 @@ def run(
         summary.add_row(ERRORED, f"{n:,d}")
     if n := len(skipped):
         summary.add_row(SKIPPED, f"{n:,d}")
-    if n := len(frozen):
-        summary.add_row(FROZEN, f"{n:,d}")
     console.print(summary)
 
     # Summary of errors

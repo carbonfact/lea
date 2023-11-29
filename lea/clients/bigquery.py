@@ -101,17 +101,11 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _render_view_query(self, view: lea.views.SQLView) -> str:
-        query = view.query
-        if self.username:
-            query = query.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
-        return query
+    def _read_sql(self, view: lea.views.SQLView) -> pd.DataFrame:
+        return pd.read_gbq(view.query, credentials=self.client._credentials)
 
-    def _load_sql_view(self, view: lea.views.SQLView) -> pd.DataFrame:
-        query = self._render_view_query(view)
-        return pd.read_gbq(query, credentials=self.client._credentials)
-
-    def delete_table_reference(self, table_reference: str):
+    def delete_view_key(self, view_key: tuple[str]):
+        table_reference = self._key_to_reference(view_key)
         self.client.delete_table(f"{self.project_id}.{table_reference}")
 
     def list_tables(self):
@@ -124,7 +118,7 @@ class BigQuery(Client):
         WHERE table_schema = '{self.dataset_name}'
         """
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
-        return self._load_sql_view(view)
+        return self._read_sql(view)
 
     def list_columns(self) -> pd.DataFrame:
         query = f"""
@@ -135,7 +129,7 @@ class BigQuery(Client):
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
-        columns = self._load_sql_view(view)
+        columns = self._read_sql(view)
         return columns
 
     def _key_to_reference(self, view_key: tuple[str]) -> str:

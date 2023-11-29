@@ -52,7 +52,7 @@ def teardown(production: bool = False, env: str = EnvPath):
 def run(
     views_dir: str = ViewsDir,
     select: list[str] = typer.Option(default=None),
-    freeze_roots: bool = False,
+    freeze_unselected: bool = False,
     dry: bool = False,
     print: bool = False,
     silent: bool = False,
@@ -72,7 +72,7 @@ def run(
         client=client,
         views_dir=pathlib.Path(views_dir),
         select=select,
-        freeze_roots=freeze_roots,
+        freeze_unselected=freeze_unselected,
         dry=dry,
         print_views=print,
         silent=silent,
