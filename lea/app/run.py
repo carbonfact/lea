@@ -71,7 +71,7 @@ def _determine_selected_view_keys(
 
             repo = git.Repo(".")
             staged_diffs = repo.index.diff(
-                repo.refs.main.commit
+                repo.remotes.origin.refs.main.commit
             )  # changes that have been committed
             unstage_diffs = repo.head.commit.diff(None)  # changes that have not been committed
             for diff in staged_diffs + unstage_diffs:
