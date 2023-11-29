@@ -41,7 +41,7 @@ def _determine_selected_view_keys(
     client: lea.clients.Client,
     dag: lea.views.DAGOfViews,
     select: list[str],
-    views_dir: pathlib.Path
+    views_dir: pathlib.Path,
 ) -> set[tuple[str]]:
     """
 
@@ -60,18 +60,19 @@ def _determine_selected_view_keys(
     """
 
     def _expand_select(select):
-
         # It's possible to select views via git. For example:
         # * `git` will select all the views that have been modified compared to the main branch.
         # * `git+` will select all the modified views, and their descendants.
         # * `+git` will select all the modified views, and their ancestors.
         # * `+git+` will select all the modified views, with their ancestors and descendants.
-        if m := re.match(r'(?P<ancestors>\+?)git(?P<descendants>\+?)', select):
-            ancestors = m.group('ancestors') == '+'
-            descendants = m.group('descendants') == '+'
+        if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", select):
+            ancestors = m.group("ancestors") == "+"
+            descendants = m.group("descendants") == "+"
 
-            repo = git.Repo('.')
-            staged_diffs = repo.index.diff(repo.refs.main.commit)  # changes that have been committed
+            repo = git.Repo(".")
+            staged_diffs = repo.index.diff(
+                repo.refs.main.commit
+            )  # changes that have been committed
             unstage_diffs = repo.head.commit.diff(None)  # changes that have not been committed
             for diff in staged_diffs + unstage_diffs:
                 # We only care about changes to views
@@ -81,8 +82,10 @@ def _determine_selected_view_keys(
                 # these views will get filtered out by dag.select anyway.
                 diff_path = pathlib.Path(diff.a_path)
                 if diff_path.is_relative_to(views_dir):
-                    view = lea.views.open_view_from_path(diff_path, views_dir, client.sqlglot_dialect)
-                    yield ('+' if ancestors else '') + str(view) + ('+' if descendants else '')
+                    view = lea.views.open_view_from_path(
+                        diff_path, views_dir, client.sqlglot_dialect
+                    )
+                    yield ("+" if ancestors else "") + str(view) + ("+" if descendants else "")
         else:
             yield select
 

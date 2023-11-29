@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import pathlib
 import concurrent.futures
 
 import rich.console
 
 import lea
 
-from .run import _make_table_reference_mapping, _determine_selected_view_keys  # HACK
+from .run import _determine_selected_view_keys, _make_table_reference_mapping  # HACK
 
 
 def test(
@@ -30,10 +31,7 @@ def test(
     regular_views = [view for view in views if view.schema not in {"tests", "func"}]
     dag = client.make_dag(regular_views)
     selected_view_keys = _determine_selected_view_keys(
-        dag=dag,
-        select=select_views,
-        client=client,
-        views_dir=views_dir
+        dag=dag, select=select_views, client=client, views_dir=views_dir
     )
 
     # Now we determine the table reference mapping
