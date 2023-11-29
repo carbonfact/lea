@@ -43,8 +43,62 @@ def _make_table_reference_mapping(
     """
 
     There are two types of table_references: those that refer to a table in the current database,
-    and those that refer to a table in another database. The next goal is to determine how to
-    rename the table references in each view.
+    and those that refer to a table in another database. This function determine how to rename the
+    table references in each view.
+
+    Examples
+    --------
+
+    >>> import lea
+
+    >>> client = lea.clients.DuckDB('examples/jaffle_shop/jaffle_shop.db', username='max')
+    >>> views = client.open_views('examples/jaffle_shop/views')
+    >>> views = [v for v in views if v.schema != 'tests']
+    >>> dag = client.make_dag(views)
+
+    The client has the ability to generate table references from view keys:
+
+    >>> client._view_key_to_table_reference(('core', 'orders'))
+    'core.orders'
+
+    >>> client._view_key_to_table_reference(('core', 'orders'), with_username=True)
+    'jaffle_shop_max.core.orders'
+
+    We can use this to generate a mapping that will rename all the table references in the views
+    that were selected:
+
+    >>> selected_view_keys = dag.select('core.orders+')
+    >>> table_reference_mapping = _make_table_reference_mapping(
+    ...     dag,
+    ...     client,
+    ...     selected_view_keys,
+    ...     freeze_unselected=True
+    ... )
+
+    >>> for name, renamed in sorted(table_reference_mapping.items()):
+    ...     print(f'{name} -> {renamed}')
+    analytics.finance__kpis -> jaffle_shop_max.analytics.finance__kpis
+    analytics.kpis -> jaffle_shop_max.analytics.kpis
+    core.orders -> jaffle_shop_max.core.orders
+
+    If `freeze_unselected` is `False`, then all the table references have to be renamed:
+
+    >>> table_reference_mapping = _make_table_reference_mapping(
+    ...     dag,
+    ...     client,
+    ...     selected_view_keys,
+    ...     freeze_unselected=False
+    ... )
+
+    >>> for name, renamed in sorted(table_reference_mapping.items()):
+    ...     print(f'{name} -> {renamed}')
+    analytics.finance__kpis -> jaffle_shop_max.analytics.finance__kpis
+    analytics.kpis -> jaffle_shop_max.analytics.kpis
+    core.customers -> jaffle_shop_max.core.customers
+    core.orders -> jaffle_shop_max.core.orders
+    staging.customers -> jaffle_shop_max.staging.customers
+    staging.orders -> jaffle_shop_max.staging.orders
+    staging.payments -> jaffle_shop_max.staging.payments
 
     """
 
