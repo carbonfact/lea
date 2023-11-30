@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import functools
 import io
+import pathlib
 
 import pandas as pd
 
 import lea
+
+from .run import _determine_selected_view_keys  # HACK
 
 
 def get_schema_diff(
@@ -94,7 +97,23 @@ def get_size_diff(
     return comparison
 
 
-def calculate_diff(origin_client: lea.clients.Client, target_client: lea.clients.Client) -> str:
+def calculate_diff(views_dir: pathlib.Path, select: set[str], origin_client: lea.clients.Client, target_client: lea.clients.Client) -> str:
+
+    # Organize the views into a directed acyclic graph
+    views = origin_client.open_views(views_dir)
+    views = [view for view in views if view.schema not in {"tests", "funcs"}]
+    dag = origin_client.make_dag(views)
+
+    # Let's determine which views need to be run
+    selected_view_keys = _determine_selected_view_keys(
+        client=origin_client, dag=dag, select=select, views_dir=views_dir
+    )
+    # HACK
+    selected_table_references = {
+        origin_client._view_key_to_table_reference(view_key).split(".", 1)[1]
+        for view_key in selected_view_keys
+    }
+
     schema_diff = get_schema_diff(origin_client=origin_client, target_client=target_client)
     size_diff = get_size_diff(origin_client=origin_client, target_client=target_client)
 
@@ -113,11 +132,16 @@ def calculate_diff(origin_client: lea.clients.Client, target_client: lea.clients
     )
     modified_table_references = set(size_diff.table_reference)
 
+    print(selected_table_references)
+
+    table_references = removed_table_references | added_table_references | modified_table_references
+    # TODO: is this really correct?
+    if selected_table_references:
+        table_references &= selected_table_references
+
     buffer = io.StringIO()
     print_ = functools.partial(print, file=buffer)
-    for table_reference in sorted(
-        removed_table_references | added_table_references | modified_table_references
-    ):
+    for table_reference in sorted(table_references):
         view_schema_diff = schema_diff[
             schema_diff.column.notnull() & schema_diff.table_reference.eq(table_reference)
         ]

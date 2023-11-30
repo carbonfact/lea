@@ -126,10 +126,12 @@ def docs(
 
 
 @app.command()
-def diff(env: str = EnvPath):
+def diff(views_dir: str = ViewsDir, select: list[str] = typer.Option(default=None), env: str = EnvPath):
     from lea.app.diff import calculate_diff
 
     diff = calculate_diff(
+        views_dir=pathlib.Path(views_dir),
+        select=select,
         origin_client=_make_client(production=False),
         target_client=_make_client(production=True),
     )
