@@ -97,8 +97,12 @@ def get_size_diff(
     return comparison
 
 
-def calculate_diff(views_dir: pathlib.Path, select: set[str], origin_client: lea.clients.Client, target_client: lea.clients.Client) -> str:
-
+def calculate_diff(
+    views_dir: pathlib.Path,
+    select: set[str],
+    origin_client: lea.clients.Client,
+    target_client: lea.clients.Client,
+) -> str:
     # Organize the views into a directed acyclic graph
     views = origin_client.open_views(views_dir)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
