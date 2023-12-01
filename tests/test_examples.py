@@ -104,7 +104,7 @@ def test_diff(monkeypatch):
         assert con.sql("SELECT * FROM core.orders").df().shape[0] == 70
 
     # Check diff
-    diff = runner.invoke(app, ["diff"])
+    diff = runner.invoke(app, ["diff", dev_views_path])
     assert diff.exit_code == 0
     assert (
         """+ analytics.kpis

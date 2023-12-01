@@ -113,10 +113,13 @@ def calculate_diff(
         client=origin_client, dag=dag, select=select, views_dir=views_dir
     )
     # HACK
-    selected_table_references = {
-        origin_client._view_key_to_table_reference(view_key).split(".", 1)[1]
-        for view_key in selected_view_keys
-    }
+    if not isinstance(origin_client, lea.clients.DuckDB):
+        selected_table_references = {
+            origin_client._view_key_to_table_reference(view_key).split(".", 1)[1]
+            for view_key in selected_view_keys
+        }
+    else:
+        selected_table_references = None
 
     schema_diff = get_schema_diff(origin_client=origin_client, target_client=target_client)
     size_diff = get_size_diff(origin_client=origin_client, target_client=target_client)
