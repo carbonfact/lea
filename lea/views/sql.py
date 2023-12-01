@@ -157,7 +157,7 @@ class SQLView(View):
         # TODO: could be done faster with Aho–Corasick algorithm
         # Maybe try out https://github.com/vi3k6i5/flashtext
         for k, v in table_reference_mapping.items():
-            query = re.sub(rf'\b{k}\b', v, query)
+            query = re.sub(rf"\b{k}\b", v, query)
         return GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect, key=self.key)
 
 
