@@ -136,8 +136,6 @@ def calculate_diff(
     )
     modified_table_references = set(size_diff.table_reference)
 
-    print(selected_table_references)
-
     table_references = removed_table_references | added_table_references | modified_table_references
     # TODO: is this really correct?
     if selected_table_references:
