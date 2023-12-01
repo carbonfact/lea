@@ -46,8 +46,9 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
   - [`lea teardown`](#lea-teardown)
   - [Jinja templating](#jinja-templating)
   - [Python scripts](#python-scripts)
+  - [Dependency freezing](#dependency-freezing)
   - [Import lea as a Python library](#import-lea-as-a-python-library)
-- [Roadmap](#roadmap)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Examples
@@ -216,6 +217,15 @@ Combinations are possible:
 lea run --select core.users+ --select +core.orders
 ```
 
+There's an Easter egg that allows selecting views that have been commited or modified in the current Git branch:
+
+```sh
+lea run --select git
+lea run --select git+  # includes all descendants
+```
+
+This becomes very handy when using lea in continuous integration. See [dependency freezing](#dependency-freezing) for more information.
+
 #### Workflow tips
 
 The `lea run` command creates a `.cache.pkl` file during the run. This file is a checkpoint containing the state of the DAG. It is used to determine which queries to run next time. That is, if some queries have failed, only those queries and their descendants will be run again next time. The `.cache.pkl` is deleted once all queries have succeeded.
@@ -347,6 +357,35 @@ users = pd.DataFrame(
     ]
 )
 ```
+
+### Dependency freezing
+
+The `lea run` command can be used to only refresh a subset of views. Let's say we have this DAG:
+
+```
+fee -> fi -> fo -> fum
+```
+
+Assuming `LEA_USERNAME=max`, running `lea run --select fo+` will
+
+1. Execute `fo` and materialize it to `fo_max`.
+2. Execute `fum` and materialize it to `fum_max`.
+
+This only works if `fee_max` and `fi_max` already exist. This might be the case if you've run a full refresh before. But if you're running a first refresh, then `fee_max` and `fi_max` won't exist! This is where the `freeze-unselected` flag comes into play:
+
+```sh
+lea run --select fo+ --freeze-unselected
+```
+
+This means the main `fee` and `fi` tables will be used instead of `fee_max` and `fi_max`.
+
+Dependency freezing is particularly useful when using lea in a CI/CD context. You can run the following command in a pull request:
+
+```sh
+lea run --select git+ --freeze-unselected
+```
+
+This will only run the modified views and their descendants. The dependencies of these modified will be taken from production. The added benefit is that you are guaranteed to be doing a comparison with the same tables when you run [`lea diff`](#lea-diff). Check out [this](https://maxhalford.github.io/blog/efficient-data-transformation/) article to learn more.
 
 ### Import lea as a Python library
 
