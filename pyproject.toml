@@ -32,7 +32,6 @@ pandas-gbq = "^0.19.2"
 ipykernel = "^6.21.2"
 pytest = "^7.4.2"
 pre-commit = "^3.5.0"
-black = "^23.9.1"
 ruff = "^0.1.0"
 
 [build-system]
@@ -41,10 +40,6 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 lea = "lea.main:app"
-
-[tool.black]
-line-length = 100
-target-version = ['py310']
 
 [tool.ruff]
 select = ["E", "F", "I", "UP"]  # https://beta.ruff.rs/docs/rules/
