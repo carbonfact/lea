@@ -9,7 +9,7 @@ echo "
 LEA_USERNAME=max
 LEA_WAREHOUSE=duckdb
 LEA_DUCKDB_PATH=md:jaffle_shop
-LEA_MOTHERDUCK_TOKEN=<provided by MotherDuck>
+MOTHERDUCK_TOKEN=<provided by MotherDuck>
 " > .env
 ```
 
