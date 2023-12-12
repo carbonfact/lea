@@ -57,7 +57,8 @@ def test(
     tests = [
         test
         for test in singular_tests + assertion_tests
-        if (
+        if
+        (
             # Run tests without any dependency whatsoever
             not (
                 test_dependencies := list(

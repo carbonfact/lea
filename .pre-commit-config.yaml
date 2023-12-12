@@ -8,10 +8,8 @@ repos:
       - id: trailing-whitespace
       - id: mixed-line-ending
 
-  - repo: local
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.7
     hooks:
       - id: ruff
-        name: ruff
-        language: python
-        types: [python]
-        entry: ruff
+      - id: ruff-format
