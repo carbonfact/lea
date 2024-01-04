@@ -26,19 +26,6 @@ class Client(abc.ABC):
 
     """
 
-    def open_views(self, views_dir: str):
-        return lea.views.open_views(views_dir=views_dir, sqlglot_dialect=self.sqlglot_dialect)
-
-    def make_dag(self, views: list[lea.views.View]) -> lea.views.DAGOfViews:
-        graph = {
-            view.key: [
-                self._table_reference_to_view_key(table_reference)
-                for table_reference in view.dependencies
-            ]
-            for view in views
-        }
-        return lea.views.DAGOfViews(views, graph)
-
     def prepare(self):
         ...
 
@@ -145,18 +132,21 @@ class Client(abc.ABC):
             for comment in comment_block:
                 if "@" not in comment.text:
                     continue
+
                 if comment.text == AssertionTag.NO_NULLS:
                     yield lea.views.GenericSQLView(
                         key=(*view.key, f"{column}{AssertionTag.NO_NULLS}"),
                         query=self.make_column_test_no_nulls(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
+
                 elif comment.text == AssertionTag.UNIQUE:
                     yield lea.views.GenericSQLView(
                         key=(*view.key, f"{column}{AssertionTag.UNIQUE}"),
                         query=self.make_column_test_unique(view, column),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
+
                 elif unique_by := re.fullmatch(
                     rf"{AssertionTag.UNIQUE_BY}\((?P<by>.+)\)", comment.text
                 ):
@@ -166,6 +156,7 @@ class Client(abc.ABC):
                         query=self.make_column_test_unique_by(view, column, by),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
+
                 elif set_ := re.fullmatch(
                     AssertionTag.SET + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", comment.text
                 ):
@@ -175,6 +166,7 @@ class Client(abc.ABC):
                         query=self.make_column_test_set(view, column, elements),
                         sqlglot_dialect=self.sqlglot_dialect,
                     )
+
                 else:
                     raise ValueError(f"Unhandled tag: {comment.text}")
 

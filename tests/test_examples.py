@@ -6,7 +6,7 @@ import shutil
 import duckdb
 from typer.testing import CliRunner
 
-from lea.app import make_app
+from lea.cli import make_app
 from lea.clients import make_client
 
 runner = CliRunner()

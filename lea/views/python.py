@@ -53,3 +53,7 @@ class PythonView(View):
     def rename_table_references(self, table_reference_mapping: dict[str, str]):
         # TODO: for now we pass through...
         return self
+
+    def pretty_print(self, console: rich.console.Console):
+        syntax = rich.syntax.Syntax(self.source_code, "python")
+        console.print(syntax)

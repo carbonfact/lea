@@ -6,6 +6,10 @@ import dotenv
 import rich.console
 import typer
 
+from .clients import make_client
+
+import lea
+
 app = typer.Typer()
 console = rich.console.Console()
 
@@ -28,8 +32,9 @@ ViewsDir = typer.Argument(default="views")
 
 @app.command()
 def prepare(views_dir: str = ViewsDir, production: bool = False, env: str = EnvPath):
+
     client = _make_client(production)
-    views = client.open_views(views_dir)
+    views = lea.views.open_views(views_dir=views_dir, sqlglot_dialect=client.sqlglot_dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
 
     client.prepare(views, console)
@@ -64,24 +69,17 @@ def run(
     fail_fast: bool = False,
     env: str = EnvPath,
 ):
-    from lea.app.run import run
-
-    # The client determines where the views will be written
     client = _make_client(production)
-
-    run(
-        client=client,
-        views_dir=pathlib.Path(views_dir),
+    app = lea.Project(views_dir=views_dir, client=client, console=console if not silent else None)
+    app.run(
         select=select,
         freeze_unselected=freeze_unselected,
         dry=dry,
         print_views=print,
-        silent=silent,
         fresh=fresh,
         threads=threads,
         show=show,
-        fail_fast=fail_fast,
-        console=console,
+        fail_fast=fail_fast
     )
 
 
@@ -95,19 +93,13 @@ def test(
     fail_fast: bool = False,
     env: str = EnvPath,
 ):
-    from lea.app.test import test
-
-    # A client is necessary for running tests, because each test is a query
     client = _make_client(production)
-
-    test(
-        client=client,
-        views_dir=pathlib.Path(views_dir),
+    project = lea.Project(views_dir=views_dir, client=client, console=console)
+    project.test(
         select_views=select_views,
         freeze_unselected=freeze_unselected,
         threads=threads,
-        fail_fast=fail_fast,
-        console=console,
+        fail_fast=fail_fast
     )
 
 
@@ -118,23 +110,19 @@ def docs(
     production: bool = False,
     env: str = EnvPath,
 ):
-    from lea.app.docs import docs
-
-    client = _make_client(production=production)
-
-    docs(views_dir=views_dir, output_dir=output_dir, client=client, console=console)
+    client = _make_client(production)
+    project = lea.Project(views_dir=views_dir, client=client, console=console)
+    project.make_docs(output_dir=output_dir)
 
 
 @app.command()
 def diff(
     views_dir: str = ViewsDir, select: list[str] = typer.Option(default=None), env: str = EnvPath
 ):
-    from lea.app.diff import calculate_diff
-
-    diff = calculate_diff(
-        views_dir=pathlib.Path(views_dir),
+    client = _make_client(production)
+    project = lea.Project(views_dir=views_dir, client=client)
+    diff = project.calculate_diff(
         select=select,
-        origin_client=_make_client(production=False),
         target_client=_make_client(production=True),
     )
 

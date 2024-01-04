@@ -160,6 +160,10 @@ class SQLView(View):
             query = re.sub(rf"\b{k}\b", v, query)
         return GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect, key=self.key)
 
+    def pretty_print(console: rich.console.Console):
+        syntax = rich.syntax.Syntax(self.view.query, "sql")
+        console.print(syntax)
+
 
 class GenericSQLView(SQLView):
     def __init__(self, query, sqlglot_dialect, key=None):

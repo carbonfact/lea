@@ -7,15 +7,14 @@ import io
 FOUR_SPACES = "    "
 
 
-class DAGOfViews(graphlib.TopologicalSorter, collections.UserDict):
-    def __init__(self, views, graph):
+class DAGOfViews(graphlib.TopologicalSorter):
+    def __init__(self, graph):
         graphlib.TopologicalSorter.__init__(self, graph)
-        collections.UserDict.__init__(self, {view.key: view for view in views})
         self.graph = graph
 
     @property
     def schemas(self) -> set:
-        return {view.schema for view in self.values()}
+        return {schema for schema, *_ in self.graph}
 
     @property
     def schema_dependencies(self):

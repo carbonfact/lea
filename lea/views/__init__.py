@@ -5,7 +5,6 @@ import pathlib
 import sqlglot
 
 from .base import View
-from .dag import DAGOfViews
 from .python import PythonView
 from .sql import GenericSQLView, SQLView
 
