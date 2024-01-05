@@ -54,23 +54,23 @@ lea diff
 ```
 
 ```diff
++ analytics.kpis
++ 1 rows
++ metric
++ value
+
 - core.customers
 - 100 rows
 - customer_id
-- first_name
 - customer_lifetime_value
+- first_name
 - first_order
-- most_recent_order
 - last_name
+- most_recent_order
 - number_of_orders
 
   core.orders
 - 29 rows
-
-+ analytics.kpis
-+ 1 rows
-+ value
-+ metric
 ```
 
 The diff shows several things:

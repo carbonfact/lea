@@ -47,7 +47,6 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
   - [Jinja templating](#jinja-templating)
   - [Python scripts](#python-scripts)
   - [Dependency freezing](#dependency-freezing)
-  - [Import lea as a Python library](#import-lea-as-a-python-library)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -386,63 +385,6 @@ lea run --select git+ --freeze-unselected
 ```
 
 This will only run the modified views and their descendants. The dependencies of these modified will be taken from production. The added benefit is that you are guaranteed to be doing a comparison with the same tables when you run [`lea diff`](#lea-diff). Check out [this](https://maxhalford.github.io/blog/efficient-data-transformation/) article to learn more.
-
-### Import lea as a Python library
-
-lea is meant to be used as a CLI. But you can import it as a Python library too. For instance, we do this at Carbonfact to craft custom commands.
-
-**Parsing a directory of queries**
-
-```py
->>> import lea
-
->>> client = lea.clients.DuckDB(':memory:')
->>> views = client.open_views('examples/jaffle_shop/views')
->>> views = [v for v in views if v.schema != 'tests']
->>> for view in sorted(views, key=str):
-...     print(view)
-...     print(sorted(view.dependencies))
-analytics.finance.kpis
-['core.orders']
-analytics.kpis
-['core.customers', 'core.orders']
-core.customers
-['staging.customers', 'staging.orders', 'staging.payments']
-core.orders
-['staging.orders', 'staging.payments']
-staging.customers
-[]
-staging.orders
-[]
-staging.payments
-[]
-
-```
-
-**Organizing queries into a DAG**
-
-```py
->>> import lea
-
->>> client = lea.clients.DuckDB(':memory:')
->>> views = client.open_views('examples/jaffle_shop/views')
->>> views = [v for v in views if v.schema != 'tests']
->>> dag = client.make_dag(views)
->>> dag.prepare()
-
->>> while dag.is_active():
-...     for node in sorted(dag.get_ready()):
-...         print(dag[node])
-...         dag.done(node)
-staging.customers
-staging.orders
-staging.payments
-core.customers
-core.orders
-analytics.finance.kpis
-analytics.kpis
-
-```
 
 ## Contributing
 

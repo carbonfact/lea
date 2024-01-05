@@ -29,7 +29,7 @@ def _do_nothing(*args, **kwargs):
     """This is a dummy function for dry runs"""
 
 
-class Project:
+class Runner:
 
     def __init__(self, views_dir: pathlib.Path | str, client: lea.clients.Client, console=None):
 
@@ -49,12 +49,19 @@ class Project:
                     self.client._table_reference_to_view_key(table_reference)
                     for table_reference in view.dependencies
                 ]
-                for view_key, view in self.views.items()
-                if view.schema not in {"tests", "test"}
+                for view_key, view in self.regular_views.items()
             }
         )
 
-    def _select_view_keys(self, queries: list[str]) -> set[tuple[str]]:
+    @property
+    def regular_views(self):
+        return {
+            view_key: view
+            for view_key, view in self.views.items()
+            if view.schema not in {"tests", "test", "func", "funcs"}
+        }
+
+    def _select_view_keys(self, *queries: list[str]) -> set[tuple[str]]:
         """
 
         Examples
@@ -63,7 +70,7 @@ class Project:
         >>> import lea
 
         >>> client = lea.clients.DuckDB('examples/jaffle_shop/jaffle_shop.db', username='max')
-        >>> app = lea.App('examples/jaffle_shop/views', client=client)
+        >>> runner = lea.Runner('examples/jaffle_shop/views', client=client)
 
         """
 
@@ -73,7 +80,7 @@ class Project:
             # * `git+` will select all the modified views, and their descendants.
             # * `+git` will select all the modified views, and their ancestors.
             # * `+git+` will select all the modified views, with their ancestors and descendants.
-            if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", select):
+            if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", query):
                 ancestors = m.group("ancestors") == "+"
                 descendants = m.group("descendants") == "+"
 
@@ -99,10 +106,10 @@ class Project:
                         )
                         yield ("+" if ancestors else "") + str(view) + ("+" if descendants else "")
             else:
-                yield select
+                yield query
 
         expanded_query = list(itertools.chain.from_iterable(map(_expand_query, queries)))
-        return dag.select(*expanded_query) if expanded_query else set(self.views.keys())
+        return self.dag.select(*expanded_query) if expanded_query else set(self.views.keys())
 
 
     def _make_table_reference_mapping(
@@ -122,7 +129,7 @@ class Project:
         >>> import lea
 
         >>> client = lea.clients.DuckDB('examples/jaffle_shop/jaffle_shop.db', username='max')
-        >>> app = lea.App('examples/jaffle_shop/views', client=client)
+        >>> runner = lea.Runner('examples/jaffle_shop/views', client=client)
 
         The client has the ability to generate table references from view keys:
 
@@ -135,8 +142,8 @@ class Project:
         We can use this to generate a mapping that will rename all the table references in the views
         that were selected:
 
-        >>> selected_view_keys = dag.select('core.orders+')
-        >>> table_reference_mapping = app._make_table_reference_mapping(
+        >>> selected_view_keys = runner._select_view_keys('core.orders+')
+        >>> table_reference_mapping = runner._make_table_reference_mapping(
         ...     selected_view_keys,
         ...     freeze_unselected=True
         ... )
@@ -149,7 +156,7 @@ class Project:
 
         If `freeze_unselected` is `False`, then all the table references have to be renamed:
 
-        >>> table_reference_mapping = app._make_table_reference_mapping(
+        >>> table_reference_mapping = runner._make_table_reference_mapping(
         ...     selected_view_keys,
         ...     freeze_unselected=False
         ... )
@@ -173,7 +180,7 @@ class Project:
                 self.client._view_key_to_table_reference(view_key): self.client._view_key_to_table_reference(
                     view_key, with_username=True
                 )
-                for view_key in self.views
+                for view_key in self.regular_views
             }
 
         # When freeze_unselected is specified, it means we want our views to target the production
@@ -205,7 +212,7 @@ class Project:
     ):
 
         # Let's determine which views need to be run
-        selected_view_keys = self._select_view_keys(queries=select)
+        selected_view_keys = self._select_view_keys(*select)
 
         # Let the user know the views we've decided which views will run
         self.console.log(f"{len(selected_view_keys):,d} out of {len(self.views):,d} views selected")
@@ -274,7 +281,7 @@ class Project:
                 for view_key in self.dag.get_ready():
                     # Check if the view_key can be skipped or not
                     if view_key not in selected_view_keys:
-                        dag.done(view_key)
+                        self.dag.done(view_key)
                         continue
                     execution_order.append(view_key)
 
@@ -382,7 +389,7 @@ class Project:
         self.console.log(f"Found {len(singular_tests):,d} singular tests")
 
         # Let's determine which views need to be run
-        selected_view_keys = self._select_view_keys(queries=select_views)
+        selected_view_keys = self._select_view_keys(*select_views)
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
@@ -392,7 +399,7 @@ class Project:
 
         # List assertion tests
         assertion_tests = []
-        for view in filter(lambda v: v.schema not in {"funcs", "tests"}, self.views.values()):
+        for view in self.regular_views.values():
             # HACK: this is a bit of a hack to get the columns of the view
             view_columns = columns.query(
                 f"table_reference == '{self.client._view_key_to_table_reference(view.key, with_username=True)}'"
@@ -555,11 +562,10 @@ class Project:
     ) -> str:
 
         # Let's determine which views need to be run
-        selected_view_keys = self.selected_view_keys(
-            select=select
-        )
+        selected_view_keys = self._select_view_keys(*select)
+
         # HACK
-        if not isinstance(origin_client, lea.clients.DuckDB):
+        if not isinstance(self.client, lea.clients.DuckDB):
             selected_table_references = {
                 origin_client._view_key_to_table_reference(view_key).split(".", 1)[1]
                 for view_key in selected_view_keys
@@ -567,8 +573,8 @@ class Project:
         else:
             selected_table_references = None
 
-        schema_diff = diff.get_schema_diff(origin_client=self.client, target_client=target_client)
-        size_diff = diff.get_size_diff(origin_client=self.client, target_client=target_client)
+        schema_diff = lea.diff.get_schema_diff(origin_client=self.client, target_client=target_client)
+        size_diff = lea.diff.get_size_diff(origin_client=self.client, target_client=target_client)
 
         if schema_diff.empty and size_diff.empty:
             return "No schema or content change detected."

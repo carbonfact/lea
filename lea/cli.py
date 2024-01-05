@@ -70,8 +70,8 @@ def run(
     env: str = EnvPath,
 ):
     client = _make_client(production)
-    app = lea.Project(views_dir=views_dir, client=client, console=console if not silent else None)
-    app.run(
+    runner = lea.Runner(views_dir=views_dir, client=client, console=console if not silent else None)
+    runner.run(
         select=select,
         freeze_unselected=freeze_unselected,
         dry=dry,
@@ -94,8 +94,8 @@ def test(
     env: str = EnvPath,
 ):
     client = _make_client(production)
-    project = lea.Project(views_dir=views_dir, client=client, console=console)
-    project.test(
+    runner = lea.Runner(views_dir=views_dir, client=client, console=console)
+    runner.test(
         select_views=select_views,
         freeze_unselected=freeze_unselected,
         threads=threads,
@@ -111,19 +111,19 @@ def docs(
     env: str = EnvPath,
 ):
     client = _make_client(production)
-    project = lea.Project(views_dir=views_dir, client=client, console=console)
-    project.make_docs(output_dir=output_dir)
+    runner = lea.Runner(views_dir=views_dir, client=client, console=console)
+    runner.make_docs(output_dir=output_dir)
 
 
 @app.command()
 def diff(
     views_dir: str = ViewsDir, select: list[str] = typer.Option(default=None), env: str = EnvPath
 ):
-    client = _make_client(production)
-    project = lea.Project(views_dir=views_dir, client=client)
-    diff = project.calculate_diff(
+    client = _make_client(production=False)
+    runner = lea.Runner(views_dir=views_dir, client=client)
+    diff = runner.calculate_diff(
         select=select,
-        target_client=_make_client(production=True),
+        target_client=_make_client(production=True)
     )
 
     console.print(diff)

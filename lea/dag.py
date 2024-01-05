@@ -81,10 +81,9 @@ class DAGOfViews(graphlib.TopologicalSorter):
 
         >>> import lea
 
-        >>> client = lea.clients.DuckDB(':memory:')
-        >>> views = client.open_views('examples/jaffle_shop/views')
-        >>> views = [v for v in views if v.schema != 'tests']
-        >>> dag = client.make_dag(views)
+        >>> client = lea.clients.DuckDB(":memory:")
+        >>> runner = lea.Runner('examples/jaffle_shop/views', client=client)
+        >>> dag = runner.dag
 
         >>> def pprint(whitelist):
         ...     for key in sorted(whitelist):
@@ -159,9 +158,9 @@ class DAGOfViews(graphlib.TopologicalSorter):
         staging.orders
         staging.payments
 
-        schema.subschema/
+        schema/subschema/
 
-        >>> pprint(dag.select('analytics.finance/'))
+        >>> pprint(dag.select('analytics/finance/'))
         analytics.finance.kpis
 
         """
@@ -178,8 +177,9 @@ class DAGOfViews(graphlib.TopologicalSorter):
                 )
                 return
             if query.endswith("/"):
-                for key in self:
-                    if str(self[key]).startswith(query[:-1]):
+                query_key = tuple([key for key in query.split("/") if key])
+                for key in self.graph:
+                    if key[: len(query_key)] == query_key:
                         yield from _select(
                             ".".join(key),
                             include_ancestors=include_ancestors,
@@ -207,7 +207,7 @@ class DAGOfViews(graphlib.TopologicalSorter):
                 key
                 for key in _select(query, include_ancestors=False, include_descendants=False)
                 # Some nodes in the graph are not part of the views, such as third-party tables
-                if key in self
+                if key in self.graph
             }
 
     @property
@@ -219,11 +219,11 @@ class DAGOfViews(graphlib.TopologicalSorter):
         >>> from pprint import pprint
 
         >>> client = lea.clients.DuckDB(":memory:")
-
-        >>> views_dir = pathlib.Path(__file__).parent.parent.parent / "examples" / "jaffle_shop" / "views"
-        >>> views = client.open_views(views_dir)
-        >>> views = [view for view in views if view.schema not in {"tests"}]
-        >>> dag = client.make_dag(views)
+        >>> runner = lea.Runner(
+        ...     views_dir=pathlib.Path(__file__).parent.parent / "examples" / "jaffle_shop" / "views",
+        ...     client=client
+        ... )
+        >>> dag = runner.dag
 
         >>> pprint(dag._nested_schema)
         {'analytics': {'finance': {'kpis': {}}, 'kpis': {}},
@@ -299,10 +299,11 @@ class DAGOfViews(graphlib.TopologicalSorter):
         >>> import lea
 
         >>> client = lea.clients.DuckDB(":memory:")
-        >>> views_dir = pathlib.Path(__file__).parent.parent.parent / "examples" / "jaffle_shop" / "views"
-        >>> views = client.open_views(views_dir)
-        >>> views = [view for view in views if view.schema not in {"tests"}]
-        >>> dag = client.make_dag(views)
+        >>> runner = lea.Runner(
+        ...     views_dir=pathlib.Path(__file__).parent.parent / "examples" / "jaffle_shop" / "views",
+        ...     client=client
+        ... )
+        >>> dag = runner.dag
 
         >>> print(dag.to_mermaid(schemas_only=True))
         %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
