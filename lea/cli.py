@@ -14,7 +14,7 @@ app = typer.Typer()
 console = rich.console.Console()
 
 
-def env_validate_callback(env_path: str | None):
+def validate_env_path(env_path: str | None):
     """
 
     If a path to .env file is provided, we check that it exists. In any case, we use dotenv
@@ -26,8 +26,14 @@ def env_validate_callback(env_path: str | None):
     dotenv.load_dotenv(env_path or ".env", verbose=True)
 
 
-EnvPath = typer.Option(default=None, callback=env_validate_callback)
-ViewsDir = typer.Argument(default="views")
+def validate_views_dir(views_dir: str):
+    if not pathlib.Path(views_dir).exists():
+        raise typer.BadParameter(f"Directory not found: {views_dir}")
+    return views_dir
+
+
+EnvPath = typer.Option(default=None, callback=validate_env_path)
+ViewsDir = typer.Argument(default="views", callback=validate_views_dir)
 
 
 @app.command()

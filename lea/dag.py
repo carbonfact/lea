@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import graphlib
 import io
+import re
 
 FOUR_SPACES = "    "
 
@@ -60,6 +61,43 @@ class DAGOfViews(graphlib.TopologicalSorter):
             view.key
             for view in self.values()
             if all(dependency[0] not in self.schemas for dependency in self.graph[view.key])
+        }
+
+    def _select(self, query: str) -> str:
+
+        def select(query, include_ancestors, include_descendants):
+            if query.endswith("+"):
+                yield from select(
+                    query[:-1], include_ancestors=include_ancestors, include_descendants=True
+                )
+                return
+            if query.startswith("+"):
+                yield from select(
+                    query[1:], include_ancestors=True, include_descendants=include_descendants
+                )
+                return
+            if query.endswith("/"):
+                query_key = tuple([key for key in query.split("/") if key])
+                for key in self.graph:
+                    if key[: len(query_key)] == query_key:
+                        yield from select(
+                            ".".join(key),
+                            include_ancestors=include_ancestors,
+                            include_descendants=include_descendants,
+                        )
+            else:
+                key = tuple(query.split("."))
+                yield key
+                if include_ancestors:
+                    yield from self.list_ancestors(key)
+                if include_descendants:
+                    yield from self.list_descendants(key)
+
+        return {
+            key
+            for key in select(query, include_ancestors=False, include_descendants=False)
+            # Some nodes in the graph are not part of the views, such as third-party tables
+            if key in self.graph
         }
 
     def select(self, *queries: str) -> set:
@@ -165,50 +203,44 @@ class DAGOfViews(graphlib.TopologicalSorter):
 
         """
 
-        def _select(query, include_ancestors, include_descendants):
-            if query.endswith("+"):
-                yield from _select(
-                    query[:-1], include_ancestors=include_ancestors, include_descendants=True
+        def _expand_query(query):
+            # It's possible to query views via git. For example:
+            # * `git` will select all the views that have been modified compared to the main branch.
+            # * `git+` will select all the modified views, and their descendants.
+            # * `+git` will select all the modified views, and their ancestors.
+            # * `+git+` will select all the modified views, with their ancestors and descendants.
+            if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", query):
+                ancestors = m.group("ancestors") == "+"
+                descendants = m.group("descendants") == "+"
+
+                repo = git.Repo(".")  # TODO: is using "." always correct? Probably not.
+                # Changes that have been committed
+                staged_diffs = repo.index.diff(
+                    repo.refs.main.commit
+                    # repo.remotes.origin.refs.main.commit
                 )
-                return
-            if query.startswith("+"):
-                yield from _select(
-                    query[1:], include_ancestors=True, include_descendants=include_descendants
-                )
-                return
-            if query.endswith("/"):
-                query_key = tuple([key for key in query.split("/") if key])
-                for key in self.graph:
-                    if key[: len(query_key)] == query_key:
-                        yield from _select(
-                            ".".join(key),
-                            include_ancestors=include_ancestors,
-                            include_descendants=include_descendants,
+                # Changes that have not been committed
+                unstage_diffs = repo.head.commit.diff(None)
+
+                for diff in staged_diffs + unstage_diffs:
+                    # We only care about changes to views
+                    # TODO: here we only check the file's location. We don't check whether the file
+                    # is actually a view or not.
+                    # One thing to note is that we don't filter out deleted views. This is because
+                    # these views will get filtered out by dag.select anyway.
+                    diff_path = pathlib.Path(diff.a_path)
+                    if diff_path.is_relative_to(self.views_dir):
+                        view = lea.views.open_view_from_path(
+                            diff_path, self.views_dir, self.client.sqlglot_dialect
                         )
+                        yield ("+" if ancestors else "") + str(view) + ("+" if descendants else "")
             else:
-                key = tuple(query.split("."))
-                yield key
-                if include_ancestors:
-                    yield from self.list_ancestors(key)
-                if include_descendants:
-                    yield from self.list_descendants(key)
+                yield query
 
         if not queries:
-            return set()
+            return set(self.graph.keys())
 
-        # If multiple select queries are provided, we want to run the union of all the views they
-        # select. We use a set union to remove duplicates.
-        elif len(queries) > 1:
-            return set.union(*(self.select(query) for query in queries))
-
-        else:
-            query = queries[0]
-            return {
-                key
-                for key in _select(query, include_ancestors=False, include_descendants=False)
-                # Some nodes in the graph are not part of the views, such as third-party tables
-                if key in self.graph
-            }
+        return set.union(*(self._select(q) for query in queries for q in _expand_query(query)))
 
     @property
     def _nested_schema(self):

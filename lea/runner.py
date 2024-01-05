@@ -61,57 +61,6 @@ class Runner:
             if view.schema not in {"tests", "test", "func", "funcs"}
         }
 
-    def _select_view_keys(self, *queries: list[str]) -> set[tuple[str]]:
-        """
-
-        Examples
-        --------
-
-        >>> import lea
-
-        >>> client = lea.clients.DuckDB('examples/jaffle_shop/jaffle_shop.db', username='max')
-        >>> runner = lea.Runner('examples/jaffle_shop/views', client=client)
-
-        """
-
-        def _expand_query(query):
-            # It's possible to query views via git. For example:
-            # * `git` will select all the views that have been modified compared to the main branch.
-            # * `git+` will select all the modified views, and their descendants.
-            # * `+git` will select all the modified views, and their ancestors.
-            # * `+git+` will select all the modified views, with their ancestors and descendants.
-            if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", query):
-                ancestors = m.group("ancestors") == "+"
-                descendants = m.group("descendants") == "+"
-
-                repo = git.Repo(".")  # TODO: is using "." always correct? Probably not.
-                # Changes that have been committed
-                staged_diffs = repo.index.diff(
-                    repo.refs.main.commit
-                    # repo.remotes.origin.refs.main.commit
-                )
-                # Changes that have not been committed
-                unstage_diffs = repo.head.commit.diff(None)
-
-                for diff in staged_diffs + unstage_diffs:
-                    # We only care about changes to views
-                    # TODO: here we only check the file's location. We don't check whether the file
-                    # is actually a view or not.
-                    # One thing to note is that we don't filter out deleted views. This is because
-                    # these views will get filtered out by dag.select anyway.
-                    diff_path = pathlib.Path(diff.a_path)
-                    if diff_path.is_relative_to(self.views_dir):
-                        view = lea.views.open_view_from_path(
-                            diff_path, self.views_dir, self.client.sqlglot_dialect
-                        )
-                        yield ("+" if ancestors else "") + str(view) + ("+" if descendants else "")
-            else:
-                yield query
-
-        expanded_query = list(itertools.chain.from_iterable(map(_expand_query, queries)))
-        return self.dag.select(*expanded_query) if expanded_query else set(self.views.keys())
-
-
     def _make_table_reference_mapping(
         self,
         selected_view_keys: set[tuple[str]],
@@ -142,7 +91,7 @@ class Runner:
         We can use this to generate a mapping that will rename all the table references in the views
         that were selected:
 
-        >>> selected_view_keys = runner._select_view_keys('core.orders+')
+        >>> selected_view_keys = runner.dag.select('core.orders+')
         >>> table_reference_mapping = runner._make_table_reference_mapping(
         ...     selected_view_keys,
         ...     freeze_unselected=True
@@ -212,7 +161,7 @@ class Runner:
     ):
 
         # Let's determine which views need to be run
-        selected_view_keys = self._select_view_keys(*select)
+        selected_view_keys = self.dag.select(*select)
 
         # Let the user know the views we've decided which views will run
         self.console.log(f"{len(selected_view_keys):,d} out of {len(self.views):,d} views selected")
@@ -389,7 +338,7 @@ class Runner:
         self.console.log(f"Found {len(singular_tests):,d} singular tests")
 
         # Let's determine which views need to be run
-        selected_view_keys = self._select_view_keys(*select_views)
+        selected_view_keys = self.dag.select(*select_views)
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
@@ -562,7 +511,7 @@ class Runner:
     ) -> str:
 
         # Let's determine which views need to be run
-        selected_view_keys = self._select_view_keys(*select)
+        selected_view_keys = self.dag.select(*select)
 
         # HACK
         if not isinstance(self.client, lea.clients.DuckDB):
