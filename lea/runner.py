@@ -517,7 +517,7 @@ class Runner:
         # HACK
         if not isinstance(self.client, lea.clients.DuckDB):
             selected_table_references = {
-                origin_client._view_key_to_table_reference(view_key).split(".", 1)[1]
+                self.client._view_key_to_table_reference(view_key).split(".", 1)[1]
                 for view_key in selected_view_keys
             }
         else:
