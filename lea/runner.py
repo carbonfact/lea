@@ -164,7 +164,7 @@ class Runner:
         selected_view_keys = self.dag.select(*select)
 
         # Let the user know the views we've decided which views will run
-        self.console.log(f"{len(selected_view_keys):,d} out of {len(self.views):,d} views selected")
+        self.console.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
@@ -175,7 +175,7 @@ class Runner:
         # Remove orphan views
         for table_reference in self.client.list_tables()["table_reference"]:
             view_key = self.client._table_reference_to_view_key(table_reference)
-            if view_key in self.views:
+            if view_key in self.regular_views:
                 continue
             if not dry:
                 client.delete_view_key(view_key)
@@ -222,7 +222,8 @@ class Runner:
         cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
         tic = time.time()
 
-        self.console.log(f"{len(cache):,d} views already done")
+        if cache:
+            self.console.log(f"{len(cache):,d} views already done")
 
         with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
             self.dag.prepare()
@@ -317,7 +318,7 @@ class Runner:
         # Summary of errors
         if exceptions:
             for view_key, exception in exceptions.items():
-                self.console.print(str(dag[view_key]), style="bold red")
+                self.console.print(str(self.views[view_key]), style="bold red")
                 self.console.print(exception)
 
             if fail_fast:
@@ -419,7 +420,7 @@ class Runner:
 
             # Write down table of contents
             content.write("## Table of contents\n\n")
-            for view in sorted(self.views.values(), key=lambda view: view.key):
+            for view in sorted(self.regular_views.values(), key=lambda view: view.key):
                 if view.schema != schema:
                     continue
                 anchor = str(view).replace(".", "")
@@ -428,7 +429,7 @@ class Runner:
 
             # Write down the views
             content.write("## Views\n\n")
-            for view in sorted(self.views.values(), key=lambda view: view.key):
+            for view in sorted(self.regular_views.values(), key=lambda view: view.key):
                 if view.schema != schema:
                     continue
                 content.write(f"### {view}\n\n")

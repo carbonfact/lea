@@ -103,12 +103,10 @@ class BigQuery(Client):
     def list_tables(self):
         query = f"""
         SELECT
-            FORMAT('%s.%s', table_schema, table_name) AS table_reference,
-            total_rows AS n_rows,
-            total_logical_bytes AS n_bytes
-        FROM `region-{self.location.lower()}`.INFORMATION_SCHEMA.TABLE_STORAGE_BY_PROJECT
-        WHERE table_schema = '{self.dataset_name}'
-        AND total_rows > 0
+            FORMAT('%s.%s', '{self.dataset_name}', table_id) AS table_reference,
+            row_count AS n_rows,
+            size_bytes AS n_bytes
+        FROM {self.dataset_name}.__TABLES__
         """
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
         return self._read_sql_view(view)
