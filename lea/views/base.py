@@ -30,7 +30,3 @@ class View(abc.ABC):
     @abc.abstractmethod
     def dependencies(self) -> set[str]:
         ...
-
-    @abc.abstractmethod
-    def pretty_print(console: rich.console.Console):
-        ...

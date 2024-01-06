@@ -3,7 +3,6 @@ from __future__ import annotations
 import pathlib
 
 import dotenv
-import rich.console
 import typer
 
 from .clients import make_client
@@ -11,7 +10,6 @@ from .clients import make_client
 import lea
 
 app = typer.Typer()
-console = rich.console.Console()
 
 
 def validate_env_path(env_path: str | None):
@@ -76,7 +74,7 @@ def run(
     env: str = EnvPath,
 ):
     client = _make_client(production)
-    runner = lea.Runner(views_dir=views_dir, client=client, console=console if not silent else None)
+    runner = lea.Runner(views_dir=views_dir, client=client, verbose=not silent and not print)
     runner.run(
         select=select,
         freeze_unselected=freeze_unselected,
@@ -100,7 +98,7 @@ def test(
     env: str = EnvPath,
 ):
     client = _make_client(production)
-    runner = lea.Runner(views_dir=views_dir, client=client, console=console)
+    runner = lea.Runner(views_dir=views_dir, client=client)
     runner.test(
         select_views=select_views,
         freeze_unselected=freeze_unselected,
@@ -117,7 +115,7 @@ def docs(
     env: str = EnvPath,
 ):
     client = _make_client(production)
-    runner = lea.Runner(views_dir=views_dir, client=client, console=console)
+    runner = lea.Runner(views_dir=views_dir, client=client)
     runner.make_docs(output_dir=output_dir)
 
 

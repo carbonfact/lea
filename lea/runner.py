@@ -14,10 +14,12 @@ import warnings
 import git
 import rich.console
 import rich.live
-import rich.syntax
+import rich.table
 
 import lea
 
+
+console = rich.console.Console()
 
 RUNNING = "[cyan]RUNNING"
 SUCCESS = "[green]SUCCESS"
@@ -31,13 +33,13 @@ def _do_nothing(*args, **kwargs):
 
 class Runner:
 
-    def __init__(self, views_dir: pathlib.Path | str, client: lea.clients.Client, console=None):
+    def __init__(self, views_dir: pathlib.Path | str, client: lea.clients.Client, verbose=False):
 
         if isinstance(views_dir, str):
             views_dir = pathlib.Path(views_dir)
         self.views_dir = views_dir
         self.client = client
-        self.console = console
+        self.verbose = verbose
 
         self.views = {
             view.key: view
@@ -60,6 +62,14 @@ class Runner:
             for view_key, view in self.views.items()
             if view.schema not in {"tests", "test", "func", "funcs"}
         }
+
+    def log(self, message):
+        if self.verbose:
+            console.log(message)
+
+    def print(self, message):
+        if self.verbose:
+            console.print(message)
 
     def _make_table_reference_mapping(
         self,
@@ -164,7 +174,7 @@ class Runner:
         selected_view_keys = self.dag.select(*select)
 
         # Let the user know the views we've decided which views will run
-        self.console.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
+        self.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
@@ -179,10 +189,10 @@ class Runner:
                 continue
             if not dry:
                 client.delete_view_key(view_key)
-            self.console.log(f"Removed {table_reference}")
+            self.log(f"Removed {table_reference}")
 
         def display_progress() -> rich.table.Table:
-            if self.console is None:
+            if not self.verbose:
                 return None
             table = rich.table.Table(box=None)
             table.add_column("#")
@@ -223,7 +233,7 @@ class Runner:
         tic = time.time()
 
         if cache:
-            self.console.log(f"{len(cache):,d} views already done")
+            self.log(f"{len(cache):,d} views already done")
 
         with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
             self.dag.prepare()
@@ -252,15 +262,12 @@ class Runner:
                     if dry or view_key in cache:
                         job = _do_nothing
                     elif print_views:
-                        # TODO
-                        raise NotImplementedError
-                        # job = functools.partial(
-                        #     pretty_print_view,
-                        #     view=self.dag[view_key].rename_table_references(
-                        #         table_reference_mapping=table_reference_mapping
-                        #     ),
-                        #     console=console,
-                        # )
+                        job = functools.partial(
+                            console.print,
+                            self.views[view_key].rename_table_references(
+                                table_reference_mapping=table_reference_mapping
+                            )
+                        )
                     else:
                         job = functools.partial(
                             self.client.materialize_view,
@@ -301,9 +308,9 @@ class Runner:
             cache_path.unlink(missing_ok=True)
 
         # Summary statistics
-        if self.console is None:
+        if not self.verbose:
             return
-        self.console.log(f"Took {round(time.time() - tic)}s")
+        self.log(f"Took {round(time.time() - tic)}s")
         summary = rich.table.Table()
         summary.add_column("status")
         summary.add_column("count")
@@ -313,13 +320,13 @@ class Runner:
             summary.add_row(ERRORED, f"{n:,d}")
         if n := len(skipped):
             summary.add_row(SKIPPED, f"{n:,d}")
-        self.console.print(summary)
+        self.print(summary)
 
         # Summary of errors
         if exceptions:
             for view_key, exception in exceptions.items():
-                self.console.print(str(self.views[view_key]), style="bold red")
-                self.console.print(exception)
+                self.print(str(self.views[view_key]), style="bold red")
+                self.print(exception)
 
             if fail_fast:
                 raise Exception("Some views failed to build")
@@ -336,7 +343,7 @@ class Runner:
 
         # List singular tests
         singular_tests = [view for view in self.views.values() if view.schema == "tests"]
-        self.console.log(f"Found {len(singular_tests):,d} singular tests")
+        self.log(f"Found {len(singular_tests):,d} singular tests")
 
         # Let's determine which views need to be run
         selected_view_keys = self.dag.select(*select_views)
@@ -356,7 +363,7 @@ class Runner:
             )["column"].tolist()
             for test in self.client.discover_assertion_tests(view=view, view_columns=view_columns):
                 assertion_tests.append(test)
-        self.console.log(f"Found {len(assertion_tests):,d} assertion tests")
+        self.log(f"Found {len(assertion_tests):,d} assertion tests")
 
         # Determine which tests need to be run
         tests = [
@@ -376,7 +383,7 @@ class Runner:
                 or any(test_dep in selected_view_keys for test_dep in test_dependencies)
             )
         ]
-        self.console.log(f"{len(tests):,d} out of {len(singular_tests + assertion_tests):,d} tests selected")
+        self.log(f"{len(tests):,d} out of {len(singular_tests + assertion_tests):,d} tests selected")
 
         # Run tests concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
@@ -390,10 +397,10 @@ class Runner:
                 test = jobs[job]
                 conflicts = job.result()
                 if conflicts.empty:
-                    self.console.log(f"SUCCESS {test}", style="bold green")
+                    self.log(f"SUCCESS {test}", style="bold green")
                 else:
-                    self.console.log(f"FAILURE {test}", style="bold red")
-                    self.console.log(conflicts.head())
+                    self.log(f"FAILURE {test}", style="bold red")
+                    self.log(conflicts.head())
                     if fail_fast:
                         # TODO: print out the query to help quick debugging
                         raise RuntimeError(f"Test {test} failed")
@@ -483,7 +490,7 @@ class Runner:
             schema_readme = output_dir / schema / "README.md"
             schema_readme.parent.mkdir(parents=True, exist_ok=True)
             schema_readme.write_text(content.getvalue())
-            self.console.log(f"Wrote {schema_readme}", style="bold green")
+            self.log(f"Wrote {schema_readme}", style="bold green")
         else:
             readme_content.write("\n")
 
@@ -503,7 +510,7 @@ class Runner:
         readme = output_dir / "README.md"
         readme.parent.mkdir(parents=True, exist_ok=True)
         readme.write_text(readme_content.getvalue())
-        self.console.log(f"Wrote {readme}", style="bold green")
+        self.log(f"Wrote {readme}", style="bold green")
 
     def calculate_diff(
         self,

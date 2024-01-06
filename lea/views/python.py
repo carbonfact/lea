@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 import importlib
 
+import rich.syntax
+
 from .base import View
 from .sql import SQLView
 
@@ -54,6 +56,5 @@ class PythonView(View):
         # TODO: for now we pass through...
         return self
 
-    def pretty_print(self, console: rich.console.Console):
-        syntax = rich.syntax.Syntax(self.source_code, "python")
-        console.print(syntax)
+    def __rich__(self):
+        return rich.syntax.Syntax(self.source_code, "python")
