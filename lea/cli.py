@@ -3,11 +3,12 @@ from __future__ import annotations
 import pathlib
 
 import dotenv
+import rich
 import typer
 
-from .clients import make_client
-
 import lea
+
+from .clients import make_client
 
 app = typer.Typer()
 
@@ -130,7 +131,7 @@ def diff(
         target_client=_make_client(production=True)
     )
 
-    console.print(diff)
+    rich.print(diff)
 
 
 def make_app(make_client):

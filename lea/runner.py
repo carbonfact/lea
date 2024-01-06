@@ -31,6 +31,15 @@ def _do_nothing(*args, **kwargs):
     """This is a dummy function for dry runs"""
 
 
+def sizeof_fmt(num, suffix="B"):
+    for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Yi{suffix}"
+
+
+
 class Runner:
 
     def __init__(self, views_dir: pathlib.Path | str, client: lea.clients.Client, verbose=False):
@@ -569,11 +578,15 @@ class Runner:
                 print_(f"  {table_reference}")
 
             if table_reference in modified_table_references:
-                # #rows changed
+                # |rows| changed
                 if view_size_diff.n_rows_diff:
                     sign = "+" if view_size_diff.n_rows_diff > 0 else "-"
                     print_(f"{sign} {abs(view_size_diff.n_rows_diff):,d} rows")
-                # TODO: #bytes changed
+                # |bytes| changed
+                if view_size_diff.n_bytes_diff:
+                    sign = "+" if view_size_diff.n_bytes_diff > 0 else "-"
+                    print_(f"{sign} {sizeof_fmt(abs(view_size_diff.n_bytes_diff))}")
+
             for removed in sorted(view_schema_diff[view_schema_diff.diff_kind == "REMOVED"].column):
                 print_(f"- {removed}")
             for added in sorted(view_schema_diff[view_schema_diff.diff_kind == "ADDED"].column):
