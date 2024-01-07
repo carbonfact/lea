@@ -10,6 +10,10 @@ class View(abc.ABC):
     origin: pathlib.Path
     relative_path: pathlib.Path
 
+    @abc.abstractclassmethod
+    def path_suffixes(self) -> set[str]:
+        ...
+
     @property
     def path(self):
         return self.origin.joinpath(self.relative_path)

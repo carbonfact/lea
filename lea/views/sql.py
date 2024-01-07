@@ -42,6 +42,10 @@ class SQLView(View):
     def __repr__(self):
         return ".".join(self.key)
 
+    @classmethod
+    def path_suffixes(self):
+        return {"sql", "sql.jinja"}
+
     @property
     def query(self):
         text = self.path.read_text().rstrip().rstrip(";")

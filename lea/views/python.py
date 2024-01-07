@@ -14,6 +14,10 @@ class PythonView(View):
     def source_code(self):
         return self.path.read_text()
 
+    @classmethod
+    def path_suffixes(self):
+        return {"py"}
+
     @property
     def dependencies(self):
         def _dependencies():

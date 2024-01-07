@@ -384,7 +384,9 @@ Dependency freezing is particularly useful when using lea in a CI/CD context. Yo
 lea run --select git+ --freeze-unselected
 ```
 
-This will only run the modified views and their descendants. The dependencies of these modified will be taken from production. The added benefit is that you are guaranteed to be doing a comparison with the same tables when you run [`lea diff`](#lea-diff). Check out [this](https://maxhalford.github.io/blog/efficient-data-transformation/) article to learn more.
+This will only run the modified views and their descendants. The dependencies of these modified will be taken from production. This is akin to dbt't [defer](https://docs.getdbt.com/reference/node-selection/defer) command, but without the need for managing artifacts.
+
+The added benefit is that you are guaranteed to do a comparison with the same base tables when running [`lea diff`](#lea-diff). Check out [this](https://maxhalford.github.io/blog/efficient-data-transformation/) article to learn more.
 
 ## Contributing
 
