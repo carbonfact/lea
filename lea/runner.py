@@ -69,13 +69,13 @@ class Runner:
             if view.schema not in {"tests", "test", "func", "funcs"}
         }
 
-    def log(self, message):
+    def log(self, message, **kwargs):
         if self.verbose:
-            console.log(message)
+            console.log(message, **kwargs)
 
-    def print(self, message):
+    def print(self, message, **kwargs):
         if self.verbose:
-            console.print(message)
+            console.print(message, **kwargs)
 
     def select_view_keys(self, *queries: str) -> set:
         def _expand_query(query):

@@ -4,11 +4,15 @@ import os
 import pathlib
 
 import pandas as pd
+import rich.console
 import sqlglot
 
 import lea
 
 from .base import Client
+
+# HACK
+console = rich.console.Console()
 
 
 class DuckDB(Client):
@@ -33,7 +37,7 @@ class DuckDB(Client):
     def is_motherduck(self):
         return self.path.startswith("md:")
 
-    def prepare(self, views, console):
+    def prepare(self, views):
         schemas = set(view.schema for view in views)
         for schema in schemas:
             self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")

@@ -13,11 +13,6 @@ def client():
     return duckdb.DuckDB(":memory:", username=None)
 
 
-class MockRichConsole:
-    def log(self, msg):
-        pass
-
-
 @pytest.mark.parametrize(
     "test_data,query,ok",
     [
@@ -221,8 +216,7 @@ def test_duckdb_assertions(test_data, query, ok, client):
         query=query,
         sqlglot_dialect=client.sqlglot_dialect,
     )
-    dummy_console = MockRichConsole()
-    client.prepare([view], console=dummy_console)
+    client.prepare([view])
     client.materialize_view(view)
 
     for test in client.discover_assertion_tests(view, test_data.columns):
