@@ -3,7 +3,6 @@ from __future__ import annotations
 import pathlib
 
 import dotenv
-import rich
 import typer
 
 import lea
@@ -131,7 +130,7 @@ def diff(
         target_client=_make_client(production=True)
     )
 
-    rich.print(diff)
+    print(diff)
 
 
 def make_app(make_client):
