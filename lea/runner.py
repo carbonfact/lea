@@ -113,7 +113,7 @@ class Runner:
                 yield query
 
         if not queries:
-            return set(self.views.keys())
+            return set(self.regular_views.keys())
 
         return {
             selected
