@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from . import cli, clients, diff, views
-from .runner import Runner
 from .dag import DAGOfViews
+from .runner import Runner
 
 _SEP = "__"
 

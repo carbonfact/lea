@@ -8,15 +8,14 @@ from .base import View
 from .python import PythonView
 from .sql import GenericSQLView, SQLView
 
-
 PATH_SUFFIXES = PythonView.path_suffixes() | SQLView.path_suffixes()
 
 
 def open_view_from_path(path, origin, sqlglot_dialect):
     relative_path = path.relative_to(origin)
-    if path.name.split('.', 1)[1] in PythonView.path_suffixes():
+    if path.name.split(".", 1)[1] in PythonView.path_suffixes():
         return PythonView(origin, relative_path)
-    if path.name.split('.', 1)[1] in SQLView.path_suffixes():
+    if path.name.split(".", 1)[1] in SQLView.path_suffixes():
         return SQLView(origin, relative_path, sqlglot_dialect=sqlglot_dialect)
     raise ValueError(f"Unsupported view type: {path}")
 
@@ -36,7 +35,7 @@ def open_views(
         for path in schema_dir.rglob("*")
         if not path.is_dir()
         and not path.name.startswith("_")
-        and path.name.split('.', 1)[1] in PATH_SUFFIXES
+        and path.name.split(".", 1)[1] in PATH_SUFFIXES
         and path.stat().st_size > 0
     ]
 

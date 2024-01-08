@@ -4,7 +4,6 @@ import concurrent.futures
 import datetime as dt
 import functools
 import io
-import itertools
 import pathlib
 import pickle
 import re
@@ -17,7 +16,6 @@ import rich.live
 import rich.table
 
 import lea
-
 
 console = rich.console.Console()
 
@@ -39,11 +37,8 @@ def sizeof_fmt(num, suffix="B"):
     return f"{num:.1f}Yi{suffix}"
 
 
-
 class Runner:
-
     def __init__(self, views_dir: pathlib.Path | str, client: lea.clients.Client, verbose=False):
-
         if isinstance(views_dir, str):
             views_dir = pathlib.Path(views_dir)
         self.views_dir = views_dir
@@ -52,7 +47,9 @@ class Runner:
 
         self.views = {
             view.key: view
-            for view in lea.views.open_views(views_dir=views_dir, sqlglot_dialect=self.client.sqlglot_dialect)
+            for view in lea.views.open_views(
+                views_dir=views_dir, sqlglot_dialect=self.client.sqlglot_dialect
+            )
         }
         self.dag = lea.DAGOfViews(
             graph={
@@ -81,7 +78,6 @@ class Runner:
             console.print(message)
 
     def select_view_keys(self, *queries: str) -> set:
-
         def _expand_query(query):
             # It's possible to query views via git. For example:
             # * `git` will select all the views that have been modified compared to the main branch.
@@ -105,7 +101,10 @@ class Runner:
                     # One thing to note is that we don't filter out deleted views. This is because
                     # these views will get filtered out by dag.select anyway.
                     diff_path = pathlib.Path(diff.a_path)
-                    if diff_path.is_relative_to(self.views_dir) and diff_path.name.split(".", 1)[1] in lea.views.PATH_SUFFIXES:
+                    if (
+                        diff_path.is_relative_to(self.views_dir)
+                        and diff_path.name.split(".", 1)[1] in lea.views.PATH_SUFFIXES
+                    ):
                         view = lea.views.open_view_from_path(
                             diff_path, self.views_dir, self.client.sqlglot_dialect
                         )
@@ -124,9 +123,7 @@ class Runner:
         }
 
     def _make_table_reference_mapping(
-        self,
-        selected_view_keys: set[tuple[str]],
-        freeze_unselected: bool
+        self, selected_view_keys: set[tuple[str]], freeze_unselected: bool
     ) -> dict[str, str]:
         """
 
@@ -188,9 +185,9 @@ class Runner:
         # table_references to the current database, but we leave the others untouched.
         if not freeze_unselected:
             return {
-                self.client._view_key_to_table_reference(view_key): self.client._view_key_to_table_reference(
-                    view_key, with_username=True
-                )
+                self.client._view_key_to_table_reference(
+                    view_key
+                ): self.client._view_key_to_table_reference(view_key, with_username=True)
                 for view_key in self.regular_views
             }
 
@@ -204,9 +201,9 @@ class Runner:
         if not selected_view_keys:
             warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
         return {
-            self.client._view_key_to_table_reference(view_key): self.client._view_key_to_table_reference(
-                view_key, with_username=True
-            )
+            self.client._view_key_to_table_reference(
+                view_key
+            ): self.client._view_key_to_table_reference(view_key, with_username=True)
             for view_key in selected_view_keys
         }
 
@@ -219,9 +216,8 @@ class Runner:
         fresh: bool,
         threads: int,
         show: int,
-        fail_fast: bool
+        fail_fast: bool,
     ):
-
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
 
@@ -240,7 +236,7 @@ class Runner:
             if view_key in self.regular_views:
                 continue
             if not dry:
-                client.delete_view_key(view_key)
+                self.client.delete_view_key(view_key)
             self.log(f"Removed {table_reference}")
 
         def display_progress() -> rich.table.Table:
@@ -303,11 +299,12 @@ class Runner:
                     if any(
                         dep_key in skipped or dep_key in exceptions
                         for dep_key in map(
-                            self.client._table_reference_to_view_key, self.views[view_key].dependencies
+                            self.client._table_reference_to_view_key,
+                            self.views[view_key].dependencies,
                         )
                     ):
                         skipped.add(view_key)
-                        dag.done(view_key)
+                        self.dag.done(view_key)
                         continue
 
                     # Submit a job, or print, or do nothing
@@ -318,7 +315,7 @@ class Runner:
                             console.print,
                             self.views[view_key].rename_table_references(
                                 table_reference_mapping=table_reference_mapping
-                            )
+                            ),
                         )
                     else:
                         job = functools.partial(
@@ -383,13 +380,7 @@ class Runner:
             if fail_fast:
                 raise Exception("Some views failed to build")
 
-    def test(
-        self,
-        select_views: list[str],
-        freeze_unselected: bool,
-        threads: int,
-        fail_fast: bool
-    ):
+    def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
         # List all the columns
         columns = self.client.list_columns()
 
@@ -435,7 +426,9 @@ class Runner:
                 or any(test_dep in selected_view_keys for test_dep in test_dependencies)
             )
         ]
-        self.log(f"{len(tests):,d} out of {len(singular_tests + assertion_tests):,d} tests selected")
+        self.log(
+            f"{len(tests):,d} out of {len(singular_tests + assertion_tests):,d} tests selected"
+        )
 
         # Run tests concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
@@ -564,12 +557,7 @@ class Runner:
         readme.write_text(readme_content.getvalue())
         self.log(f"Wrote {readme}", style="bold green")
 
-    def calculate_diff(
-        self,
-        select: set[str],
-        target_client: lea.clients.Client
-    ) -> str:
-
+    def calculate_diff(self, select: set[str], target_client: lea.clients.Client) -> str:
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
 
@@ -582,7 +570,9 @@ class Runner:
         else:
             selected_table_references = None
 
-        schema_diff = lea.diff.get_schema_diff(origin_client=self.client, target_client=target_client)
+        schema_diff = lea.diff.get_schema_diff(
+            origin_client=self.client, target_client=target_client
+        )
         size_diff = lea.diff.get_size_diff(origin_client=self.client, target_client=target_client)
 
         removed_table_references = set(
@@ -597,7 +587,9 @@ class Runner:
         )
         modified_table_references = set(size_diff.table_reference)
 
-        table_references = removed_table_references | added_table_references | modified_table_references
+        table_references = (
+            removed_table_references | added_table_references | modified_table_references
+        )
         if select:
             table_references &= selected_table_references
 

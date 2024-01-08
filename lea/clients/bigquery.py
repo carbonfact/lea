@@ -3,11 +3,15 @@ from __future__ import annotations
 import os
 
 import pandas as pd
+import rich.console
 import sqlglot
 
 import lea
 
 from .base import Client
+
+# HACK
+console = rich.console.Console()
 
 
 class BigQuery(Client):
@@ -32,7 +36,7 @@ class BigQuery(Client):
 
         return bigquery.Client(credentials=self.credentials)
 
-    def prepare(self, views, console):
+    def prepare(self, views):
         from google.cloud import bigquery
 
         dataset_ref = bigquery.DatasetReference(
@@ -43,7 +47,7 @@ class BigQuery(Client):
         dataset = self.client.create_dataset(dataset, exists_ok=True)
         console.log(f"Created dataset {dataset.dataset_id}")
 
-    def teardown(self, console):
+    def teardown(self):
         from google.cloud import bigquery
 
         dataset_ref = self.client.dataset(self.dataset_name)

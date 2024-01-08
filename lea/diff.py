@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import functools
-import io
-import pathlib
-
 import pandas as pd
 
 import lea

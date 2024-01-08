@@ -7,8 +7,6 @@ import typer
 
 import lea
 
-from .clients import make_client
-
 app = typer.Typer()
 
 
@@ -36,12 +34,11 @@ ViewsDir = typer.Argument(default="views", callback=validate_views_dir)
 
 @app.command()
 def prepare(views_dir: str = ViewsDir, production: bool = False, env: str = EnvPath):
-
     client = _make_client(production)
     views = lea.views.open_views(views_dir=views_dir, sqlglot_dialect=client.sqlglot_dialect)
     views = [view for view in views if view.schema not in {"tests", "funcs"}]
 
-    client.prepare(views, console)
+    client.prepare(views)
 
 
 @app.command()
@@ -55,7 +52,7 @@ def teardown(production: bool = False, env: str = EnvPath):
         )
 
     client = _make_client(production)
-    client.teardown(console)
+    client.teardown()
 
 
 @app.command()
@@ -83,7 +80,7 @@ def run(
         fresh=fresh,
         threads=threads,
         show=show,
-        fail_fast=fail_fast
+        fail_fast=fail_fast,
     )
 
 
@@ -103,7 +100,7 @@ def test(
         select_views=select_views,
         freeze_unselected=freeze_unselected,
         threads=threads,
-        fail_fast=fail_fast
+        fail_fast=fail_fast,
     )
 
 
@@ -125,10 +122,7 @@ def diff(
 ):
     client = _make_client(production=False)
     runner = lea.Runner(views_dir=views_dir, client=client)
-    diff = runner.calculate_diff(
-        select=select,
-        target_client=_make_client(production=True)
-    )
+    diff = runner.calculate_diff(select=select, target_client=_make_client(production=True))
 
     print(diff)
 

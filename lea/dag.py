@@ -3,9 +3,6 @@ from __future__ import annotations
 import collections
 import graphlib
 import io
-import pathlib
-import re
-
 
 FOUR_SPACES = "    "
 
