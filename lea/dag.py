@@ -276,10 +276,10 @@ class DAGOfViews(graphlib.TopologicalSorter):
             schema_dependencies.keys()
         )
         for node in sorted(nodes):
-            out.write(f"{FOUR_SPACES}{node}({node})\n")
+            out.write(f"{FOUR_SPACES}{node}({node})\n".replace('"', ''))
         for dst, srcs in sorted(schema_dependencies.items()):
             for src in sorted(srcs):
-                out.write(f"{FOUR_SPACES}{src} --> {dst}\n")
+                out.write(f"{FOUR_SPACES}{src} --> {dst}\n".replace('"', ''))
         return out.getvalue()
 
     def to_mermaid(self, schemas_only=False):
