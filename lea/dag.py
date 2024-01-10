@@ -241,7 +241,7 @@ class DAGOfViews(graphlib.TopologicalSorter):
         out.write("flowchart TB\n")
 
         def output_subgraph(schema: str, values: dict, prefix: str = ""):
-            out.write(f"\n{FOUR_SPACES}subgraph {schema}\n")
+            out.write(f"\n{FOUR_SPACES}subgraph {schema}\n".replace('"', ""))
             for value in sorted(values.keys()):
                 sub_values = values[value]
                 path = f"{prefix}.{schema}" if prefix else schema
@@ -249,7 +249,7 @@ class DAGOfViews(graphlib.TopologicalSorter):
                 if sub_values:
                     output_subgraph(value, sub_values, path)
                 else:
-                    out.write(f"{FOUR_SPACES*2}{full_path}({value})\n")
+                    out.write(f"{FOUR_SPACES*2}{full_path}({value})\n".replace('"', ""))
             out.write(f"{FOUR_SPACES}end\n\n")
 
         # Print out the nodes, within each subgraph block
@@ -263,7 +263,7 @@ class DAGOfViews(graphlib.TopologicalSorter):
             dst = ".".join(dst)
             for src in sorted(srcs):
                 src = ".".join(src)
-                out.write(f"{FOUR_SPACES}{src} --> {dst}\n")
+                out.write(f"{FOUR_SPACES}{src} --> {dst}\n".replace('"', ""))
 
         return out.getvalue()
 
