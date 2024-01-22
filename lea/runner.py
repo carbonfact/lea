@@ -207,6 +207,9 @@ class Runner:
             for view_key in selected_view_keys
         }
 
+    def prepare(self):
+        self.client.prepare(self.regular_views.values())
+
     def run(
         self,
         select: list[str],
@@ -217,6 +220,7 @@ class Runner:
         threads: int,
         show: int,
         fail_fast: bool,
+        wap_mode: bool,
     ):
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
@@ -229,6 +233,10 @@ class Runner:
             selected_view_keys=selected_view_keys,
             freeze_unselected=freeze_unselected,
         )
+        if wap_mode:
+            table_reference_mapping = {
+                k: f'{v}{lea._SEP}{lea._WAP_MODE_SUFFIX}' for k, v in table_reference_mapping.items()
+            }
 
         # Remove orphan views
         for table_reference in self.client.list_tables()["table_reference"]:
@@ -323,6 +331,7 @@ class Runner:
                             view=self.views[view_key].rename_table_references(
                                 table_reference_mapping=table_reference_mapping
                             ),
+                            wap_mode=wap_mode
                         )
                     jobs[view_key] = executor.submit(job)
                     jobs_started_at[view_key] = dt.datetime.now()
@@ -335,6 +344,8 @@ class Runner:
                         jobs_ended_at[view_key] = dt.datetime.now()
                         # Determine whether the job succeeded or not
                         if exception := jobs[view_key].exception():
+                            if fail_fast:
+                                raise exception
                             exceptions[view_key] = exception
 
                 live.update(display_progress())
@@ -376,9 +387,6 @@ class Runner:
             for view_key, exception in exceptions.items():
                 self.print(str(self.views[view_key]), style="bold red")
                 self.print(exception)
-
-            if fail_fast:
-                raise Exception("Some views failed to build")
 
     def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
         # List all the columns

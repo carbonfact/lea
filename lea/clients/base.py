@@ -49,12 +49,12 @@ class Client(abc.ABC):
     def _materialize_pandas_dataframe(self, dataframe: pd.DataFrame):
         ...
 
-    def materialize_view(self, view: lea.views.View):
+    def materialize_view(self, view: lea.views.View, wap_mode=False):
         if isinstance(view, lea.views.SQLView):
-            return self._materialize_sql_query(view_key=view.key, query=view.query)
+            return self._materialize_sql_query(view_key=view.key, query=view.query, wap_mode=wap_mode)
         elif isinstance(view, lea.views.PythonView):
             dataframe = self._read_python_view(view=view)
-            return self._materialize_pandas_dataframe(view_key=view.key, dataframe=dataframe)
+            return self._materialize_pandas_dataframe(view_key=view.key, dataframe=dataframe, wap_mode=wap_mode)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod

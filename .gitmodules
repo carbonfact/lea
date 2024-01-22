@@ -1,3 +1,6 @@
 [submodule "examples/jaffle_shop/jaffle_shop"]
 	path = examples/jaffle_shop/jaffle_shop
 	url = https://github.com/dbt-labs/jaffle_shop/
+[submodule "examples/wap/the-great-pizza-cleanup"]
+	path = examples/wap/the-great-pizza-cleanup
+	url = https://github.com/LeonardoNatale/the-great-pizza-cleanup

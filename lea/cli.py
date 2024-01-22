@@ -35,10 +35,8 @@ ViewsDir = typer.Argument(default="views", callback=validate_views_dir)
 @app.command()
 def prepare(views_dir: str = ViewsDir, production: bool = False, env: str = EnvPath):
     client = _make_client(production)
-    views = lea.views.open_views(views_dir=views_dir, sqlglot_dialect=client.sqlglot_dialect)
-    views = [view for view in views if view.schema not in {"tests", "funcs"}]
-
-    client.prepare(views)
+    runner = lea.Runner(views_dir=views_dir, client=client, verbose=True)
+    runner.prepare()
 
 
 @app.command()
