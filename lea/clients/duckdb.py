@@ -43,17 +43,15 @@ class DuckDB(Client):
             self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
             console.log(f"Created schema {schema}")
 
-    def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame, wap_mode=False):
+    def _materialize_pandas_dataframe(
+        self, view_key: tuple[str], dataframe: pd.DataFrame, wap_mode=False
+    ):
         table_reference = self._view_key_to_table_reference(view_key=view_key, wap_mode=wap_mode)
-        self.con.sql(
-            f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe"
-        )
+        self.con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe")
 
     def _materialize_sql_query(self, view_key: tuple[str], query: str, wap_mode=False):
         table_reference = self._view_key_to_table_reference(view_key=view_key, wap_mode=wap_mode)
-        self.con.sql(
-            f"CREATE OR REPLACE TABLE {table_reference} AS ({query})"
-        )
+        self.con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS ({query})")
 
     def _read_sql_view(self, view: lea.views.SQLView):
         query = view.query
@@ -86,7 +84,9 @@ class DuckDB(Client):
         """
         return self.con.sql(query).df()
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username=False, wap_mode=False) -> str:
+    def _view_key_to_table_reference(
+        self, view_key: tuple[str], with_username=False, wap_mode=False
+    ) -> str:
         """
 
         >>> client = DuckDB(path=":memory:", username=None)

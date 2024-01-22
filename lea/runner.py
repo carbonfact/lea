@@ -235,7 +235,8 @@ class Runner:
         )
         if wap_mode:
             table_reference_mapping = {
-                k: f'{v}{lea._SEP}{lea._WAP_MODE_SUFFIX}' for k, v in table_reference_mapping.items()
+                k: f"{v}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
+                for k, v in table_reference_mapping.items()
             }
 
         # Remove orphan views
@@ -331,7 +332,7 @@ class Runner:
                             view=self.views[view_key].rename_table_references(
                                 table_reference_mapping=table_reference_mapping
                             ),
-                            wap_mode=wap_mode
+                            wap_mode=wap_mode,
                         )
                     jobs[view_key] = executor.submit(job)
                     jobs_started_at[view_key] = dt.datetime.now()
