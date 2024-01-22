@@ -66,6 +66,7 @@ def run(
     threads: int = 8,
     show: int = 20,
     fail_fast: bool = False,
+    wap_mode: bool = False,
     env: str = EnvPath,
 ):
     client = _make_client(production)
@@ -79,6 +80,7 @@ def run(
         threads=threads,
         show=show,
         fail_fast=fail_fast,
+        wap_mode=wap_mode,
     )
 
 

@@ -346,10 +346,16 @@ class Runner:
                         # Determine whether the job succeeded or not
                         if exception := jobs[view_key].exception():
                             if fail_fast:
+                                # Note that if we're in fail_fast mode, caching doesn't happen
                                 raise exception
                             exceptions[view_key] = exception
 
                 live.update(display_progress())
+
+        if wap_mode:
+            self.client.switch_for_wap_mode(
+                table_references=table_reference_mapping.keys()
+            )
 
         # Save the cache
         all_done = not exceptions and not skipped

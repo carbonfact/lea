@@ -124,3 +124,25 @@ class DuckDB(Client):
         else:
             schema = database
         return (schema, *leftover.split(lea._SEP))
+
+    def switch_for_wap_mode(self, table_references):
+        statements = ["BEGIN TRANSACTION"]
+        for table_reference in table_references:
+            # Drop the existing table if it exists
+            statements.append(
+                f"DROP TABLE IF EXISTS {table_reference};"
+            )
+            # Rename the WAP table to the original table name
+            table_reference_without_schema = table_reference.split(".", 1)[1]
+            statements.append(
+                f"ALTER TABLE {table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX} RENAME TO {table_reference_without_schema};"
+            )
+        statements.append("COMMIT")
+        try:
+            # Concatenate all the statements into one string and execute them
+            sql = "\n".join(f"{statement};" for statement in statements)
+            self.con.execute(sql)
+        except Exception as e:
+            # Make sure to rollback if there's an error
+            self.con.execute("ROLLBACK")
+            raise e
