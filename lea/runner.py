@@ -353,9 +353,7 @@ class Runner:
                 live.update(display_progress())
 
         if wap_mode:
-            self.client.switch_for_wap_mode(
-                table_references=table_reference_mapping.keys()
-            )
+            self.client.switch_for_wap_mode(table_references=table_reference_mapping.keys())
 
         # Save the cache
         all_done = not exceptions and not skipped

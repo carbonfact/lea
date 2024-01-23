@@ -129,9 +129,7 @@ class DuckDB(Client):
         statements = ["BEGIN TRANSACTION"]
         for table_reference in table_references:
             # Drop the existing table if it exists
-            statements.append(
-                f"DROP TABLE IF EXISTS {table_reference};"
-            )
+            statements.append(f"DROP TABLE IF EXISTS {table_reference};")
             # Rename the WAP table to the original table name
             table_reference_without_schema = table_reference.split(".", 1)[1]
             statements.append(
