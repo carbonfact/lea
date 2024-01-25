@@ -63,6 +63,11 @@ class Runner:
 
     @property
     def regular_views(self):
+        """What we call regular views are views that are not tests or functions.
+
+        Regular views are the views that are materialized in the database.
+
+        """
         return {
             view_key: view
             for view_key, view in self.views.items()
@@ -78,6 +83,14 @@ class Runner:
             console.print(message, **kwargs)
 
     def select_view_keys(self, *queries: str) -> set:
+        """Selects view keys from one or more graph operators.
+
+        The special case where no queries are specified is equivalent to selecting all the views.
+
+        git operators are expanded to select all the views that have been modified compared to the
+        main branch.
+
+        """
         def _expand_query(query):
             # It's possible to query views via git. For example:
             # * `git` will select all the views that have been modified compared to the main branch.
@@ -123,13 +136,32 @@ class Runner:
         }
 
     def _make_table_reference_mapping(
-        self, selected_view_keys: set[tuple[str]], freeze_unselected: bool
+        self, selected_view_keys: set[tuple[str]], freeze_unselected: bool, wap_mode=False
     ) -> dict[str, str]:
         """
 
-        There are two types of table_references: those that refer to a table in the current database,
-        and those that refer to a table in another database. This function determine how to rename the
-        table references in each view.
+        There are two types of table_references: those that refer to a table in the current
+        database, and those that refer to a table in another database. This function determine how
+        to rename the table references in each view.
+
+        This is important in several cases.
+
+        On the one hand, if you're refreshing views in a developper schema, the table references
+        found in each query should be renamed to target the developer schema. For instance, if a
+        query contains `FROM dwh.core__users`, we'll want to replace that with
+        `FROM dwh_max.core__users`.
+
+        On the other hand, if you're refreshing views in a production, the table references found
+        each query should be renamed to target the production schema. In general, this leaves the
+        table references untouched.
+
+        A special case is when you're refreshing views in a GitHub Actions workflow. In that case,
+        you may only want to refresh views that have been modified compared to the main branch.
+        What you'll want to do is rename the table references of modified views, while leaving the
+        others untouched. This is the so-called "Slim CI" pattern.
+
+        Note that this method only returns a mapping. It doesn't actually rename the table
+        references in a given view. That's a separate responsibility.
 
         Examples
         --------
@@ -184,7 +216,7 @@ class Runner:
         # By default, we replace all
         # table_references to the current database, but we leave the others untouched.
         if not freeze_unselected:
-            return {
+            table_reference_mapping = {
                 self.client._view_key_to_table_reference(
                     view_key
                 ): self.client._view_key_to_table_reference(view_key, with_username=True)
@@ -194,18 +226,26 @@ class Runner:
         # When freeze_unselected is specified, it means we want our views to target the production
         # database. Therefore, we only have to rename the table references for the views that were
         # selected.
+        # Note the case where the select list is empty. That means all the views should be
+        # refreshed. If freeze_unselected is specified, then it means all the views will target
+        # the production database, which is basically equivalent to copying over the data.
+        else:
+            if not selected_view_keys:
+                warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
+            table_reference_mapping = {
+                self.client._view_key_to_table_reference(
+                    view_key
+                ): self.client._view_key_to_table_reference(view_key, with_username=True)
+                for view_key in selected_view_keys
+            }
 
-        # Note the case where the select list is empty. That means all the views should be refreshed.
-        # If freeze_unselected is specified, then it means all the views will target the production
-        # database, which is basically equivalent to copying over the data.
-        if not selected_view_keys:
-            warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
-        return {
-            self.client._view_key_to_table_reference(
-                view_key
-            ): self.client._view_key_to_table_reference(view_key, with_username=True)
-            for view_key in selected_view_keys
-        }
+        if wap_mode:
+            table_reference_mapping = {
+                k: f"{v}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
+                for k, v in table_reference_mapping.items()
+            }
+
+        return table_reference_mapping
 
     def prepare(self):
         self.client.prepare(self.regular_views.values())
@@ -222,6 +262,7 @@ class Runner:
         fail_fast: bool,
         wap_mode: bool,
     ):
+
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
 
@@ -233,11 +274,10 @@ class Runner:
             selected_view_keys=selected_view_keys,
             freeze_unselected=freeze_unselected,
         )
-        if wap_mode:
-            table_reference_mapping = {
-                k: f"{v}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
-                for k, v in table_reference_mapping.items()
-            }
+
+        if wap_mode and not dry:
+            self.client.switch_for_wap_mode(table_references=table_reference_mapping.keys())
+        return
 
         # Remove orphan views
         for table_reference in self.client.list_tables()["table_reference"]:
@@ -352,7 +392,7 @@ class Runner:
 
                 live.update(display_progress())
 
-        if wap_mode:
+        if wap_mode and not dry:
             self.client.switch_for_wap_mode(table_references=table_reference_mapping.keys())
 
         # Save the cache

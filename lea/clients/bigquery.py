@@ -56,8 +56,8 @@ class BigQuery(Client):
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
         console.log(f"Deleted dataset {dataset.dataset_id}")
 
-    def _materialize_sql_query(self, view_key: tuple[str], query: str):
-        table_reference = self._view_key_to_table_reference(view_key)
+    def _materialize_sql_query(self, view_key: tuple[str], query: str, wap_mode=False):
+        table_reference = self._view_key_to_table_reference(view_key, wap_mode=wap_mode)
         schema, table_reference = table_reference.split(".", 1)
         job = self.client.create_job(
             {
@@ -74,7 +74,7 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": schema,
-                    "job_table": table_reference,
+                    "job_table": table_reference.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""),
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -82,7 +82,7 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame):
+    def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame, wap_mode=False):
         from google.cloud import bigquery
 
         job_config = bigquery.LoadJobConfig(
@@ -92,7 +92,7 @@ class BigQuery(Client):
 
         job = self.client.load_table_from_dataframe(
             dataframe,
-            f"{self.project_id}.{self._view_key_to_table_reference(view_key)}",
+            f"{self.project_id}.{self._view_key_to_table_reference(view_key, wap_mode=wap_mode)}",
             job_config=job_config,
         )
         job.result()
@@ -126,7 +126,7 @@ class BigQuery(Client):
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
         return self._read_sql_view(view)
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username=False) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_username=False, wap_mode=False) -> str:
         """
 
         >>> client = BigQuery(
@@ -149,10 +149,17 @@ class BigQuery(Client):
         >>> client._view_key_to_table_reference(("schema", "table"), with_username=True)
         'dataset_max.schema__table'
 
+        >>> client._view_key_to_table_reference(("schema", "table"), with_username=True, wap_mode=True)
+        'dataset_max.schema__table__LEA_WAP'
+
         """
         if with_username:
-            return f"{self.dataset_name}.{lea._SEP.join(view_key)}"
-        return f"{self._dataset_name}.{lea._SEP.join(view_key)}"
+            table_reference = f"{self.dataset_name}.{lea._SEP.join(view_key)}"
+        else:
+            table_reference = f"{self._dataset_name}.{lea._SEP.join(view_key)}"
+        if wap_mode:
+            table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
+        return table_reference
 
     def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
         """
@@ -182,3 +189,23 @@ class BigQuery(Client):
         if dataset in {self._dataset_name, self.dataset_name}:
             return tuple(leftover.split(lea._SEP))
         return (dataset, *leftover.split(lea._SEP))
+
+    def switch_for_wap_mode(self, table_references):
+        statements = []
+        for table_reference in table_references:
+            # Drop the existing table if it exists
+            statements.append(f"DROP TABLE IF EXISTS {table_reference}")
+            # Rename the WAP table to the original table name
+            table_reference_without_schema = table_reference.split(".", 1)[1]
+            statements.append(
+                f"ALTER TABLE {table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX} RENAME TO {table_reference_without_schema}"
+            )
+        sql = "\n".join(f"{statement};" for statement in statements)
+
+        try:
+            with self.client.transaction():
+                job = client.query(sql)
+                job.result()
+                self.client.commit()
+        except Exception as e:
+            raise e
