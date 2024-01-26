@@ -200,12 +200,20 @@ class BigQuery(Client):
             statements.append(
                 f"ALTER TABLE {table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX} RENAME TO {table_reference_without_schema}"
             )
-        sql = "\n".join(f"{statement};" for statement in statements)
 
-        try:
-            with self.client.transaction():
-                job = client.query(sql)
-                job.result()
-                self.client.commit()
-        except Exception as e:
-            raise e
+        sql = '\n'.join(f'{statement};' for statement in statements)
+        sql = f"""
+        BEGIN
+
+            BEGIN TRANSACTION;
+            {sql}
+            COMMIT TRANSACTION;
+
+        EXCEPTION WHEN ERROR THEN
+            -- Roll back the transaction inside the exception handler.
+            SELECT @@error.message;
+            ROLLBACK TRANSACTION;
+        END;
+        """
+
+        self.client.query(sql).result()

@@ -265,28 +265,22 @@ class Runner:
 
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
-
-        # Let the user know the views we've decided which views will run
         self.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
             selected_view_keys=selected_view_keys,
             freeze_unselected=freeze_unselected,
+            wap_mode=wap_mode,
         )
+
+
 
         if wap_mode and not dry:
             self.client.switch_for_wap_mode(table_references=table_reference_mapping.keys())
         return
 
-        # Remove orphan views
-        for table_reference in self.client.list_tables()["table_reference"]:
-            view_key = self.client._table_reference_to_view_key(table_reference)
-            if view_key in self.regular_views:
-                continue
-            if not dry:
-                self.client.delete_view_key(view_key)
-            self.log(f"Removed {table_reference}")
+
 
         def display_progress() -> rich.table.Table:
             if not self.verbose:
@@ -433,7 +427,7 @@ class Runner:
                 self.print(str(self.views[view_key]), style="bold red")
                 self.print(exception)
 
-    def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
+    def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool, wap_mode: bool):
         # List all the columns
         columns = self.client.list_columns()
 
@@ -448,6 +442,7 @@ class Runner:
         table_reference_mapping = self._make_table_reference_mapping(
             selected_view_keys=selected_view_keys,
             freeze_unselected=freeze_unselected,
+            wap_mode=wap_mode,
         )
 
         # List assertion tests

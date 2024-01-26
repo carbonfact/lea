@@ -101,6 +101,7 @@ def test(
         freeze_unselected=freeze_unselected,
         threads=threads,
         fail_fast=fail_fast,
+        wap_mode=False,
     )
 
 
