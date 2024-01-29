@@ -482,7 +482,6 @@ class Runner:
             # Write down the views
             content.write("## Views\n\n")
             for view in sorted(self.regular_views.values(), key=lambda view: view.key):
-
                 # HACK: skip json views for now
                 if str(view.path).endswith("json"):
                     continue
