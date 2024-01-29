@@ -98,7 +98,7 @@ class BigQuery(Client):
         job.result()
 
     def delete_view_key(self, view_key: tuple[str]):
-        table_reference = self._view_key_to_table_reference(view_key, with_username=True)
+        table_reference = self._view_key_to_table_reference(view_key)
         self.client.delete_table(f"{self.project_id}.{table_reference}")
 
     def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
@@ -126,7 +126,7 @@ class BigQuery(Client):
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
         return self._read_sql_view(view)
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username=False) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_username: bool = None) -> str:
         """
 
         >>> client = BigQuery(
@@ -137,19 +137,21 @@ class BigQuery(Client):
         ...     username="max"
         ... )
 
-        >>> client._view_key_to_table_reference(("schema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "table"), with_username=False)
         'dataset.schema__table'
 
-        >>> client._view_key_to_table_reference(("schema", "subschema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "subschema", "table"), with_username=False)
         'dataset.schema__subschema__table'
 
-        >>> client._view_key_to_table_reference(("schema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "table"), with_username=False)
         'dataset.schema__table'
 
         >>> client._view_key_to_table_reference(("schema", "table"), with_username=True)
         'dataset_max.schema__table'
 
         """
+        if with_username is None:
+            with_username = self.username is not None
         if with_username:
             return f"{self.dataset_name}.{lea._SEP.join(view_key)}"
         return f"{self._dataset_name}.{lea._SEP.join(view_key)}"

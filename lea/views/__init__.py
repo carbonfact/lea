@@ -6,9 +6,10 @@ import sqlglot
 
 from .base import View
 from .python import PythonView
+from .json import JSONView
 from .sql import GenericSQLView, SQLView
 
-PATH_SUFFIXES = PythonView.path_suffixes() | SQLView.path_suffixes()
+PATH_SUFFIXES = PythonView.path_suffixes() | SQLView.path_suffixes() | JSONView.path_suffixes()
 
 
 def open_view_from_path(path, origin, sqlglot_dialect):
@@ -17,6 +18,8 @@ def open_view_from_path(path, origin, sqlglot_dialect):
         return PythonView(origin, relative_path)
     if path.name.split(".", 1)[1] in SQLView.path_suffixes():
         return SQLView(origin, relative_path, sqlglot_dialect=sqlglot_dialect)
+    if path.name.split(".", 1)[1] in JSONView.path_suffixes():
+        return JSONView(origin, relative_path)
     raise ValueError(f"Unsupported view type: {path}")
 
 

@@ -51,11 +51,15 @@ class Client(abc.ABC):
 
     def materialize_view(self, view: lea.views.View):
         if isinstance(view, lea.views.SQLView):
-            return self._materialize_sql_query(view_key=view.key, query=view.query)
+            self._materialize_sql_query(view_key=view.key, query=view.query)
         elif isinstance(view, lea.views.PythonView):
             dataframe = self._read_python_view(view=view)
-            return self._materialize_pandas_dataframe(view_key=view.key, dataframe=dataframe)
-        raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
+            self._materialize_pandas_dataframe(view_key=view.key, dataframe=dataframe)
+        elif isinstance(view, lea.views.JSONView):
+            dataframe = self._read_json_view(view=view)
+            self._materialize_pandas_dataframe(view_key=view.key, dataframe=dataframe)
+        else:
+            raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod
     def _read_sql_view(self, view: lea.views.SQLView) -> pd.DataFrame:
@@ -73,11 +77,16 @@ class Client(abc.ABC):
             raise ValueError(f"Could not find variable {view.key[1]} in {view.path}")
         return dataframe
 
-    def load(self, view: lea.views.View):
+    def _read_json_view(self, view: lea.views.JSONView) -> pd.DataFrame:
+        return pd.read_json(view.path)
+
+    def read(self, view: lea.views.View):
         if isinstance(view, lea.views.SQLView):
             return self._read_sql_view(view=view)
         elif isinstance(view, lea.views.PythonView):
             return self._read_python_view(view=view)
+        elif isinstance(view, lea.views.JSONView):
+            return self._read_json_view(view=view)
         raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
     @abc.abstractmethod

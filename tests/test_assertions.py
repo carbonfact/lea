@@ -220,5 +220,5 @@ def test_duckdb_assertions(test_data, query, ok, client):
     client.materialize_view(view)
 
     for test in client.discover_assertion_tests(view, test_data.columns):
-        conflicts = client.load(test)
+        conflicts = client.read(test)
         assert conflicts.empty == ok

@@ -84,7 +84,7 @@ class DuckDB(Client):
         """
         return self.con.sql(query).df()
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username=False) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_username: bool = None) -> str:
         """
 
         >>> client = DuckDB(path=":memory:", username=None)
@@ -96,6 +96,8 @@ class DuckDB(Client):
         'schema.subschema__table'
 
         """
+        if with_username is None:
+            with_username = self.username is not None
         schema, *leftover = view_key
         table_reference = f"{schema}.{lea._SEP.join(leftover)}"
         if with_username and self.username:

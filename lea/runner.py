@@ -186,7 +186,7 @@ class Runner:
         if not freeze_unselected:
             return {
                 self.client._view_key_to_table_reference(
-                    view_key
+                    view_key, with_username=False
                 ): self.client._view_key_to_table_reference(view_key, with_username=True)
                 for view_key in self.regular_views
             }
@@ -202,7 +202,7 @@ class Runner:
             warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
         return {
             self.client._view_key_to_table_reference(
-                view_key
+                view_key, with_username=False
             ): self.client._view_key_to_table_reference(view_key, with_username=True)
             for view_key in selected_view_keys
         }
