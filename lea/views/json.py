@@ -4,7 +4,6 @@ from .base import View
 
 
 class JSONView(View):
-
     @classmethod
     def path_suffixes(self):
         return {"json"}

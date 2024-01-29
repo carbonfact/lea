@@ -5,8 +5,8 @@ import pathlib
 import sqlglot
 
 from .base import View
-from .python import PythonView
 from .json import JSONView
+from .python import PythonView
 from .sql import GenericSQLView, SQLView
 
 PATH_SUFFIXES = PythonView.path_suffixes() | SQLView.path_suffixes() | JSONView.path_suffixes()
