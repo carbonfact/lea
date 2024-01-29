@@ -216,4 +216,6 @@ class BigQuery(Client):
         END;
         """
 
+        print(sql)
+
         self.client.query(sql).result()

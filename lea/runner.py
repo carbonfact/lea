@@ -274,13 +274,9 @@ class Runner:
             wap_mode=wap_mode,
         )
 
-
-
         if wap_mode and not dry:
             self.client.switch_for_wap_mode(table_references=table_reference_mapping.keys())
         return
-
-
 
         def display_progress() -> rich.table.Table:
             if not self.verbose:
