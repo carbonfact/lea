@@ -91,6 +91,7 @@ class Runner:
         main branch.
 
         """
+
         def _expand_query(query):
             # It's possible to query views via git. For example:
             # * `git` will select all the views that have been modified compared to the main branch.
@@ -262,7 +263,6 @@ class Runner:
         fail_fast: bool,
         wap_mode: bool,
     ):
-
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
         self.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
@@ -423,7 +423,14 @@ class Runner:
                 self.print(str(self.views[view_key]), style="bold red")
                 self.print(exception)
 
-    def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool, wap_mode: bool):
+    def test(
+        self,
+        select_views: list[str],
+        freeze_unselected: bool,
+        threads: int,
+        fail_fast: bool,
+        wap_mode: bool,
+    ):
         # List all the columns
         columns = self.client.list_columns()
 

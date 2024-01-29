@@ -82,7 +82,9 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame, wap_mode=False):
+    def _materialize_pandas_dataframe(
+        self, view_key: tuple[str], dataframe: pd.DataFrame, wap_mode=False
+    ):
         from google.cloud import bigquery
 
         job_config = bigquery.LoadJobConfig(
@@ -126,7 +128,9 @@ class BigQuery(Client):
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
         return self._read_sql_view(view)
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username=False, wap_mode=False) -> str:
+    def _view_key_to_table_reference(
+        self, view_key: tuple[str], with_username=False, wap_mode=False
+    ) -> str:
         """
 
         >>> client = BigQuery(
@@ -201,7 +205,7 @@ class BigQuery(Client):
                 f"ALTER TABLE {table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX} RENAME TO {table_reference_without_schema}"
             )
 
-        sql = '\n'.join(f'{statement};' for statement in statements)
+        sql = "\n".join(f"{statement};" for statement in statements)
         sql = f"""
         BEGIN
 
