@@ -15,5 +15,8 @@ class JSONView(View):
     def dependencies(self):
         return set()
 
+    def extract_comments(self, columns: list[str]):
+        return {}
+
     def __repr__(self):
         return ".".join(self.key)
