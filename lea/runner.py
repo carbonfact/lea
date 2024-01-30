@@ -433,7 +433,7 @@ class Runner:
         # Run tests concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
             jobs = {
-                executor.submit(self.client.load, test): test.rename_table_references(
+                executor.submit(self.client.read, test): test.rename_table_references(
                     table_reference_mapping=table_reference_mapping
                 )
                 for test in tests
