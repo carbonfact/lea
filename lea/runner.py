@@ -431,14 +431,14 @@ class Runner:
         )
 
         # Do renaming
-        tests = [test.rename_table_references(table_reference_mapping=table_reference_mapping) for test in tests]
+        tests = [
+            test.rename_table_references(table_reference_mapping=table_reference_mapping)
+            for test in tests
+        ]
 
         # Run tests concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            jobs = {
-                executor.submit(self.client.read, test): test
-                for test in tests
-            }
+            jobs = {executor.submit(self.client.read, test): test for test in tests}
             for job in concurrent.futures.as_completed(jobs):
                 test = jobs[job]
                 conflicts = job.result()
