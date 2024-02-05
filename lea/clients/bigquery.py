@@ -89,10 +89,12 @@ class BigQuery(Client):
             schema=[],
             write_disposition="WRITE_TRUNCATE",
         )
+        table_reference = self._view_key_to_table_reference(view_key)
+        schema, table_reference = table_reference.split(".", 1)
 
         job = self.client.load_table_from_dataframe(
             dataframe,
-            f"{self.project_id}.{self._view_key_to_table_reference(view_key)}",
+            f"{self.project_id}.{self.dataset_name}.{table_reference}",
             job_config=job_config,
         )
         job.result()
