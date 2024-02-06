@@ -231,13 +231,13 @@ class Runner:
         )
 
         # Remove orphan views
-        for table_reference in self.client.list_tables()["table_reference"]:
-            view_key = self.client._table_reference_to_view_key(table_reference)
-            if view_key in self.regular_views:
-                continue
-            if not dry:
-                self.client.delete_view_key(view_key)
-            self.log(f"Removed {table_reference}")
+        # for table_reference in self.client.list_tables()["table_reference"]:
+        #     view_key = self.client._table_reference_to_view_key(table_reference)
+        #     if view_key in self.regular_views:
+        #         continue
+        #     if not dry:
+        #         self.client.delete_view_key(view_key)
+        #     self.log(f"Removed {table_reference}")
 
         def display_progress() -> rich.table.Table:
             if not self.verbose:
