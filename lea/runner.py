@@ -336,6 +336,8 @@ class Runner:
                         # Determine whether the job succeeded or not
                         if exception := jobs[view_key].exception():
                             exceptions[view_key] = exception
+                            if fail_fast:
+                                raise exception
 
                 live.update(display_progress())
 
