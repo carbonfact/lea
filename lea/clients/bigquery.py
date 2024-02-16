@@ -4,6 +4,7 @@ import os
 
 import pandas as pd
 import sqlglot
+from pandas_gbq import read_gbq
 
 import lea
 
@@ -98,7 +99,7 @@ class BigQuery(Client):
         self.client.delete_table(f"{self.project_id}.{table_reference}")
 
     def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
-        return pd.read_gbq(view.query, credentials=self.client._credentials)
+        return read_gbq(view.query, credentials=self.client._credentials, progress_bar_type=None)
 
     def list_tables(self):
         query = f"""
