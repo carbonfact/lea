@@ -101,7 +101,8 @@ class BigQuery(Client):
 
     def delete_view_key(self, view_key: tuple[str]):
         table_reference = self._view_key_to_table_reference(view_key)
-        self.client.delete_table(f"{self.project_id}.{table_reference}")
+        schema, table_reference = table_reference.split(".", 1)
+        self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{table_reference}")
 
     def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
         return pd.read_gbq(view.query, credentials=self.client._credentials)
