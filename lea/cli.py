@@ -95,7 +95,7 @@ def test(
     env: str = EnvPath,
 ):
     client = _make_client(production)
-    runner = lea.Runner(views_dir=views_dir, client=client)
+    runner = lea.Runner(views_dir=views_dir, client=client, verbose=True)
     runner.test(
         select_views=select_views,
         freeze_unselected=freeze_unselected,
