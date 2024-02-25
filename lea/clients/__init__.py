@@ -28,13 +28,9 @@ def make_client(production: bool, wap_mode=False):
             project_id=os.environ["LEA_BQ_PROJECT_ID"],
             dataset_name=os.environ["LEA_BQ_DATASET_NAME"],
             username=username,
-            wap_mode=wap_mode
+            wap_mode=wap_mode,
         )
     elif warehouse == "duckdb":
-        return DuckDB(
-            path=os.environ["LEA_DUCKDB_PATH"],
-            username=username,
-            wap_mode=wap_mode
-        )
+        return DuckDB(path=os.environ["LEA_DUCKDB_PATH"], username=username, wap_mode=wap_mode)
     else:
         raise ValueError(f"Unsupported warehouse: {warehouse}")

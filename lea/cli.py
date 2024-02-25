@@ -79,7 +79,7 @@ def run(
         fresh=fresh,
         threads=threads,
         show=show,
-        fail_fast=fail_fast
+        fail_fast=fail_fast,
     )
 
 

@@ -17,7 +17,9 @@ console = rich.console.Console()
 
 
 class BigQuery(Client):
-    def __init__(self, credentials, location, project_id, dataset_name, username, wap_mode: bool = False):
+    def __init__(
+        self, credentials, location, project_id, dataset_name, username, wap_mode: bool = False
+    ):
         self.credentials = credentials
         self.project_id = project_id
         self.location = location
@@ -108,7 +110,9 @@ class BigQuery(Client):
         self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{table_reference}")
 
     def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
-        return pandas_gbq.read_gbq(view.query, credentials=self.client._credentials, progress_bar_type=None)
+        return pandas_gbq.read_gbq(
+            view.query, credentials=self.client._credentials, progress_bar_type=None
+        )
 
     def list_tables(self):
         query = f"""
@@ -159,7 +163,9 @@ class BigQuery(Client):
         table_reference = f"{self._dataset_name}.{lea._SEP.join(view_key)}"
         if with_context:
             if self.username:
-                table_reference = table_reference.replace(f"{self._dataset_name}.", f"{self.dataset_name}.")
+                table_reference = table_reference.replace(
+                    f"{self._dataset_name}.", f"{self.dataset_name}."
+                )
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         return table_reference
@@ -197,16 +203,18 @@ class BigQuery(Client):
         return key
 
     def switch_for_wap_mode(self, view_keys):
-
         def switch(view_key):
             table_reference = self._view_key_to_table_reference(view_key, with_context=True)
-            table_reference_without_wap = table_reference.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", "")
+            table_reference_without_wap = table_reference.replace(
+                f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
+            )
             self.client.query(f"DROP TABLE IF EXISTS {table_reference_without_wap}").result()
             self.client.query(
                 f"ALTER TABLE {table_reference} RENAME TO {table_reference_without_wap.split('.', 1)[1]}"
             ).result()
 
         import time
+
         t = time.time()
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(view_keys)) as executor:
             jobs = {executor.submit(switch, view_key): view_key for view_key in view_keys}

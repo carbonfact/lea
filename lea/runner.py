@@ -257,7 +257,7 @@ class Runner:
         fresh: bool,
         threads: int,
         show: int,
-        fail_fast: bool
+        fail_fast: bool,
     ):
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
@@ -267,8 +267,7 @@ class Runner:
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
-            selected_view_keys=selected_view_keys,
-            freeze_unselected=freeze_unselected
+            selected_view_keys=selected_view_keys, freeze_unselected=freeze_unselected
         )
 
         # Remove orphan views
@@ -628,7 +627,9 @@ class Runner:
         # HACK
         if not isinstance(self.client, lea.clients.DuckDB):
             selected_table_references = {
-                self.client._view_key_to_table_reference(view_key, with_context=False).split(".", 1)[1]
+                self.client._view_key_to_table_reference(view_key, with_context=False).split(
+                    ".", 1
+                )[1]
                 for view_key in selected_view_keys
             }
         else:
