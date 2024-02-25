@@ -48,10 +48,9 @@ def test_jaffle_shop(monkeypatch):
     # Run unit tests
     result = runner.invoke(app, ["test", views_path])
     assert result.exit_code == 0
-    # TODO
-    # assert "Found 1 singular tests" in result.stdout
-    # assert "Found 1 assertion tests" in result.stdout
-    # assert "SUCCESS" in result.stdout
+    assert "Found 1 singular tests" in result.stdout
+    assert "Found 1 assertion tests" in result.stdout
+    assert "SUCCESS" in result.stdout
 
     # Build docs
     docs_path = here.parent / "examples" / "jaffle_shop" / "docs"
@@ -66,6 +65,40 @@ def test_jaffle_shop(monkeypatch):
     assert (docs_path / "core" / "README.md").exists()
     assert (docs_path / "staging" / "README.md").exists()
     assert (docs_path / "analytics" / "README.md").exists()
+
+
+def test_jaffle_shop_wap(monkeypatch):
+    app = make_app(make_client=make_client)
+    here = pathlib.Path(__file__).parent
+    views_path = str((here.parent / "examples" / "jaffle_shop" / "views").absolute())
+
+    # Set environment variables
+    monkeypatch.setenv("LEA_USERNAME", "max")
+    monkeypatch.setenv("LEA_WAREHOUSE", "duckdb")
+    monkeypatch.setenv("LEA_DUCKDB_PATH", "tests/jaffle_shop_wap.db")
+
+    # Prepare
+    result = runner.invoke(app, ["prepare", views_path])
+    assert result.exit_code == 0
+
+    # Run
+    result = runner.invoke(app, ["run", views_path, "--wap"])
+    assert result.exit_code == 0
+
+    # Check number of tables created
+    with duckdb.connect("tests/jaffle_shop_max.db") as con:
+        tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
+    assert tables.shape[0] == 7
+
+    # Check number of rows in core__customers
+    with duckdb.connect("tests/jaffle_shop_max.db") as con:
+        customers = con.sql("SELECT * FROM core.customers").df()
+    assert customers.shape[0] == 100
+
+    # Check number of rows in core__orders
+    with duckdb.connect("tests/jaffle_shop_max.db") as con:
+        orders = con.sql("SELECT * FROM core.orders").df()
+    assert orders.shape[0] == 99
 
 
 def test_diff(monkeypatch):

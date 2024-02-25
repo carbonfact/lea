@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import pathlib
 
+import duckdb
 import pandas as pd
 import rich.console
 import sqlglot
@@ -126,21 +127,20 @@ class DuckDB(Client):
             key = key[:-1]
         return key
 
-    def switch_for_wap_mode(self, table_references):
+    def switch_for_wap_mode(self, view_keys: list[tuple[str]]):
         statements = []
-        for table_reference in table_references:
-            # Drop the existing table if it exists
-            statements.append(f"DROP TABLE IF EXISTS {table_reference}")
-            # Rename the WAP table to the original table name
-            table_reference_without_schema = table_reference.split(".", 1)[1]
+        for view_key in view_keys:
+            table_reference = self._view_key_to_table_reference(view_key, with_context=True)
+            table_reference_without_wap = table_reference.replace(lea._SEP + lea._WAP_MODE_SUFFIX, "")
+            statements.append(f"DROP TABLE IF EXISTS {table_reference_without_wap}")
             statements.append(
-                f"ALTER TABLE {table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX} RENAME TO {table_reference_without_schema}"
+                f"ALTER TABLE {table_reference.split('.', 1)[1]} RENAME TO {table_reference_without_wap.split('.', 2)[2]}"
             )
         try:
             # Concatenate all the statements into one string and execute them
             sql = "\n".join(f"{statement};" for statement in statements)
             self.con.execute(f"BEGIN TRANSACTION; {sql} COMMIT;")
-        except Exception as e:
+        except duckdb.ProgrammingError as e:
             # Make sure to rollback if there's an error
             self.con.execute("ROLLBACK")
             raise e
