@@ -8,7 +8,7 @@ from .bigquery import BigQuery
 from .duckdb import DuckDB
 
 
-def make_client(production: bool):
+def make_client(production: bool, wap_mode: bool):
     warehouse = os.environ["LEA_WAREHOUSE"]
     username = None if production else str(os.environ.get("LEA_USERNAME", getpass.getuser()))
 
@@ -33,6 +33,7 @@ def make_client(production: bool):
         return DuckDB(
             path=os.environ["LEA_DUCKDB_PATH"],
             username=username,
+            wap_mode=wap_mode
         )
     else:
         raise ValueError(f"Unsupported warehouse: {warehouse}")
