@@ -63,6 +63,13 @@ class Runner:
 
     @property
     def regular_views(self):
+        """
+
+        What we call regular views are views that are not tests or functions.
+
+        Regular views are the views that are materialized in the database.
+
+        """
         return {
             view_key: view
             for view_key, view in self.views.items()
@@ -78,6 +85,15 @@ class Runner:
             console.print(message, **kwargs)
 
     def select_view_keys(self, *queries: str) -> set:
+        """Selects view keys from one or more graph operators.
+
+        The special case where no queries are specified is equivalent to selecting all the views.
+
+        git operators are expanded to select all the views that have been modified compared to the
+        main branch.
+
+        """
+
         def _expand_query(query):
             # It's possible to query views via git. For example:
             # * `git` will select all the views that have been modified compared to the main branch.
@@ -127,9 +143,28 @@ class Runner:
     ) -> dict[str, str]:
         """
 
-        There are two types of table_references: those that refer to a table in the current database,
-        and those that refer to a table in another database. This function determine how to rename the
-        table references in each view.
+        There are two types of table_references: those that refer to a table in the current
+        database, and those that refer to a table in another database. This function determine how
+        to rename the table references in each view.
+
+        This is important in several cases.
+
+        On the one hand, if you're refreshing views in a developper schema, the table references
+        found in each query should be renamed to target the developer schema. For instance, if a
+        query contains `FROM dwh.core__users`, we'll want to replace that with
+        `FROM dwh_max.core__users`.
+
+        On the other hand, if you're refreshing views in a production, the table references found
+        each query should be renamed to target the production schema. In general, this leaves the
+        table references untouched.
+
+        A special case is when you're refreshing views in a GitHub Actions workflow. In that case,
+        you may only want to refresh views that have been modified compared to the main branch.
+        What you'll want to do is rename the table references of modified views, while leaving the
+        others untouched. This is the so-called "Slim CI" pattern.
+
+        Note that this method only returns a mapping. It doesn't actually rename the table
+        references in a given view. That's a separate responsibility.
 
         Examples
         --------
@@ -141,10 +176,10 @@ class Runner:
 
         The client has the ability to generate table references from view keys:
 
-        >>> client._view_key_to_table_reference(('core', 'orders'))
+        >>> client._view_key_to_table_reference(('core', 'orders'), with_context=False)
         'core.orders'
 
-        >>> client._view_key_to_table_reference(('core', 'orders'), with_username=True)
+        >>> client._view_key_to_table_reference(('core', 'orders'), with_context=True)
         'jaffle_shop_max.core.orders'
 
         We can use this to generate a mapping that will rename all the table references in the views
@@ -184,10 +219,10 @@ class Runner:
         # By default, we replace all
         # table_references to the current database, but we leave the others untouched.
         if not freeze_unselected:
-            return {
+            table_reference_mapping = {
                 self.client._view_key_to_table_reference(
-                    view_key, with_username=False
-                ): self.client._view_key_to_table_reference(view_key, with_username=True)
+                    view_key, with_context=False
+                ): self.client._view_key_to_table_reference(view_key, with_context=True)
                 for view_key in self.regular_views
             }
 
@@ -198,14 +233,20 @@ class Runner:
         # Note the case where the select list is empty. That means all the views should be refreshed.
         # If freeze_unselected is specified, then it means all the views will target the production
         # database, which is basically equivalent to copying over the data.
-        if not selected_view_keys:
-            warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
-        return {
-            self.client._view_key_to_table_reference(
-                view_key, with_username=False
-            ): self.client._view_key_to_table_reference(view_key, with_username=True)
-            for view_key in selected_view_keys
-        }
+        else:
+            if not selected_view_keys:
+                warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
+            table_reference_mapping = {
+                self.client._view_key_to_table_reference(
+                    view_key, with_context=False
+                ): self.client._view_key_to_table_reference(view_key, with_context=True)
+                for view_key in selected_view_keys
+            }
+
+        return table_reference_mapping
+
+    def prepare(self):
+        self.client.prepare(self.regular_views.values())
 
     def run(
         self,
@@ -226,11 +267,13 @@ class Runner:
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
-            selected_view_keys=selected_view_keys,
-            freeze_unselected=freeze_unselected,
+            selected_view_keys=selected_view_keys, freeze_unselected=freeze_unselected
         )
 
         # Remove orphan views
+        # It's really important to remove views that aren't part of the refresh anymore. There
+        # might be consumers that still depend on them, which is error-prone. You don't want
+        # consumers to depend on stale data.
         for table_reference in self.client.list_tables()["table_reference"]:
             view_key = self.client._table_reference_to_view_key(table_reference)
             if view_key in self.regular_views:
@@ -382,6 +425,19 @@ class Runner:
             if fail_fast:
                 raise Exception("Some views failed to build")
 
+        # In WAP mode, the tables gets created with a suffix to mimic a staging environment. We
+        # need to switch the tables to the production environment.
+        if self.client.wap_mode and not exceptions and not dry:
+            # In WAP mode, we want to guarantee the new tables are correct. Therefore, we run tests
+            # on them before switching.
+            self.test(
+                select_views=select,
+                freeze_unselected=freeze_unselected,
+                threads=threads,
+                fail_fast=True,
+            )
+            self.client.switch_for_wap_mode(selected_view_keys)
+
     def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
         # List all the columns
         columns = self.client.list_columns()
@@ -404,7 +460,7 @@ class Runner:
         for view in self.regular_views.values():
             # HACK: this is a bit of a hack to get the columns of the view
             view_columns = columns.query(
-                f"table_reference == '{self.client._view_key_to_table_reference(view.key, with_username=True)}'"
+                f"table_reference == '{self.client._view_key_to_table_reference(view.key, with_context=True)}'"
             )["column"].tolist()
             for test in self.client.discover_assertion_tests(view=view, view_columns=view_columns):
                 assertion_tests.append(test)
@@ -499,12 +555,12 @@ class Runner:
                 content.write(
                     "```sql\n"
                     "SELECT *\n"
-                    f"FROM {self.client._view_key_to_table_reference(view.key)}\n"
+                    f"FROM {self.client._view_key_to_table_reference(view.key, with_context=False)}\n"
                     "```\n\n"
                 )
                 # Write down the columns
                 view_columns = columns.query(
-                    f"table_reference == '{self.client._view_key_to_table_reference(view.key, with_username=True)}'"
+                    f"table_reference == '{self.client._view_key_to_table_reference(view.key, with_context=True)}'"
                 )[["column", "type"]]
                 view_comments = view.extract_comments(columns=view_columns["column"].tolist())
                 view_columns["Description"] = (
@@ -571,7 +627,9 @@ class Runner:
         # HACK
         if not isinstance(self.client, lea.clients.DuckDB):
             selected_table_references = {
-                self.client._view_key_to_table_reference(view_key).split(".", 1)[1]
+                self.client._view_key_to_table_reference(view_key, with_context=False).split(
+                    ".", 1
+                )[1]
                 for view_key in selected_view_keys
             }
         else:

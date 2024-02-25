@@ -39,6 +39,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
     - [File structure](#file-structure)
     - [Development vs. production](#development-vs-production)
     - [Select which views to run](#select-which-views-to-run)
+    - [Write-Audit-Publish (WAP)](#write-audit-publish-wap)
     - [Workflow tips](#workflow-tips)
   - [`lea test`](#lea-test)
   - [`lea docs`](#lea-docs)
@@ -224,6 +225,18 @@ lea run --select git+  # includes all descendants
 ```
 
 This becomes very handy when using lea in continuous integration. See [dependency freezing](#dependency-freezing) for more information.
+
+#### Write-Audit-Publish (WAP)
+
+[WAP](https://lakefs.io/blog/data-engineering-patterns-write-audit-publish/) is a data engineering pattern that ensures data consistency and reliability. It's the data engineering equivalent of [blue-green deployment](https://en.wikipedia.org/wiki/Blue%E2%80%93green_deployment) in the software engineering world.
+
+By default, when you run a refresh, the tables gets progressively overwritten. This isn't necessarily a good idea. Let's say you refresh table A. Then you refresh table B that depends on A. If the refresh of B fails, you're left with a corrupted state. This is what the WAP pattern is trying to solve.
+
+With lea, the WAP patterns works by creating temporary tables in the same schema as the original tables. The temporary tables are then populated with the new data. Once the temporary tables are ready, the original tables are swapped with the temporary tables. If the refresh fails, the switch doesn't happen, and the original tables are untouched.
+
+```sh
+lea run --wap
+```
 
 #### Workflow tips
 

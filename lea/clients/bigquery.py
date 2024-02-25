@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import concurrent.futures
 import os
 
 import pandas as pd
+import pandas_gbq
 import rich.console
 import sqlglot
 
@@ -15,12 +17,15 @@ console = rich.console.Console()
 
 
 class BigQuery(Client):
-    def __init__(self, credentials, location, project_id, dataset_name, username):
+    def __init__(
+        self, credentials, location, project_id, dataset_name, username, wap_mode: bool = False
+    ):
         self.credentials = credentials
         self.project_id = project_id
         self.location = location
         self._dataset_name = dataset_name
         self.username = username
+        self.wap_mode = wap_mode
 
     @property
     def dataset_name(self):
@@ -57,7 +62,7 @@ class BigQuery(Client):
         console.log(f"Deleted dataset {dataset.dataset_id}")
 
     def _materialize_sql_query(self, view_key: tuple[str], query: str):
-        table_reference = self._view_key_to_table_reference(view_key)
+        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
         schema, table_reference = table_reference.split(".", 1)
         job = self.client.create_job(
             {
@@ -74,7 +79,7 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": schema,
-                    "job_table": table_reference,
+                    "job_table": table_reference.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""),
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -89,7 +94,7 @@ class BigQuery(Client):
             schema=[],
             write_disposition="WRITE_TRUNCATE",
         )
-        table_reference = self._view_key_to_table_reference(view_key)
+        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
         schema, table_reference = table_reference.split(".", 1)
 
         job = self.client.load_table_from_dataframe(
@@ -100,12 +105,14 @@ class BigQuery(Client):
         job.result()
 
     def delete_view_key(self, view_key: tuple[str]):
-        table_reference = self._view_key_to_table_reference(view_key)
+        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
         schema, table_reference = table_reference.split(".", 1)
         self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{table_reference}")
 
     def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
-        return pd.read_gbq(view.query, credentials=self.client._credentials)
+        return pandas_gbq.read_gbq(
+            view.query, credentials=self.client._credentials, progress_bar_type=None
+        )
 
     def list_tables(self):
         query = f"""
@@ -129,7 +136,7 @@ class BigQuery(Client):
         view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
         return self._read_sql_view(view)
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username: bool = None) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
         """
 
         >>> client = BigQuery(
@@ -140,24 +147,28 @@ class BigQuery(Client):
         ...     username="max"
         ... )
 
-        >>> client._view_key_to_table_reference(("schema", "table"), with_username=False)
+        >>> client._view_key_to_table_reference(("schema", "table"), with_context=False)
         'dataset.schema__table'
 
-        >>> client._view_key_to_table_reference(("schema", "subschema", "table"), with_username=False)
+        >>> client._view_key_to_table_reference(("schema", "subschema", "table"), with_context=False)
         'dataset.schema__subschema__table'
 
-        >>> client._view_key_to_table_reference(("schema", "table"), with_username=False)
+        >>> client._view_key_to_table_reference(("schema", "table"), with_context=False)
         'dataset.schema__table'
 
-        >>> client._view_key_to_table_reference(("schema", "table"), with_username=True)
+        >>> client._view_key_to_table_reference(("schema", "table"), with_context=True)
         'dataset_max.schema__table'
 
         """
-        if with_username is None:
-            with_username = self.username is not None
-        if with_username:
-            return f"{self.dataset_name}.{lea._SEP.join(view_key)}"
-        return f"{self._dataset_name}.{lea._SEP.join(view_key)}"
+        table_reference = f"{self._dataset_name}.{lea._SEP.join(view_key)}"
+        if with_context:
+            if self.username:
+                table_reference = table_reference.replace(
+                    f"{self._dataset_name}.", f"{self.dataset_name}."
+                )
+            if self.wap_mode:
+                table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
+        return table_reference
 
     def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
         """
@@ -184,6 +195,50 @@ class BigQuery(Client):
 
         """
         dataset, leftover = tuple(table_reference.split(".", 1))
-        if dataset in {self._dataset_name, self.dataset_name}:
-            return tuple(leftover.split(lea._SEP))
-        return (dataset, *leftover.split(lea._SEP))
+        key = tuple(leftover.split(lea._SEP))
+        if dataset not in {self._dataset_name, self.dataset_name}:
+            key = (dataset, *key)
+        if key[-1] == lea._WAP_MODE_SUFFIX:
+            key = key[:-1]
+        return key
+
+    def switch_for_wap_mode(self, view_keys):
+        def switch(view_key):
+            table_reference = self._view_key_to_table_reference(view_key, with_context=True)
+            table_reference_without_wap = table_reference.replace(
+                f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
+            )
+            self.client.query(f"DROP TABLE IF EXISTS {table_reference_without_wap}").result()
+            self.client.query(
+                f"ALTER TABLE {table_reference} RENAME TO {table_reference_without_wap.split('.', 1)[1]}"
+            ).result()
+
+        import time
+
+        t = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(view_keys)) as executor:
+            jobs = {executor.submit(switch, view_key): view_key for view_key in view_keys}
+            for job in concurrent.futures.as_completed(jobs):
+                job.result()
+        print(f"Switched {len(view_keys)} tables in {time.time() - t:.2f} seconds")
+
+        # HACK: the following doesn't work, so we process the statements sequentially
+        # statements = []
+        # for view_key in view_keys:
+        #     table_reference = self._view_key_to_table_reference(view_key, with_context=True)
+        #     table_reference_without_wap = table_reference.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", "")
+        #     statements.append(f"DROP TABLE IF EXISTS {table_reference_without_wap}")
+        #     statements.append(
+        #         f"ALTER TABLE {table_reference} RENAME TO {table_reference_without_wap.split('.', 1)[1]}"
+        #     )
+        # try:
+        #     # Concatenate all the statements into one string and execute them
+        #     # sql = "\n".join(f"{statement};" for statement in statements)
+        #     # q = self.client.query(f"BEGIN TRANSACTION; {sql} COMMIT TRANSACTION;")
+        #     # q.result()
+        #     for statement in statements:
+        #         self.client.query(statement).result()
+        # except Exception as e:
+        #     # Make sure to rollback if there's an error
+        #     self.client.query("ROLLBACK TRANSACTION;")
+        #     raise e

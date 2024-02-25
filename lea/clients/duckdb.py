@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import pathlib
 
+import duckdb
 import pandas as pd
 import rich.console
 import sqlglot
@@ -16,7 +17,7 @@ console = rich.console.Console()
 
 
 class DuckDB(Client):
-    def __init__(self, path: str, username: str | None = None):
+    def __init__(self, path: str, username: str | None = None, wap_mode: bool = False):
         import duckdb
 
         if path.startswith("md:"):
@@ -27,6 +28,7 @@ class DuckDB(Client):
                 path = (path.parent / f"{path.stem}_{username}{path.suffix}").absolute()
         self.path = path
         self.username = username
+        self.wap_mode = wap_mode
         self.con = duckdb.connect(str(self.path))
 
     @property
@@ -44,21 +46,19 @@ class DuckDB(Client):
             console.log(f"Created schema {schema}")
 
     def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame):
-        self.con.sql(
-            f"CREATE OR REPLACE TABLE {self._view_key_to_table_reference(view_key)} AS SELECT * FROM dataframe"
-        )
+        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
+        self.con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe")
 
     def _materialize_sql_query(self, view_key: tuple[str], query: str):
-        self.con.sql(
-            f"CREATE OR REPLACE TABLE {self._view_key_to_table_reference(view_key)} AS ({query})"
-        )
+        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
+        self.con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS ({query})")
 
     def _read_sql_view(self, view: lea.views.SQLView):
         query = view.query
         return self.con.cursor().sql(query).df()
 
     def delete_view_key(self, view_key: tuple[str]):
-        table_reference = self._view_key_to_table_reference(view_key)
+        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
         self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
 
     def teardown(self):
@@ -84,24 +84,25 @@ class DuckDB(Client):
         """
         return self.con.sql(query).df()
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username: bool = None) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
         """
 
         >>> client = DuckDB(path=":memory:", username=None)
 
-        >>> client._view_key_to_table_reference(("schema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "table"), with_context=False)
         'schema.table'
 
-        >>> client._view_key_to_table_reference(("schema", "subschema", "table"))
+        >>> client._view_key_to_table_reference(("schema", "subschema", "table"), with_context=False)
         'schema.subschema__table'
 
         """
-        if with_username is None:
-            with_username = self.username is not None
         schema, *leftover = view_key
         table_reference = f"{schema}.{lea._SEP.join(leftover)}"
-        if with_username and self.username:
-            table_reference = f"{self.path.stem}.{table_reference}"
+        if with_context:
+            if self.username:
+                table_reference = f"{self.path.stem}.{table_reference}"
+            if self.wap_mode:
+                table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         return table_reference
 
     def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
@@ -121,4 +122,27 @@ class DuckDB(Client):
             schema, leftover = leftover.split(".", 1)
         else:
             schema = database
-        return (schema, *leftover.split(lea._SEP))
+        key = (schema, *leftover.split(lea._SEP))
+        if key[-1] == lea._WAP_MODE_SUFFIX:
+            key = key[:-1]
+        return key
+
+    def switch_for_wap_mode(self, view_keys: list[tuple[str]]):
+        statements = []
+        for view_key in view_keys:
+            table_reference = self._view_key_to_table_reference(view_key, with_context=True)
+            table_reference_without_wap = table_reference.replace(
+                lea._SEP + lea._WAP_MODE_SUFFIX, ""
+            )
+            statements.append(f"DROP TABLE IF EXISTS {table_reference_without_wap}")
+            statements.append(
+                f"ALTER TABLE {table_reference.split('.', 1)[1]} RENAME TO {table_reference_without_wap.split('.', 2)[2]}"
+            )
+        try:
+            # Concatenate all the statements into one string and execute them
+            sql = "\n".join(f"{statement};" for statement in statements)
+            self.con.execute(f"BEGIN TRANSACTION; {sql} COMMIT;")
+        except duckdb.ProgrammingError as e:
+            # Make sure to rollback if there's an error
+            self.con.execute("ROLLBACK")
+            raise e

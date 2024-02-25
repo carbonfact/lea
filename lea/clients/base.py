@@ -103,23 +103,27 @@ class Client(abc.ABC):
 
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
         return self.load_assertion_test_template(AssertionTag.UNIQUE).render(
-            table=self._view_key_to_table_reference(view.key), column=column
+            table=self._view_key_to_table_reference(view.key, with_context=False), column=column
         )
 
     def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
         return self.load_assertion_test_template(AssertionTag.UNIQUE_BY).render(
-            table=self._view_key_to_table_reference(view.key), column=column, by=by
+            table=self._view_key_to_table_reference(view.key, with_context=False),
+            column=column,
+            by=by,
         )
 
     def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
         return self.load_assertion_test_template(AssertionTag.NO_NULLS).render(
-            table=self._view_key_to_table_reference(view.key), column=column
+            table=self._view_key_to_table_reference(view.key, with_context=False), column=column
         )
 
     def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
         schema, *leftover = view.key
         return self.load_assertion_test_template(AssertionTag.SET).render(
-            table=self._view_key_to_table_reference(view.key), column=column, elements=elements
+            table=self._view_key_to_table_reference(view.key, with_context=False),
+            column=column,
+            elements=elements,
         )
 
     def load_assertion_test_template(self, tag: str) -> jinja2.Template:
