@@ -428,7 +428,7 @@ class Runner:
 
         # In WAP mode, the tables gets created with a suffix to mimic a staging environment. We
         # need to switch the tables to the production environment.
-        if self.client.wap_mode and not dry:
+        if self.client.wap_mode and not exceptions and not dry:
             # In WAP mode, we want to guarantee the new tables are correct. Therefore, we run tests
             # on them before switching.
             self.test(
@@ -437,7 +437,7 @@ class Runner:
                 threads=threads,
                 fail_fast=True,
             )
-            self.client.switch_for_wap_mode(table_references=table_reference_mapping.keys())
+            self.client.switch_for_wap_mode(selected_view_keys)
 
     def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
         # List all the columns

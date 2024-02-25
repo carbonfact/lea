@@ -8,7 +8,7 @@ from .bigquery import BigQuery
 from .duckdb import DuckDB
 
 
-def make_client(production: bool, wap_mode: bool):
+def make_client(production: bool, wap_mode=False):
     warehouse = os.environ["LEA_WAREHOUSE"]
     username = None if production else str(os.environ.get("LEA_USERNAME", getpass.getuser()))
 
@@ -28,6 +28,7 @@ def make_client(production: bool, wap_mode: bool):
             project_id=os.environ["LEA_BQ_PROJECT_ID"],
             dataset_name=os.environ["LEA_BQ_DATASET_NAME"],
             username=username,
+            wap_mode=wap_mode
         )
     elif warehouse == "duckdb":
         return DuckDB(
