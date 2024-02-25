@@ -131,7 +131,9 @@ class DuckDB(Client):
         statements = []
         for view_key in view_keys:
             table_reference = self._view_key_to_table_reference(view_key, with_context=True)
-            table_reference_without_wap = table_reference.replace(lea._SEP + lea._WAP_MODE_SUFFIX, "")
+            table_reference_without_wap = table_reference.replace(
+                lea._SEP + lea._WAP_MODE_SUFFIX, ""
+            )
             statements.append(f"DROP TABLE IF EXISTS {table_reference_without_wap}")
             statements.append(
                 f"ALTER TABLE {table_reference.split('.', 1)[1]} RENAME TO {table_reference_without_wap.split('.', 2)[2]}"
