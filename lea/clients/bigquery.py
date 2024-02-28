@@ -162,10 +162,9 @@ class BigQuery(Client):
         """
         table_reference = f"{self._dataset_name}.{lea._SEP.join(view_key)}"
         if with_context:
-            if self.username:
-                table_reference = table_reference.replace(
-                    f"{self._dataset_name}.", f"{self.dataset_name}."
-                )
+            table_reference = table_reference.replace(
+                f"{self._dataset_name}.", f"{self.dataset_name}."
+            )
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         return table_reference
