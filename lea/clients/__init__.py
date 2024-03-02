@@ -21,8 +21,8 @@ def make_client(production: bool, wap_mode=False):
         scopes = [scope.strip() for scope in scopes]
 
         service_account_info_path = os.environ["LEA_BQ_SERVICE_ACCOUNT"]
-        with open(service_account_info_path, "r") as file:
-            service_account_info = json.load(file)
+        with open(service_account_info_path, "r") as f:
+            service_account_info = json.load(f)
 
         return BigQuery(
             credentials=service_account.Credentials.from_service_account_info(
