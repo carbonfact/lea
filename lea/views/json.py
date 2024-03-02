@@ -8,11 +8,8 @@ class JSONView(View):
     def path_suffixes(self):
         return {"json"}
 
-    def rename_table_references(self, table_reference_mapping: dict[str, str]):
-        return self
-
     @property
-    def dependencies(self):
+    def dependent_view_keys(self):
         return set()
 
     def extract_comments(self, columns: list[str]):
@@ -20,3 +17,10 @@ class JSONView(View):
 
     def __repr__(self):
         return ".".join(self.key)
+
+    def with_context(self, table_reference_mapping):
+        return self
+
+    @property
+    def fields(self):
+        return []  # TODO

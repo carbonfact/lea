@@ -11,6 +11,7 @@ import time
 import warnings
 
 import git
+import pandas as pd
 import rich.console
 import rich.live
 import rich.table
@@ -39,27 +40,24 @@ def sizeof_fmt(num, suffix="B"):
 
 class Runner:
     def __init__(self, views_dir: pathlib.Path | str, client: lea.clients.Client, verbose=False):
-        if isinstance(views_dir, str):
-            views_dir = pathlib.Path(views_dir)
-        self.views_dir = views_dir
+        self.views_dir = pathlib.Path(views_dir) if isinstance(views_dir, str) else views_dir
         self.client = client
         self.verbose = verbose
 
         self.views = {
             view.key: view
             for view in lea.views.open_views(
-                views_dir=views_dir, sqlglot_dialect=self.client.sqlglot_dialect
+                views_dir=self.views_dir, client=self.client
             )
         }
+
         self.dag = lea.DAGOfViews(
             graph={
-                view.key: [
-                    self.client._table_reference_to_view_key(table_reference)
-                    for table_reference in view.dependencies
-                ]
-                for view_key, view in self.regular_views.items()
+                view.key: view.dependent_view_keys
+                for view in self.regular_views.values()
             }
         )
+        self.dag.prepare()
 
     @property
     def regular_views(self):
@@ -279,7 +277,7 @@ class Runner:
             if view_key in self.regular_views:
                 continue
             if not dry:
-                self.client.delete_view_key(view_key)
+                self.client.delete_table_reference(table_reference)
             self.log(f"Removed {table_reference}")
 
         def display_progress() -> rich.table.Table:
@@ -327,7 +325,6 @@ class Runner:
             self.log(f"{len(cache):,d} views already done")
 
         with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
-            self.dag.prepare()
             while self.dag.is_active():
                 for view_key in self.dag.get_ready():
                     # Check if the view_key can be skipped or not
@@ -341,10 +338,7 @@ class Runner:
 
                     if any(
                         dep_key in skipped or dep_key in exceptions
-                        for dep_key in map(
-                            self.client._table_reference_to_view_key,
-                            self.views[view_key].dependencies,
-                        )
+                        for dep_key in self.views[view_key].dependent_view_keys
                     ):
                         skipped.add(view_key)
                         self.dag.done(view_key)
@@ -356,16 +350,16 @@ class Runner:
                     elif print_views:
                         job = functools.partial(
                             console.print,
-                            self.views[view_key].rename_table_references(
+                            self.views[view_key].with_context(
                                 table_reference_mapping=table_reference_mapping
                             ),
                         )
                     else:
                         job = functools.partial(
                             self.client.materialize_view,
-                            view=self.views[view_key].rename_table_references(
+                            view=self.views[view_key].with_context(
                                 table_reference_mapping=table_reference_mapping
-                            ),
+                            )
                         )
                     jobs[view_key] = executor.submit(job)
                     jobs_started_at[view_key] = dt.datetime.now()
@@ -439,12 +433,6 @@ class Runner:
             self.client.switch_for_wap_mode(selected_view_keys)
 
     def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
-        # List all the columns
-        columns = self.client.list_columns()
-
-        # List singular tests
-        singular_tests = [view for view in self.views.values() if view.schema == "tests"]
-        self.log(f"Found {len(singular_tests):,d} singular tests")
 
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select_views)
@@ -455,15 +443,16 @@ class Runner:
             freeze_unselected=freeze_unselected,
         )
 
+        # List singular tests
+        singular_tests = [view.with_context(table_reference_mapping=table_reference_mapping) for view in self.views.values() if view.schema == "tests"]
+        self.log(f"Found {len(singular_tests):,d} singular tests")
+
         # List assertion tests
-        assertion_tests = []
-        for view in self.regular_views.values():
-            # HACK: this is a bit of a hack to get the columns of the view
-            view_columns = columns.query(
-                f"table_reference == '{self.client._view_key_to_table_reference(view.key, with_context=True)}'"
-            )["column"].tolist()
-            for test in self.client.discover_assertion_tests(view=view, view_columns=view_columns):
-                assertion_tests.append(test)
+        assertion_tests = [
+            test
+            for view in self.regular_views.values()
+            for test in view.yield_assertion_tests()
+        ]
         self.log(f"Found {len(assertion_tests):,d} assertion tests")
 
         # Determine which tests need to be run
@@ -473,11 +462,7 @@ class Runner:
             if
             (
                 # Run tests without any dependency whatsoever
-                not (
-                    test_dependencies := list(
-                        map(self.client._table_reference_to_view_key, test.dependencies)
-                    )
-                )
+                not (test_dependencies := test.dependent_view_keys)
                 # Run tests which don't depend on any table in the views directory
                 or all(test_dep[0] not in self.dag.schemas for test_dep in test_dependencies)
                 # Run tests which have at least one dependency with the selected views
@@ -485,18 +470,12 @@ class Runner:
             )
         ]
         self.log(
-            f"{len(tests):,d} out of {len(singular_tests + assertion_tests):,d} tests selected"
+            f"{len(tests):,d} out of {len(singular_tests) + len(assertion_tests):,d} tests selected"
         )
-
-        # Do renaming
-        tests = [
-            test.rename_table_references(table_reference_mapping=table_reference_mapping)
-            for test in tests
-        ]
 
         # Run tests concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            jobs = {executor.submit(self.client.read, test): test for test in tests}
+            jobs = {executor.submit(self.client.read_sql, test.query): test for test in tests}
             for job in concurrent.futures.as_completed(jobs):
                 test = jobs[job]
                 conflicts = job.result()
@@ -511,9 +490,6 @@ class Runner:
 
     def make_docs(self, output_dir: str):
         output_dir = pathlib.Path(output_dir)
-
-        # List all the columns
-        columns = self.client.list_columns()
 
         # Now we can generate the docs for each schema and view therein
         readme_content = io.StringIO()
@@ -555,44 +531,16 @@ class Runner:
                 content.write(
                     "```sql\n"
                     "SELECT *\n"
-                    f"FROM {self.client._view_key_to_table_reference(view.key, with_context=False)}\n"
+                    f"FROM {view.table_reference_in_production}\n"
                     "```\n\n"
                 )
                 # Write down the columns
-                view_columns = columns.query(
-                    f"table_reference == '{self.client._view_key_to_table_reference(view.key, with_context=True)}'"
-                )[["column", "type"]]
-                view_comments = view.extract_comments(columns=view_columns["column"].tolist())
-                view_columns["Description"] = (
-                    view_columns["column"]
-                    .map(
-                        {
-                            column: " ".join(
-                                comment.text
-                                for comment in comment_block
-                                if not comment.text.startswith("@")
-                            )
-                            for column, comment_block in view_comments.items()
-                        }
-                    )
-                    .fillna("")
-                )
-                view_columns["Unique"] = (
-                    view_columns["column"]
-                    .map(
-                        {
-                            column: "✅"
-                            if any(comment.text == "@UNIQUE" for comment in comment_block)
-                            else ""
-                            for column, comment_block in view_comments.items()
-                        }
-                    )
-                    .fillna("")
-                )
-                view_columns["type"] = view_columns["type"].apply(lambda x: f"`{x}`")
-                view_columns = view_columns.rename(columns={"column": "Column", "type": "Type"})
-                view_columns = view_columns.sort_values("Column")
-                content.write(view_columns.to_markdown(index=False) + "\n\n")
+                view_columns = pd.DataFrame({
+                    "Column": [field.name for field in view.fields],
+                    "Description": [field.description for field in view.fields],
+                    "Unique": ["✅" if field.is_unique else "" for field in view.fields],
+                })
+                content.write(view_columns.fillna("").to_markdown(index=False) + "\n\n")
 
             # Write the schema README
             schema_readme = output_dir / schema / "README.md"

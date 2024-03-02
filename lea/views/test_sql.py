@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import tempfile
+import pathlib
+
 import pytest
 import sqlglot
 
@@ -7,25 +10,32 @@ import lea
 
 
 @pytest.mark.parametrize(
-    "view, expected",
+    "client, query, expected",
     [
         pytest.param(
-            lea.views.GenericSQLView(
-                query=query,
-                sqlglot_dialect=sqlglot_dialect,
-            ),
+            client,
+            query,
             expected,
-            id=f"{sqlglot_dialect.name}#{i}",
+            id=f"{client.sqlglot_dialect}#{i}",
         )
-        for sqlglot_dialect, cases in {
-            sqlglot.dialects.Dialects.BIGQUERY: [
+        for client, cases in [
+            (
+                lea.clients.BigQuery(
+                    credentials=None,
+                    location=None,
+                    project_id=None,
+                    dataset_name="dataset",
+                    username="max",
+                    wap_mode=False,
+                ),
+                [
                 (
                     """
                         SELECT *
                         FROM dataset.schema__table
 
                         """,
-                    {"dataset.schema__table"},
+                    {("schema", "table")},
                 ),
                 (
                     """
@@ -33,30 +43,41 @@ import lea
                         FROM dataset.schema__sub_schema__table
 
                         """,
-                    {"dataset.schema__sub_schema__table"},
+                    {("schema", "sub_schema", "table")},
                 ),
-            ],
-            sqlglot.dialects.Dialects.DUCKDB: [
-                (
-                    """
-                        SELECT *
-                        FROM schema.table
+            ]
+            ),
+            (
+                lea.clients.DuckDB(":memory:", username=None),
+                [
+                    (
+                        """
+                            SELECT *
+                            FROM schema.table
 
-                        """,
-                    {"schema.table"},
-                ),
-                (
-                    """
-                        SELECT *
-                        FROM schema.sub_schema__table
+                            """,
+                        {("schema", "table")},
+                    ),
+                    (
+                        """
+                            SELECT *
+                            FROM schema.sub_schema__table
 
-                        """,
-                    {"schema.sub_schema__table"},
-                ),
-            ],
-        }.items()
+                            """,
+                        {("schema", "sub_schema", "table")},
+                    ),
+                ],
+            )
+        ]
         for i, (query, expected) in enumerate(cases)
     ],
 )
-def test_dependency_parsing(view, expected):
-    assert view.dependencies == expected
+def test_dependency_parsing(client, query, expected):
+
+    view = lea.views.InMemorySQLView(
+        key=("tests", "test"),
+        query=query,
+        client=client,
+    )
+
+    assert view.dependent_view_keys == expected

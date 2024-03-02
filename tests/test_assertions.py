@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pathlib
+import tempfile
+
 import pandas as pd
 import pytest
 
@@ -211,14 +214,16 @@ def client():
     ],
 )
 def test_duckdb_assertions(test_data, query, ok, client):
-    view = lea.views.GenericSQLView(
-        key=("tests", "assertion"),
+
+    view = lea.views.InMemorySQLView(
+        key=("tests", "test"),
         query=query,
-        sqlglot_dialect=client.sqlglot_dialect,
+        client=client,
     )
+
     client.prepare([view])
     client.materialize_view(view)
 
-    for test in client.discover_assertion_tests(view, test_data.columns):
-        conflicts = client.read(test)
+    for test in view.yield_assertion_tests():
+        conflicts = client.read_sql(test.query)
         assert conflicts.empty == ok

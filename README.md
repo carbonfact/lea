@@ -93,7 +93,7 @@ LEA_WAREHOUSE=bigquery
 LEA_BQ_LOCATION=EU
 LEA_BQ_PROJECT_ID=carbonfact-dwh
 LEA_BQ_DATASET_NAME=kaya
-LEA_BQ_SERVICE_ACCOUNT=<a JSON dump of the service account file>
+LEA_BQ_SERVICE_ACCOUNT=<JSON dump of the service account file>  # not a path ⚠️
 LEA_BQ_SCOPES=https://www.googleapis.com/auth/bigquery,https://www.googleapis.com/auth/drive
 ```
 
