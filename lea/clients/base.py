@@ -3,7 +3,6 @@ from __future__ import annotations
 import abc
 import importlib
 import pathlib
-import re
 
 import jinja2
 import pandas as pd
@@ -42,9 +41,13 @@ class Client(abc.ABC):
         if isinstance(view, lea.views.SQLView):
             incremental_fields = [field for field in view.fields if field.is_incremental]
             if len(incremental_fields) > 1:
-                raise ValueError(f"Multiple incremental fields are not supported (found in {str(self)})")
+                raise ValueError(
+                    f"Multiple incremental fields are not supported (found in {str(self)})"
+                )
             elif len(incremental_fields) == 1:
-                self.materialize_sql_view_incremental(view, incremental_field_name=incremental_fields[0].name)
+                self.materialize_sql_view_incremental(
+                    view, incremental_field_name=incremental_fields[0].name
+                )
             else:
                 self.materialize_sql_view(view)
         elif isinstance(view, lea.views.PythonView):
@@ -59,7 +62,9 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def materialize_sql_view_incremental(self, view: lea.views.SQLView, incremental_field_name: str):
+    def materialize_sql_view_incremental(
+        self, view: lea.views.SQLView, incremental_field_name: str
+    ):
         ...
 
     @abc.abstractmethod

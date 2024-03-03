@@ -62,7 +62,6 @@ class View(abc.ABC):
 
         for field in self.fields:
             for tag in field.tags:
-
                 if tag == "#NO_NULLS":
                     yield lea.views.InMemorySQLView(
                         key=(*self.key, field.name, "NO_NULLS"),
@@ -77,9 +76,7 @@ class View(abc.ABC):
                         client=self.client,
                     )
 
-                elif unique_by := re.fullmatch(
-                    "#UNIQUE_BY" + r"\((?P<by>.+)\)", tag
-                ):
+                elif unique_by := re.fullmatch("#UNIQUE_BY" + r"\((?P<by>.+)\)", tag):
                     by = unique_by.group("by")
                     yield lea.views.InMemorySQLView(
                         key=(*self.key, field.name, f"UNIQUE_BY({by})"),
@@ -87,9 +84,7 @@ class View(abc.ABC):
                         client=self.client,
                     )
 
-                elif set_ := re.fullmatch(
-                    "#SET" + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", tag
-                ):
+                elif set_ := re.fullmatch("#SET" + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", tag):
                     elements = {element.strip() for element in set_.group("elements").split(",")}
                     yield lea.views.InMemorySQLView(
                         key=(*self.key, field.name, "SET"),

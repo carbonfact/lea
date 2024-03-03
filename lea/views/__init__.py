@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pathlib
 
-import sqlglot
+import lea
 
 from .base import View
 from .json import JSONView
@@ -23,10 +23,7 @@ def open_view_from_path(path, origin, client):
     raise ValueError(f"Unsupported view type: {path}")
 
 
-def open_views(
-    views_dir: pathlib.Path, client: lea.clients.base.Client
-) -> list[View]:
-
+def open_views(views_dir: pathlib.Path, client: lea.clients.base.Client) -> list[View]:
     return [
         open_view_from_path(path, origin=views_dir, client=client)
         for schema_dir in (d for d in views_dir.iterdir() if d.is_dir())
@@ -45,5 +42,5 @@ __all__ = [
     "View",
     "PythonView",
     "InMemorySQLView",
-    "SQLView"
+    "SQLView",
 ]

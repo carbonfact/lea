@@ -214,7 +214,6 @@ def client():
     ],
 )
 def test_duckdb_assertions(test_data, query, ok, client):
-
     view = lea.views.InMemorySQLView(
         key=("tests", "test"),
         query=query,

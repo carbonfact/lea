@@ -174,7 +174,9 @@ def test_incremental(monkeypatch):
     app = make_app(make_client=make_client)
     here = pathlib.Path(__file__).parent
     today_views_path = str((here.parent / "examples" / "incremental" / "views_today").absolute())
-    tomorrow_views_path = str((here.parent / "examples" / "incremental" / "views_tomorrow").absolute())
+    tomorrow_views_path = str(
+        (here.parent / "examples" / "incremental" / "views_tomorrow").absolute()
+    )
 
     # Set environment variables
     monkeypatch.setenv("LEA_USERNAME", "max")

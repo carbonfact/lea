@@ -52,19 +52,21 @@ class DuckDB(Client):
         self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS ({view.query})")
 
     def materialize_sql_view_incremental(self, view, incremental_field_name):
-        self.con.sql(f"""
+        self.con.sql(
+            f"""
         INSERT INTO {view.table_reference}
         SELECT *
         FROM ({view.query})
         WHERE {incremental_field_name} > (SELECT MAX({incremental_field_name}) FROM {view.table_reference})
-        """)
+        """
+        )
 
     def materialize_python_view(self, view):
-        dataframe = self.read_python_view(view)
+        dataframe = self.read_python_view(view)  # noqa: F841
         self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
 
     def materialize_json_view(self, view):
-        dataframe = pd.read_json(view.path)
+        dataframe = pd.read_json(view.path)  # noqa: F841
         self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
 
     def delete_table_reference(self, table_reference):
@@ -74,22 +76,26 @@ class DuckDB(Client):
         return self.con.cursor().sql(query).df()
 
     def list_tables(self) -> pd.DataFrame:
-        return self.read_sql(f"""
+        return self.read_sql(
+            f"""
         SELECT
             '{self.path.stem}' || '.' || schema_name || '.' || table_name AS table_reference,
             estimated_size AS n_rows,  -- TODO: Figure out how to get the exact number
             estimated_size AS n_bytes  -- TODO: Figure out how to get this
         FROM duckdb_tables()
-        """)
+        """
+        )
 
     def list_columns(self) -> pd.DataFrame:
-        return self.read_sql(f"""
+        return self.read_sql(
+            f"""
         SELECT
             '{self.path.stem}' || '.' || table_schema || '.' || table_name AS table_reference,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
-        """)
+        """
+        )
 
     def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
         """

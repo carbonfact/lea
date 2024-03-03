@@ -46,16 +46,11 @@ class Runner:
 
         self.views = {
             view.key: view
-            for view in lea.views.open_views(
-                views_dir=self.views_dir, client=self.client
-            )
+            for view in lea.views.open_views(views_dir=self.views_dir, client=self.client)
         }
 
         self.dag = lea.DAGOfViews(
-            graph={
-                view.key: view.dependent_view_keys
-                for view in self.regular_views.values()
-            }
+            graph={view.key: view.dependent_view_keys for view in self.regular_views.values()}
         )
         self.dag.prepare()
 
@@ -278,7 +273,9 @@ class Runner:
             if view_key in self.regular_views:
                 continue
             if not dry:
-                table_reference = self.client._view_key_to_table_reference(view_key, with_context=True)  # HACK
+                table_reference = self.client._view_key_to_table_reference(
+                    view_key, with_context=True
+                )  # HACK
                 self.client.delete_table_reference(table_reference)
             self.log(f"Removed {'.'.join(view_key)}")
 
@@ -369,7 +366,7 @@ class Runner:
                             self.client.materialize_view,
                             view=self.views[view_key].with_context(
                                 table_reference_mapping=table_reference_mapping
-                            )
+                            ),
                         )
                     jobs[view_key] = executor.submit(job)
                     jobs_started_at[view_key] = dt.datetime.now()
@@ -443,7 +440,6 @@ class Runner:
             self.client.switch_for_wap_mode(selected_view_keys)
 
     def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
-
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select_views)
 
@@ -454,14 +450,16 @@ class Runner:
         )
 
         # List singular tests
-        singular_tests = [view.with_context(table_reference_mapping=table_reference_mapping) for view in self.views.values() if view.schema == "tests"]
+        singular_tests = [
+            view.with_context(table_reference_mapping=table_reference_mapping)
+            for view in self.views.values()
+            if view.schema == "tests"
+        ]
         self.log(f"Found {len(singular_tests):,d} singular tests")
 
         # List assertion tests
         assertion_tests = [
-            test
-            for view in self.regular_views.values()
-            for test in view.yield_assertion_tests()
+            test for view in self.regular_views.values() for test in view.yield_assertion_tests()
         ]
         self.log(f"Found {len(assertion_tests):,d} assertion tests")
 
@@ -539,17 +537,16 @@ class Runner:
 
                 # Write down the query
                 content.write(
-                    "```sql\n"
-                    "SELECT *\n"
-                    f"FROM {view.table_reference_in_production}\n"
-                    "```\n\n"
+                    "```sql\n" "SELECT *\n" f"FROM {view.table_reference_in_production}\n" "```\n\n"
                 )
                 # Write down the columns
-                view_columns = pd.DataFrame({
-                    "Column": [field.name for field in view.fields],
-                    "Description": [field.description for field in view.fields],
-                    "Unique": ["✅" if field.is_unique else "" for field in view.fields],
-                })
+                view_columns = pd.DataFrame(
+                    {
+                        "Column": [field.name for field in view.fields],
+                        "Description": [field.description for field in view.fields],
+                        "Unique": ["✅" if field.is_unique else "" for field in view.fields],
+                    }
+                )
                 content.write(view_columns.fillna("").to_markdown(index=False) + "\n\n")
 
             # Write the schema README

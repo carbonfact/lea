@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import tempfile
-import pathlib
-
 import pytest
-import sqlglot
 
 import lea
 
@@ -29,23 +25,23 @@ import lea
                     wap_mode=False,
                 ),
                 [
-                (
-                    """
+                    (
+                        """
                         SELECT *
                         FROM dataset.schema__table
 
                         """,
-                    {("schema", "table")},
-                ),
-                (
-                    """
+                        {("schema", "table")},
+                    ),
+                    (
+                        """
                         SELECT *
                         FROM dataset.schema__sub_schema__table
 
                         """,
-                    {("schema", "sub_schema", "table")},
-                ),
-            ]
+                        {("schema", "sub_schema", "table")},
+                    ),
+                ],
             ),
             (
                 lea.clients.DuckDB(":memory:", username=None),
@@ -67,13 +63,12 @@ import lea
                         {("schema", "sub_schema", "table")},
                     ),
                 ],
-            )
+            ),
         ]
         for i, (query, expected) in enumerate(cases)
     ],
 )
 def test_dependency_parsing(client, query, expected):
-
     view = lea.views.InMemorySQLView(
         key=("tests", "test"),
         query=query,

@@ -6,7 +6,6 @@ import functools
 import itertools
 import os
 import re
-import textwrap
 import warnings
 
 import jinja2
@@ -15,7 +14,9 @@ import sqlglot
 import sqlglot.optimizer.qualify
 import sqlglot.optimizer.scope
 
-from .base import View, Field
+import lea
+
+from .base import Field, View
 
 
 @dataclasses.dataclass
@@ -39,7 +40,6 @@ class CommentBlock(collections.UserList):
 
 @dataclasses.dataclass
 class SQLView(View):
-
     @property
     def sqlglot_dialect(self):
         return self.client.sqlglot_dialect
@@ -91,9 +91,10 @@ class SQLView(View):
                     comment.text
                     for comment in field_comments.get(name, [])
                     if not comment.text.startswith("#")
-                )
+                ),
             )
-            for name in field_names if name != "*"
+            for name in field_names
+            if name != "*"
         ]
         return self._fields
 
@@ -135,7 +136,6 @@ class SQLView(View):
         )
 
     def extract_comments(self, columns: list[str]) -> dict[str, CommentBlock]:
-
         if not columns:
             return {}
 
@@ -217,20 +217,10 @@ class SQLView(View):
 
 
 class InMemorySQLView(SQLView):
-
     def __init__(self, key: tuple[str, ...], query: str, client: lea.clients.base.Client):
         self._key = key
         self._query = query
         self.client = client
-
-    @property
-    def origin(self):
-        with tempfile.NamedTemporaryFile() as fp:
-            return pathlib.Path(fp.name)
-
-    @property
-    def relative_path(self):
-        return pathlib.Path("/".join(self._key) + ".sql")
 
     @property
     def key(self):

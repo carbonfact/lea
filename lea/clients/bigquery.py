@@ -17,9 +17,7 @@ console = rich.console.Console()
 
 
 class BigQuery(Client):
-    def __init__(
-        self, credentials, location, project_id, dataset_name, username, wap_mode
-    ):
+    def __init__(self, credentials, location, project_id, dataset_name, username, wap_mode):
         self.credentials = credentials
         self.project_id = project_id
         self.location = location
@@ -79,7 +77,9 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": schema,
-                    "job_table": table_reference_without_schema.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""),
+                    "job_table": table_reference_without_schema.replace(
+                        f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
+                    ),
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -109,7 +109,9 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": schema,
-                    "job_table": table_reference_without_schema.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""),
+                    "job_table": table_reference_without_schema.replace(
+                        f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
+                    ),
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -149,22 +151,26 @@ class BigQuery(Client):
         )
 
     def list_tables(self):
-        return self.read_sql(f"""
+        return self.read_sql(
+            f"""
         SELECT
             FORMAT('%s.%s', '{self.dataset_name}', table_id) AS table_reference,
             row_count AS n_rows,
             size_bytes AS n_bytes
         FROM {self.dataset_name}.__TABLES__
-        """)
+        """
+        )
 
     def list_columns(self) -> pd.DataFrame:
-        return self.read_sql(f"""
+        return self.read_sql(
+            f"""
         SELECT
             FORMAT('%s.%s', table_schema, table_name) AS table_reference,
             column_name AS column,
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
-        """)
+        """
+        )
 
     def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
         """
