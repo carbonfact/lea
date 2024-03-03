@@ -14,10 +14,10 @@ SELECT *
 FROM analytics.finance__kpis
 ```
 
-| Column              | Type     | Description   | Unique   |
-|:--------------------|:---------|:--------------|:---------|
-| average_order_value | `DOUBLE` |               |          |
-| total_order_value   | `DOUBLE` |               |          |
+| Column              | Description   | Unique   |
+|:--------------------|:--------------|:---------|
+| total_order_value   |               |          |
+| average_order_value |               |          |
 
 ### analytics.kpis
 
@@ -26,8 +26,8 @@ SELECT *
 FROM analytics.kpis
 ```
 
-| Column   | Type      | Description   | Unique   |
-|:---------|:----------|:--------------|:---------|
-| metric   | `VARCHAR` |               |          |
-| value    | `BIGINT`  |               |          |
+| Column   | Description   | Unique   |
+|:---------|:--------------|:---------|
+| metric   |               |          |
+| value    |               |          |
 

@@ -45,44 +45,57 @@ class DuckDB(Client):
             self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
             console.log(f"Created schema {schema}")
 
-    def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame):
-        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
-        self.con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe")
-
-    def _materialize_sql_query(self, view_key: tuple[str], query: str):
-        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
-        self.con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS ({query})")
-
-    def _read_sql_view(self, view: lea.views.SQLView):
-        query = view.query
-        return self.con.cursor().sql(query).df()
-
-    def delete_view_key(self, view_key: tuple[str]):
-        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
-        self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
-
     def teardown(self):
         os.remove(self.path)
 
+    def materialize_sql_view(self, view):
+        self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS ({view.query})")
+
+    def materialize_sql_view_incremental(self, view, incremental_field_name):
+        self.con.sql(
+            f"""
+        INSERT INTO {view.table_reference}
+        SELECT *
+        FROM ({view.query})
+        WHERE {incremental_field_name} > (SELECT MAX({incremental_field_name}) FROM {view.table_reference})
+        """
+        )
+
+    def materialize_python_view(self, view):
+        dataframe = self.read_python_view(view)  # noqa: F841
+        self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
+
+    def materialize_json_view(self, view):
+        dataframe = pd.read_json(view.path)  # noqa: F841
+        self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
+
+    def delete_table_reference(self, table_reference):
+        self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
+
+    def read_sql(self, query: str) -> pd.DataFrame:
+        return self.con.cursor().sql(query).df()
+
     def list_tables(self) -> pd.DataFrame:
-        query = f"""
+        return self.read_sql(
+            f"""
         SELECT
             '{self.path.stem}' || '.' || schema_name || '.' || table_name AS table_reference,
             estimated_size AS n_rows,  -- TODO: Figure out how to get the exact number
             estimated_size AS n_bytes  -- TODO: Figure out how to get this
         FROM duckdb_tables()
         """
-        return self.con.sql(query).df()
+        )
 
     def list_columns(self) -> pd.DataFrame:
-        query = f"""
+        return self.read_sql(
+            f"""
         SELECT
             '{self.path.stem}' || '.' || table_schema || '.' || table_name AS table_reference,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
         """
-        return self.con.sql(query).df()
+        )
 
     def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
         """

@@ -14,15 +14,15 @@ SELECT *
 FROM core.customers
 ```
 
-| Column                  | Type      | Description   | Unique   |
-|:------------------------|:----------|:--------------|:---------|
-| customer_id             | `BIGINT`  |               | ✅       |
-| customer_lifetime_value | `DOUBLE`  |               |          |
-| first_name              | `VARCHAR` |               |          |
-| first_order             | `VARCHAR` |               |          |
-| last_name               | `VARCHAR` |               |          |
-| most_recent_order       | `VARCHAR` |               |          |
-| number_of_orders        | `BIGINT`  |               |          |
+| Column                  | Description   | Unique   |
+|:------------------------|:--------------|:---------|
+| customer_id             |               | ✅       |
+| first_name              |               |          |
+| last_name               |               |          |
+| first_order             |               |          |
+| most_recent_order       |               |          |
+| number_of_orders        |               |          |
+| customer_lifetime_value |               |          |
 
 ### core.orders
 
@@ -31,15 +31,15 @@ SELECT *
 FROM core.orders
 ```
 
-| Column               | Type      | Description   | Unique   |
-|:---------------------|:----------|:--------------|:---------|
-| amount               | `DOUBLE`  |               |          |
-| bank_transfer_amount | `DOUBLE`  |               |          |
-| coupon_amount        | `DOUBLE`  |               |          |
-| credit_card_amount   | `DOUBLE`  |               |          |
-| customer_id          | `BIGINT`  |               |          |
-| gift_card_amount     | `DOUBLE`  |               |          |
-| order_date           | `VARCHAR` |               |          |
-| order_id             | `BIGINT`  |               |          |
-| status               | `VARCHAR` |               |          |
+| Column               | Description   | Unique   |
+|:---------------------|:--------------|:---------|
+| order_id             |               |          |
+| customer_id          |               |          |
+| order_date           |               |          |
+| status               |               |          |
+| credit_card_amount   |               |          |
+| coupon_amount        |               |          |
+| bank_transfer_amount |               |          |
+| gift_card_amount     |               |          |
+| amount               |               |          |
 

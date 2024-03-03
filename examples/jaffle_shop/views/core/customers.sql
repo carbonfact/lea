@@ -27,7 +27,7 @@ customer_payments as (
 )
 
 select
-    -- @UNIQUE
+    -- #UNIQUE
     customers.customer_id,
     customers.first_name,
     customers.last_name,

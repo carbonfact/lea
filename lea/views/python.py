@@ -19,7 +19,7 @@ class PythonView(View):
         return {"py"}
 
     @property
-    def dependencies(self):
+    def dependent_view_keys(self):
         def _dependencies():
             for node in ast.walk(ast.parse(self.source_code)):
                 # pd.read_gbq
@@ -43,6 +43,10 @@ class PythonView(View):
         return set(_dependencies())
 
     @property
+    def fields(self):
+        return []  # TODO
+
+    @property
     def description(self):
         module_name = self.path.stem
         spec = importlib.util.spec_from_file_location(module_name, self.path)
@@ -53,12 +57,11 @@ class PythonView(View):
     def extract_comments(self, columns: list[str]):
         return {}
 
+    def with_context(self, table_reference_mapping):
+        return self
+
     def __repr__(self):
         return ".".join(self.key)
-
-    def rename_table_references(self, table_reference_mapping: dict[str, str]):
-        # TODO: for now we pass through...
-        return self
 
     def __rich__(self):
         return rich.syntax.Syntax(self.source_code, "python")

@@ -40,6 +40,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
     - [Development vs. production](#development-vs-production)
     - [Select which views to run](#select-which-views-to-run)
     - [Write-Audit-Publish (WAP)](#write-audit-publish-wap)
+    - [Incremental views](#incremental-views)
     - [Workflow tips](#workflow-tips)
   - [`lea test`](#lea-test)
   - [`lea docs`](#lea-docs)
@@ -56,6 +57,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 - [Jaffle shop 🥪](examples/jaffle_shop/)
 - [Compare development to production 👯‍♀️](examples/diff/)
 - [Using MotherDuck 🦆](examples/motherduck/)
+- [Incremental views 🤏](examples/incremental/)
 
 ## Teaser
 
@@ -93,7 +95,7 @@ LEA_WAREHOUSE=bigquery
 LEA_BQ_LOCATION=EU
 LEA_BQ_PROJECT_ID=carbonfact-dwh
 LEA_BQ_DATASET_NAME=kaya
-LEA_BQ_SERVICE_ACCOUNT=<a JSON dump of the service account file>
+LEA_BQ_SERVICE_ACCOUNT=<JSON dump of the service account file>  # not a path ⚠️
 LEA_BQ_SCOPES=https://www.googleapis.com/auth/bigquery,https://www.googleapis.com/auth/drive
 ```
 
@@ -238,6 +240,28 @@ With lea, the WAP patterns works by creating temporary tables in the same schema
 lea run --wap
 ```
 
+#### Incremental views
+
+An advanced pattern is to use incremental views. This is done by adding a `#INCREMENTAL` comment to a field within a query. This comment tells lea that the view should be refreshed incrementally. This means that new data is appended, while the current data is kept.
+
+```sql
+SELECT
+    -- #INCREMENTAL
+    created_at,
+    amount,
+    city,
+    vendor
+FROM core.sales
+```
+
+lea's implementation is purposefully simple. It only checks for the `#INCREMENTAL` comment. It doesn't check for the presence of a primary key, schema changes, and late-arriving data. It's up to the user to ensure that the view is indeed incremental.
+
+With incremental views, it's a good habit to periodically do a full refresh. This can be done with the `--no-incremental` flag:
+
+```sh
+lea run --no-incremental
+```
+
 #### Workflow tips
 
 The `lea run` command creates a `.cache.pkl` file during the run. This file is a checkpoint containing the state of the DAG. It is used to determine which queries to run next time. That is, if some queries have failed, only those queries and their descendants will be run again next time. The `.cache.pkl` is deleted once all queries have succeeded.
@@ -270,23 +294,23 @@ There are two types of tests:
 
 - Singular tests — these are queries which return failing rows. They are stored in a `tests` directory.
 - Assertion tests — these are comment annotations in the queries themselves:
-  - `@NO_NULLS` — checks that all values in a column are not null.
-  - `@UNIQUE` — checks that a column's values are unique.
-  - `@UNIQUE_BY(<by>)` — checks that a column's values are unique within a group.
-  - `@SET{<elements>}` — checks that a column's values are in a set of values.
+  - `#NO_NULLS` — checks that all values in a column are not null.
+  - `#UNIQUE` — checks that a column's values are unique.
+  - `#UNIQUE_BY(<by>)` — checks that a column's values are unique within a group.
+  - `#SET{<elements>}` — checks that a column's values are in a set of values.
 
 Here's an example of a query annotated with assertion tests:
 
 ```sql
 SELECT
-    -- @UNIQUE
-    -- @NO_NULLS
+    -- #UNIQUE
+    -- #NO_NULLS
     user_id,
-    -- @NO_NULLS
+    -- #NO_NULLS
     address,
-    -- @UNIQUE_BY(address)
+    -- #UNIQUE_BY(address)
     full_name,
-    -- @SET{'A', 'B', 'AB', 'O'}
+    -- #SET{'A', 'B', 'AB', 'O'}
     blood_type
 FROM core.users
 ```

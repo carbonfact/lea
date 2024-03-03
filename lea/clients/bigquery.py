@@ -17,9 +17,7 @@ console = rich.console.Console()
 
 
 class BigQuery(Client):
-    def __init__(
-        self, credentials, location, project_id, dataset_name, username, wap_mode: bool = False
-    ):
+    def __init__(self, credentials, location, project_id, dataset_name, username, wap_mode):
         self.credentials = credentials
         self.project_id = project_id
         self.location = location
@@ -61,17 +59,17 @@ class BigQuery(Client):
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
         console.log(f"Deleted dataset {dataset.dataset_id}")
 
-    def _materialize_sql_query(self, view_key: tuple[str], query: str):
-        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
-        schema, table_reference = table_reference.split(".", 1)
+    def materialize_sql_view(self, view):
+        table_reference = view.table_reference
+        schema, table_reference_without_schema = table_reference.split(".", 1)
         job = self.client.create_job(
             {
                 "query": {
-                    "query": query,
+                    "query": view.query,
                     "destinationTable": {
                         "projectId": self.project_id,
                         "datasetId": self.dataset_name,
-                        "tableId": table_reference,
+                        "tableId": table_reference_without_schema,
                     },
                     "createDisposition": "CREATE_IF_NEEDED",
                     "writeDisposition": "WRITE_TRUNCATE",
@@ -79,7 +77,9 @@ class BigQuery(Client):
                 "labels": {
                     "job_dataset": self.dataset_name,
                     "job_schema": schema,
-                    "job_table": table_reference.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""),
+                    "job_table": table_reference_without_schema.replace(
+                        f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
+                    ),
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 },
@@ -87,16 +87,54 @@ class BigQuery(Client):
         )
         job.result()
 
-    def _materialize_pandas_dataframe(self, view_key: tuple[str], dataframe: pd.DataFrame):
+    def materialize_sql_view_incremental(self, view, incremental_field_name):
+        table_reference = view.table_reference
+        schema, table_reference_without_schema = table_reference.split(".", 1)
+        job = self.client.create_job(
+            {
+                "query": {
+                    "query": f"""
+                    SELECT *
+                    FROM ({view.query})
+                    WHERE {incremental_field_name} > (SELECT MAX({incremental_field_name}) FROM {view.table_reference})
+                    """,
+                    "destinationTable": {
+                        "projectId": self.project_id,
+                        "datasetId": self.dataset_name,
+                        "tableId": table_reference_without_schema,
+                    },
+                    "createDisposition": "CREATE_IF_NEEDED",
+                    "writeDisposition": "WRITE_APPEND",
+                },
+                "labels": {
+                    "job_dataset": self.dataset_name,
+                    "job_schema": schema,
+                    "job_table": table_reference_without_schema.replace(
+                        f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
+                    ),
+                    "job_username": self.username,
+                    "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
+                },
+            }
+        )
+        job.result()
+
+    def materialize_python_view(self, view):
+        dataframe = self.read_python_view(view)
+        self._materialize_pandas_dataframe(dataframe, view.table_reference)
+
+    def materialize_json_view(self, view):
+        dataframe = pd.read_json(view.path)
+        self._materialize_pandas_dataframe(dataframe, view.table_reference)
+
+    def _materialize_pandas_dataframe(self, dataframe, table_reference):
         from google.cloud import bigquery
 
         job_config = bigquery.LoadJobConfig(
             schema=[],
             write_disposition="WRITE_TRUNCATE",
         )
-        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
         schema, table_reference = table_reference.split(".", 1)
-
         job = self.client.load_table_from_dataframe(
             dataframe,
             f"{self.project_id}.{self.dataset_name}.{table_reference}",
@@ -104,37 +142,35 @@ class BigQuery(Client):
         )
         job.result()
 
-    def delete_view_key(self, view_key: tuple[str]):
-        table_reference = self._view_key_to_table_reference(view_key, with_context=True)
-        schema, table_reference = table_reference.split(".", 1)
+    def delete_table_reference(self, table_reference):
         self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{table_reference}")
 
-    def _read_sql_view(self, view: lea.views.View) -> pd.DataFrame:
+    def read_sql(self, query: str) -> pd.DataFrame:
         return pandas_gbq.read_gbq(
-            view.query, credentials=self.client._credentials, progress_bar_type=None
+            query, credentials=self.client._credentials, progress_bar_type=None
         )
 
     def list_tables(self):
-        query = f"""
+        return self.read_sql(
+            f"""
         SELECT
             FORMAT('%s.%s', '{self.dataset_name}', table_id) AS table_reference,
             row_count AS n_rows,
             size_bytes AS n_bytes
         FROM {self.dataset_name}.__TABLES__
         """
-        view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
-        return self._read_sql_view(view)
+        )
 
     def list_columns(self) -> pd.DataFrame:
-        query = f"""
+        return self.read_sql(
+            f"""
         SELECT
             FORMAT('%s.%s', table_schema, table_name) AS table_reference,
             column_name AS column,
             data_type AS type
         FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
         """
-        view = lea.views.GenericSQLView(query=query, sqlglot_dialect=self.sqlglot_dialect)
-        return self._read_sql_view(view)
+        )
 
     def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
         """
@@ -144,7 +180,8 @@ class BigQuery(Client):
         ...     location="US",
         ...     project_id="project",
         ...     dataset_name="dataset",
-        ...     username="max"
+        ...     username="max",
+        ...     wap_mode=False
         ... )
 
         >>> client._view_key_to_table_reference(("schema", "table"), with_context=False)
@@ -177,7 +214,8 @@ class BigQuery(Client):
         ...     location="US",
         ...     project_id="project",
         ...     dataset_name="dataset",
-        ...     username="max"
+        ...     username="max",
+        ...     wap_mode=False
         ... )
 
         >>> client._table_reference_to_view_key("dataset.schema__table")
