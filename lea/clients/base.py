@@ -40,7 +40,13 @@ class Client(abc.ABC):
 
     def materialize_view(self, view: lea.views.View):
         if isinstance(view, lea.views.SQLView):
-            self.materialize_sql_view(view)
+            incremental_fields = [field for field in view.fields if field.is_incremental]
+            if len(incremental_fields) > 1:
+                raise ValueError(f"Multiple incremental fields are not supported (found in {str(self)})")
+            elif len(incremental_fields) == 1:
+                self.materialize_sql_view_incremental(view, incremental_field_name=incremental_fields[0].name)
+            else:
+                self.materialize_sql_view(view)
         elif isinstance(view, lea.views.PythonView):
             self.materialize_python_view(view)
         elif isinstance(view, lea.views.JSONView):
@@ -50,6 +56,10 @@ class Client(abc.ABC):
 
     @abc.abstractmethod
     def materialize_sql_view(self, view: lea.views.SQLView):
+        ...
+
+    @abc.abstractmethod
+    def materialize_sql_view_incremental(self, view: lea.views.SQLView, incremental_field_name: str):
         ...
 
     @abc.abstractmethod
@@ -80,26 +90,30 @@ class Client(abc.ABC):
     def list_columns(self) -> pd.DataFrame:
         ...
 
+    def list_existing_view_keys(self) -> set[tuple[str, ...]]:
+        tables = self.list_tables()
+        return {self._table_reference_to_view_key(table) for table in tables.table_reference}
+
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
-        return self.load_assertion_test_template("@UNIQUE").render(
+        return self.load_assertion_test_template("#UNIQUE").render(
             table=view.table_reference, column=column
         )
 
     def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
-        return self.load_assertion_test_template("@UNIQUE_BY").render(
+        return self.load_assertion_test_template("#UNIQUE_BY").render(
             table=view.table_reference,
             column=column,
             by=by,
         )
 
     def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
-        return self.load_assertion_test_template("@NO_NULLS").render(
+        return self.load_assertion_test_template("#NO_NULLS").render(
             table=view.table_reference, column=column
         )
 
     def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
         schema, *leftover = view.key
-        return self.load_assertion_test_template("@SET").render(
+        return self.load_assertion_test_template("#SET").render(
             table=view.table_reference,
             column=column,
             elements=elements,
@@ -108,6 +122,6 @@ class Client(abc.ABC):
     def load_assertion_test_template(self, tag: str) -> jinja2.Template:
         return jinja2.Template(
             (
-                pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('@')}.sql.jinja"
+                pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('#')}.sql.jinja"
             ).read_text()
         )

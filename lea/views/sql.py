@@ -70,29 +70,32 @@ class SQLView(View):
         except sqlglot.errors.OptimizeError:
             return ast
 
-    @functools.cached_property
+    @property
     def fields(self):
+        if hasattr(self, "_fields"):
+            return self._fields
         try:
             field_names = self.ast.named_selects
         except sqlglot.errors.ParseError:
-            return []
+            field_names = []
         field_comments = self.extract_comments(field_names)
-        return [
+        self._fields = [
             Field(
                 name=name,
                 tags={
                     comment.text
                     for comment in field_comments.get(name, [])
-                    if comment.text.startswith("@")
+                    if comment.text.startswith("#")
                 },
                 description=" ".join(
                     comment.text
                     for comment in field_comments.get(name, [])
-                    if not comment.text.startswith("@")
+                    if not comment.text.startswith("#")
                 )
             )
             for name in field_names if name != "*"
         ]
+        return self._fields
 
     @functools.cached_property
     def dependent_view_keys(self):
@@ -132,6 +135,10 @@ class SQLView(View):
         )
 
     def extract_comments(self, columns: list[str]) -> dict[str, CommentBlock]:
+
+        if not columns:
+            return {}
+
         dialect = sqlglot.Dialect.get_or_raise(self.sqlglot_dialect)
         tokens = dialect.tokenizer.tokenize(self.query)
 
@@ -197,11 +204,13 @@ class SQLView(View):
         # Maybe try out https://github.com/vi3k6i5/flashtext
         for k, v in table_reference_mapping.items():
             query = re.sub(rf"\b{k}\b", v, query)
-        return InMemorySQLView(
+        view = InMemorySQLView(
             key=self.key,
             query=query,
             client=self.client,
         )
+        view._fields = self.fields  # HACK
+        return view
 
     def __rich__(self):
         return rich.syntax.Syntax(self.query, "sql")

@@ -256,6 +256,7 @@ class Runner:
         threads: int,
         show: int,
         fail_fast: bool,
+        incremental: bool,
     ):
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*select)
@@ -272,13 +273,22 @@ class Runner:
         # It's really important to remove views that aren't part of the refresh anymore. There
         # might be consumers that still depend on them, which is error-prone. You don't want
         # consumers to depend on stale data.
-        for table_reference in self.client.list_tables()["table_reference"]:
-            view_key = self.client._table_reference_to_view_key(table_reference)
+        existing_view_keys = self.client.list_existing_view_keys()
+        for view_key in existing_view_keys - selected_view_keys:
             if view_key in self.regular_views:
                 continue
             if not dry:
+                table_reference = self.client._view_key_to_table_reference(view_key, with_context=True)  # HACK
                 self.client.delete_table_reference(table_reference)
-            self.log(f"Removed {table_reference}")
+            self.log(f"Removed {'.'.join(view_key)}")
+
+        # Some views are incremental. But incremental updates can only be made if the view exists
+        # in the first place. To handle this, we remove the #INCREMENTAL tag from fields that are
+        # part of views that don't exist yet.
+        for view_key in selected_view_keys - (existing_view_keys if incremental else set()):
+            view = self.regular_views[view_key]
+            for i, field in enumerate(view.fields):
+                view._fields[i].tags.discard("#INCREMENTAL")  # HACK
 
         def display_progress() -> rich.table.Table:
             if not self.verbose:

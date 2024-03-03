@@ -21,12 +21,12 @@ def client():
     [
         pytest.param(*case, id=f"test_assertion{tag}#{i}")
         for tag, cases in {
-            "@UNIQUE": [
+            "#UNIQUE": [
                 (
                     pd.DataFrame({"test_column": [1, 2, 3, 4, 5]}),
                     """
                     SELECT
-                        -- @UNIQUE
+                        -- #UNIQUE
                         test_column
                     FROM test_data
                     """,
@@ -40,7 +40,7 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @UNIQUE
+                        -- #UNIQUE
                         test_column
                     FROM test_data
                     """,
@@ -50,7 +50,7 @@ def client():
                     pd.DataFrame({"test_column": [1, 2, 3, 4, None]}),
                     """
                     SELECT
-                        -- @UNIQUE
+                        -- #UNIQUE
                         test_column
                     FROM test_data
                     """,
@@ -64,14 +64,14 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @UNIQUE
+                        -- #UNIQUE
                         test_column
                     FROM test_data
                     """,
                     False,
                 ),
             ],
-            "@UNIQUE_BY": [
+            "#UNIQUE_BY": [
                 (
                     pd.DataFrame(
                         {
@@ -82,7 +82,7 @@ def client():
                     """
                     SELECT
                         by,
-                        -- @UNIQUE_BY(by)
+                        -- #UNIQUE_BY(by)
                         col
                     FROM test_data
                     """,
@@ -98,7 +98,7 @@ def client():
                     """
                     SELECT
                         by,
-                        -- @UNIQUE_BY(by)
+                        -- #UNIQUE_BY(by)
                         col
                     FROM test_data
                     """,
@@ -114,14 +114,14 @@ def client():
                     """
                     SELECT
                         by,
-                        -- @UNIQUE_BY(by)
+                        -- #UNIQUE_BY(by)
                         col
                     FROM test_data
                     """,
                     False,
                 ),
             ],
-            "@NO_NULLS": [
+            "#NO_NULLS": [
                 (
                     pd.DataFrame(
                         {
@@ -130,7 +130,7 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @NO_NULLS
+                        -- #NO_NULLS
                         test_column
                     FROM test_data
                     """,
@@ -144,14 +144,14 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @NO_NULLS
+                        -- #NO_NULLS
                         test_column
                     FROM test_data
                     """,
                     False,
                 ),
             ],
-            "@SET": [
+            "#SET": [
                 (
                     pd.DataFrame(
                         {
@@ -160,7 +160,7 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @SET{1, 2, 3}
+                        -- #SET{1, 2, 3}
                         test_column
                     FROM test_data
                     """,
@@ -174,7 +174,7 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @SET{1, 2, 3, 4}
+                        -- #SET{1, 2, 3, 4}
                         test_column
                     FROM test_data
                     """,
@@ -188,7 +188,7 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @SET{1, 2}
+                        -- #SET{1, 2}
                         test_column
                     FROM test_data
                     """,
@@ -202,7 +202,7 @@ def client():
                     ),
                     """
                     SELECT
-                        -- @SET{1, 2, 3}
+                        -- #SET{1, 2, 3}
                         test_column
                     FROM test_data
                     """,

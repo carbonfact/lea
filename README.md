@@ -56,6 +56,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 - [Jaffle shop 🥪](examples/jaffle_shop/)
 - [Compare development to production 👯‍♀️](examples/diff/)
 - [Using MotherDuck 🦆](examples/motherduck/)
+- [Incremental views 🤏](examples/incremental/)
 
 ## Teaser
 
@@ -270,23 +271,23 @@ There are two types of tests:
 
 - Singular tests — these are queries which return failing rows. They are stored in a `tests` directory.
 - Assertion tests — these are comment annotations in the queries themselves:
-  - `@NO_NULLS` — checks that all values in a column are not null.
-  - `@UNIQUE` — checks that a column's values are unique.
-  - `@UNIQUE_BY(<by>)` — checks that a column's values are unique within a group.
-  - `@SET{<elements>}` — checks that a column's values are in a set of values.
+  - `#NO_NULLS` — checks that all values in a column are not null.
+  - `#UNIQUE` — checks that a column's values are unique.
+  - `#UNIQUE_BY(<by>)` — checks that a column's values are unique within a group.
+  - `#SET{<elements>}` — checks that a column's values are in a set of values.
 
 Here's an example of a query annotated with assertion tests:
 
 ```sql
 SELECT
-    -- @UNIQUE
-    -- @NO_NULLS
+    -- #UNIQUE
+    -- #NO_NULLS
     user_id,
-    -- @NO_NULLS
+    -- #NO_NULLS
     address,
-    -- @UNIQUE_BY(address)
+    -- #UNIQUE_BY(address)
     full_name,
-    -- @SET{'A', 'B', 'AB', 'O'}
+    -- #SET{'A', 'B', 'AB', 'O'}
     blood_type
 FROM core.users
 ```

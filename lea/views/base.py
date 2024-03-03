@@ -63,14 +63,14 @@ class View(abc.ABC):
         for field in self.fields:
             for tag in field.tags:
 
-                if tag == "@NO_NULLS":
+                if tag == "#NO_NULLS":
                     yield lea.views.InMemorySQLView(
                         key=(*self.key, field.name, "NO_NULLS"),
                         query=self.client.make_column_test_no_nulls(self, field.name),
                         client=self.client,
                     )
 
-                elif tag == "@UNIQUE":
+                elif tag == "#UNIQUE":
                     yield lea.views.InMemorySQLView(
                         key=(*self.key, field.name, "UNIQUE"),
                         query=self.client.make_column_test_unique(self, field.name),
@@ -78,7 +78,7 @@ class View(abc.ABC):
                     )
 
                 elif unique_by := re.fullmatch(
-                    "@UNIQUE_BY" + r"\((?P<by>.+)\)", tag
+                    "#UNIQUE_BY" + r"\((?P<by>.+)\)", tag
                 ):
                     by = unique_by.group("by")
                     yield lea.views.InMemorySQLView(
@@ -88,7 +88,7 @@ class View(abc.ABC):
                     )
 
                 elif set_ := re.fullmatch(
-                    "@SET" + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", tag
+                    "#SET" + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", tag
                 ):
                     elements = {element.strip() for element in set_.group("elements").split(",")}
                     yield lea.views.InMemorySQLView(
@@ -113,8 +113,8 @@ class Field:
 
     @property
     def is_incremental(self):
-        return "@INCREMENTAL" in self.tags
+        return "#INCREMENTAL" in self.tags
 
     @property
     def is_unique(self):
-        return "@UNIQUE" in self.tags
+        return "#UNIQUE" in self.tags
