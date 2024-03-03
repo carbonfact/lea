@@ -40,6 +40,7 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
     - [Development vs. production](#development-vs-production)
     - [Select which views to run](#select-which-views-to-run)
     - [Write-Audit-Publish (WAP)](#write-audit-publish-wap)
+    - [Incremental views](#incremental-views)
     - [Workflow tips](#workflow-tips)
   - [`lea test`](#lea-test)
   - [`lea docs`](#lea-docs)
@@ -237,6 +238,28 @@ With lea, the WAP patterns works by creating temporary tables in the same schema
 
 ```sh
 lea run --wap
+```
+
+#### Incremental views
+
+An advanced pattern is to use incremental views. This is done by adding a `#INCREMENTAL` comment to a field within a query. This comment tells lea that the view should be refreshed incrementally. This means that new data is appended, while the current data is kept.
+
+```sql
+SELECT
+    -- #INCREMENTAL
+    created_at,
+    amount,
+    city,
+    vendor
+FROM core.sales
+```
+
+lea's implementation is purposefully simple. It only checks for the `#INCREMENTAL` comment. It doesn't check for the presence of a primary key, schema changes, and late-arriving data. It's up to the user to ensure that the view is indeed incremental.
+
+With incremental views, it's a good habit to periodically do a full refresh. This can be done with the `--no-incremental` flag:
+
+```sh
+lea run --no-incremental
 ```
 
 #### Workflow tips
