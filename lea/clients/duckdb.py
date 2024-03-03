@@ -63,6 +63,10 @@ class DuckDB(Client):
         dataframe = self.read_python_view(view)
         self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
 
+    def materialize_json_view(self, view):
+        dataframe = pd.read_json(view.path)
+        self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
+
     def delete_table_reference(self, table_reference):
         self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
 

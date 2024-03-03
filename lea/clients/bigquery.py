@@ -87,18 +87,52 @@ class BigQuery(Client):
         )
         job.result()
 
-    def materialize_python_view(self, view):
-        from google.cloud import bigquery
+    def materialize_sql_view_incremental(self, view, incremental_field_name):
+        table_reference = view.table_reference
+        schema, table_reference_without_schema = table_reference.split(".", 1)
+        job = self.client.create_job(
+            {
+                "query": {
+                    "query": f"""
+                    SELECT *
+                    FROM ({view.query})
+                    WHERE {incremental_field_name} > (SELECT MAX({incremental_field_name}) FROM {view.table_reference})
+                    """,
+                    "destinationTable": {
+                        "projectId": self.project_id,
+                        "datasetId": self.dataset_name,
+                        "tableId": table_reference_without_schema,
+                    },
+                    "createDisposition": "CREATE_IF_NEEDED",
+                    "writeDisposition": "WRITE_APPEND",
+                },
+                "labels": {
+                    "job_dataset": self.dataset_name,
+                    "job_schema": schema,
+                    "job_table": table_reference_without_schema.replace(f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""),
+                    "job_username": self.username,
+                    "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
+                },
+            }
+        )
+        job.result()
 
+    def materialize_python_view(self, view):
         dataframe = self.read_python_view(view)
+        self._materialize_pandas_dataframe(dataframe, view.table_reference)
+
+    def materialize_json_view(self, view):
+        dataframe = pd.read_json(view.path)
+        self._materialize_pandas_dataframe(dataframe, view.table_reference)
+
+    def _materialize_pandas_dataframe(self, dataframe, table_reference):
+        from google.cloud import bigquery
 
         job_config = bigquery.LoadJobConfig(
             schema=[],
             write_disposition="WRITE_TRUNCATE",
         )
-        table_reference = view.table_reference
         schema, table_reference = table_reference.split(".", 1)
-
         job = self.client.load_table_from_dataframe(
             dataframe,
             f"{self.project_id}.{self.dataset_name}.{table_reference}",

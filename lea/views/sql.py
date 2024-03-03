@@ -139,8 +139,8 @@ class SQLView(View):
         if not columns:
             return {}
 
-        dialect = sqlglot.Dialect.get_or_raise(self.sqlglot_dialect)
-        tokens = dialect.tokenizer.tokenize(self.query)
+        dialect = sqlglot.Dialect.get_or_raise(self.sqlglot_dialect.value)
+        tokens = dialect.tokenizer_class().tokenize(self.query)
 
         # Extract comments, which are lines that start with --
         comments = [
