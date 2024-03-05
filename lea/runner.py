@@ -219,10 +219,12 @@ class Runner:
             self.client._view_key_to_table_reference(
                 view_key, with_context=False
             ): self.client._view_key_to_table_reference(view_key, with_context=True)
-            for view_key in (
+            for view_key in
+            (
                 # By default, we replace all
                 # table_references to the current database, but we leave the others untouched.
-                self.regular_views if not freeze_unselected
+                self.regular_views
+                if not freeze_unselected
                 # When freeze_unselected is specified, it means we want our views to target the production
                 # database. Therefore, we only have to rename the table references for the views that were
                 # selected.

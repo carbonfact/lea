@@ -98,7 +98,7 @@ class Client(abc.ABC):
     def list_existing_view_keys(self) -> dict[tuple[str, ...], str]:
         return {
             self._table_reference_to_view_key(table_reference): table_reference
-            for table_reference in self.list_tables()['table_reference']
+            for table_reference in self.list_tables()["table_reference"]
         }
 
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
