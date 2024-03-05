@@ -209,34 +209,26 @@ class Runner:
 
         """
 
-        # By default, we replace all
-        # table_references to the current database, but we leave the others untouched.
-        if not freeze_unselected:
-            table_reference_mapping = {
-                self.client._view_key_to_table_reference(
-                    view_key, with_context=False
-                ): self.client._view_key_to_table_reference(view_key, with_context=True)
-                for view_key in self.regular_views
-            }
-
-        # When freeze_unselected is specified, it means we want our views to target the production
-        # database. Therefore, we only have to rename the table references for the views that were
-        # selected.
-
         # Note the case where the select list is empty. That means all the views should be refreshed.
         # If freeze_unselected is specified, then it means all the views will target the production
         # database, which is basically equivalent to copying over the data.
-        else:
-            if not selected_view_keys:
-                warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
-            table_reference_mapping = {
-                self.client._view_key_to_table_reference(
-                    view_key, with_context=False
-                ): self.client._view_key_to_table_reference(view_key, with_context=True)
-                for view_key in selected_view_keys
-            }
+        if freeze_unselected and not selected_view_keys:
+            warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
 
-        return table_reference_mapping
+        return {
+            self.client._view_key_to_table_reference(
+                view_key, with_context=False
+            ): self.client._view_key_to_table_reference(view_key, with_context=True)
+            for view_key in (
+                # By default, we replace all
+                # table_references to the current database, but we leave the others untouched.
+                self.regular_views if not freeze_unselected
+                # When freeze_unselected is specified, it means we want our views to target the production
+                # database. Therefore, we only have to rename the table references for the views that were
+                # selected.
+                else selected_view_keys
+            )
+        }
 
     def prepare(self):
         self.client.prepare(self.regular_views.values())
@@ -269,14 +261,11 @@ class Runner:
         # might be consumers that still depend on them, which is error-prone. You don't want
         # consumers to depend on stale data.
         existing_view_keys = self.client.list_existing_view_keys()
-        for view_key in existing_view_keys - selected_view_keys:
+        for view_key in set(existing_view_keys.keys()) - selected_view_keys:
             if view_key in self.regular_views:
                 continue
             if not dry:
-                table_reference = self.client._view_key_to_table_reference(
-                    view_key, with_context=True
-                )  # HACK
-                self.client.delete_table_reference(table_reference)
+                self.client.delete_table_reference(existing_view_keys[view_key])
             self.log(f"Removed {'.'.join(view_key)}")
 
         # Some views are incremental. But incremental updates can only be made if the view exists

@@ -143,6 +143,7 @@ class BigQuery(Client):
         job.result()
 
     def delete_table_reference(self, table_reference):
+        _, table_reference = table_reference.split(".", 1)
         self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{table_reference}")
 
     def read_sql(self, query: str) -> pd.DataFrame:
