@@ -372,8 +372,8 @@ class Runner:
                         if exception := jobs[view_key].exception():
                             exceptions[view_key] = exception
                             if fail_fast:
-                                self.print(str(self.views[view_key_with_error]), style="bold red")
-                                self.print(exceptions[view_key_with_error])
+                                self.print(str(self.views[view_key]), style="bold red")
+                                self.print(exceptions[view_key])
                                 raise exception
 
                 live.update(display_progress())
