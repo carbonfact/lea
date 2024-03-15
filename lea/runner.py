@@ -322,22 +322,7 @@ class Runner:
         if cache:
             self.log(f"{len(cache):,d} views already done")
 
-        def save_cache(cache):
-            all_done = not exceptions and not skipped
-            cache = (
-                set()
-                if all_done
-                else cache
-                | {
-                    view_key
-                    for view_key in execution_order
-                    if view_key not in exceptions and view_key not in skipped
-                }
-            )
-            cache_path.write_bytes(pickle.dumps(cache))
-
         with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
-            view_key_with_error = None
             while self.dag.is_active():
                 for view_key in self.dag.get_ready():
                     # Check if the view_key can be skipped or not
@@ -387,47 +372,50 @@ class Runner:
                         if exception := jobs[view_key].exception():
                             exceptions[view_key] = exception
                             if fail_fast:
-                                # Here we decide to not print out the entire traceback, because
-                                # it's not very helpful. Instead, we print out the view key and the
-                                # exception message. This makes debugging faster, in particular
-                                # when lea is run in a CI environment.
-                                view_key_with_error = view_key
-                                break
+                                raise exception
 
                 live.update(display_progress())
 
-                if view_key_with_error:
-                    break
-
-        save_cache(cache)
-
-        if view_key_with_error:
-            self.print(str(self.views[view_key_with_error]), style="bold red")
-            self.print(exceptions[view_key_with_error])
-            executor.shutdown(wait=True)  # TODO: ideally we should cancel the other jobs
-            return
+        # Save the cache
+        all_done = not exceptions and not skipped
+        cache = (
+            set()
+            if all_done
+            else cache
+            | {
+                view_key
+                for view_key in execution_order
+                if view_key not in exceptions and view_key not in skipped
+            }
+        )
+        if cache:
+            cache_path.write_bytes(pickle.dumps(cache))
+        else:
+            cache_path.unlink(missing_ok=True)
 
         # Summary statistics
-        if self.verbose:
-            self.log(f"Took {round(time.time() - tic)}s")
-            summary = rich.table.Table()
-            summary.add_column("status")
-            summary.add_column("count")
-            if n := len(jobs_ended_at) - len(exceptions):
-                summary.add_row(SUCCESS, f"{n:,d}")
-            if n := len(exceptions):
-                summary.add_row(ERRORED, f"{n:,d}")
-            if n := len(skipped):
-                summary.add_row(SKIPPED, f"{n:,d}")
-            self.print(summary)
+        if not self.verbose:
+            return
+        self.log(f"Took {round(time.time() - tic)}s")
+        summary = rich.table.Table()
+        summary.add_column("status")
+        summary.add_column("count")
+        if n := len(jobs_ended_at) - len(exceptions):
+            summary.add_row(SUCCESS, f"{n:,d}")
+        if n := len(exceptions):
+            summary.add_row(ERRORED, f"{n:,d}")
+        if n := len(skipped):
+            summary.add_row(SKIPPED, f"{n:,d}")
+        self.print(summary)
 
         # Summary of errors
         if exceptions:
             for view_key, exception in exceptions.items():
                 self.print(str(self.views[view_key]), style="bold red")
                 self.print(exception)
-        else:
-            cache_path.unlink(missing_ok=True)
+
+            if fail_fast:
+                raise Exception("Some views failed to build")
 
         # In WAP mode, the tables gets created with a suffix to mimic a staging environment. We
         # need to switch the tables to the production environment.
