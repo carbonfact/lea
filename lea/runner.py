@@ -372,7 +372,9 @@ class Runner:
                         if exception := jobs[view_key].exception():
                             exceptions[view_key] = exception
                             if fail_fast:
-                                raise RuntimeError(f'Error in {self.views[view_key]}') from exception
+                                raise RuntimeError(
+                                    f"Error in {self.views[view_key]}"
+                                ) from exception
 
                 live.update(display_progress())
 
