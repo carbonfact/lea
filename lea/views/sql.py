@@ -111,7 +111,7 @@ class SQLView(View):
                         table_references.add(sqlglot.exp.table_name(table))
         except sqlglot.errors.ParseError:
             warnings.warn(
-                f"SQLGlot couldn't parse {self.path} with dialect {self.sqlglot_dialect}. Falling back to regex."
+                f"SQLGlot couldn't parse {repr(self)} with dialect {self.sqlglot_dialect}. Falling back to regex."
             )
             for match in re.finditer(
                 r"(JOIN|FROM)\s+(?P<schema>[a-z][a-z_\.]+[a-z])\.(?P<view>[a-z][a-z_]+[a-z])",
