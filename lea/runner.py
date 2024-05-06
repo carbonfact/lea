@@ -285,7 +285,7 @@ class Runner:
             table.add_column("#")
             table.add_column("view")
             table.add_column("status")
-            table.add_column("duration")
+            table.add_column("duration", justify="right")
 
             not_done = [view_key for view_key in execution_order if view_key not in cache]
             for i, view_key in list(enumerate(not_done, start=1))[-show:]:
