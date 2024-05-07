@@ -82,6 +82,7 @@ class BigQuery(Client):
                     ),
                     "job_username": self.username,
                     "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
+                    "service": "lea"
                 },
             }
         )
