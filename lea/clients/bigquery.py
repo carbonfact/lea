@@ -88,9 +88,7 @@ class BigQuery(Client):
         )
         job.result()
         cost_per_tb = 5
-        return QueryResult(
-            cost=(job.total_bytes_processed / 10**12) * cost_per_tb
-        )
+        return QueryResult(cost=(job.total_bytes_processed / 10**12) * cost_per_tb)
 
     def materialize_sql_view_incremental(self, view, incremental_field_name):
         table_reference = view.table_reference
