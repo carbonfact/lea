@@ -10,7 +10,7 @@ import sqlglot
 
 import lea
 
-from .base import Client
+from .base import Client, QueryResult
 
 # HACK
 console = rich.console.Console()
@@ -59,7 +59,7 @@ class BigQuery(Client):
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
         console.log(f"Deleted dataset {dataset.dataset_id}")
 
-    def materialize_sql_view(self, view):
+    def materialize_sql_view(self, view) -> QueryResult:
         table_reference = view.table_reference
         schema, table_reference_without_schema = table_reference.split(".", 1)
         job = self.client.create_job(
@@ -87,6 +87,10 @@ class BigQuery(Client):
             }
         )
         job.result()
+        cost_per_tb = 5
+        return QueryResult(
+            cost=(job.total_bytes_processed / 10**12) * cost_per_tb
+        )
 
     def materialize_sql_view_incremental(self, view, incremental_field_name):
         table_reference = view.table_reference

@@ -286,6 +286,7 @@ class Runner:
             table.add_column("view")
             table.add_column("status")
             table.add_column("duration", justify="right")
+            table.add_column("cost", justify="right")
 
             not_done = [view_key for view_key in execution_order if view_key not in cache]
             for i, view_key in list(enumerate(not_done, start=1))[-show:]:
@@ -304,7 +305,15 @@ class Runner:
                 )
                 # Round to the closest second
                 duration_str = f"{int(round(duration.total_seconds()))}s" if duration else ""
-                table.add_row(str(i), str(self.views[view_key]), status, duration_str)
+                result = jobs[view_key].result() if status == SUCCESS else None
+                cost = result.cost if result else None
+                table.add_row(
+                    str(i),
+                    str(self.views[view_key]),
+                    status,
+                    duration_str,
+                    f"${cost:,.5f}" if cost else "",
+                )
 
             return table
 

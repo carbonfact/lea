@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import dataclasses
 import importlib
 import pathlib
 
@@ -37,7 +38,7 @@ class Client(abc.ABC):
     def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
         ...
 
-    def materialize_view(self, view: lea.views.View):
+    def materialize_view(self, view: lea.views.View) -> QueryResult:
         if isinstance(view, lea.views.SQLView):
             incremental_fields = [field for field in view.fields if field.is_incremental]
             if len(incremental_fields) > 1:
@@ -45,15 +46,15 @@ class Client(abc.ABC):
                     f"Multiple incremental fields are not supported (found in {str(self)})"
                 )
             elif len(incremental_fields) == 1:
-                self.materialize_sql_view_incremental(
+                return self.materialize_sql_view_incremental(
                     view, incremental_field_name=incremental_fields[0].name
                 )
             else:
-                self.materialize_sql_view(view)
+                return self.materialize_sql_view(view)
         elif isinstance(view, lea.views.PythonView):
-            self.materialize_python_view(view)
+            return self.materialize_python_view(view)
         elif isinstance(view, lea.views.JSONView):
-            self.materialize_json_view(view)
+            return self.materialize_json_view(view)
         else:
             raise ValueError(f"Unhandled view type: {view.__class__.__name__}")
 
@@ -132,3 +133,8 @@ class Client(abc.ABC):
                 pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('#')}.sql.jinja"
             ).read_text()
         )
+
+
+@dataclasses.dataclass
+class QueryResult:
+    cost: float | None
