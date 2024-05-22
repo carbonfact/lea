@@ -312,7 +312,7 @@ class Runner:
                     str(self.views[view_key]),
                     status,
                     duration_str,
-                    f"${cost:,.5f}" if cost else "",
+                    "" if cost is None else f"${cost:,.5f}"
                 )
 
             return table
