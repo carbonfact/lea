@@ -131,6 +131,7 @@ def diff(
 @app.command()
 def serve():
     import uvicorn
+
     uvicorn.run("lea.api:app", host="127.0.0.1", port=8000, reload=True)
 
 
