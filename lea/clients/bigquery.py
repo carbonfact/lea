@@ -59,33 +59,35 @@ class BigQuery(Client):
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
         console.log(f"Deleted dataset {dataset.dataset_id}")
 
-    def materialize_sql_view(self, view) -> QueryResult:
+    def make_job_config(self, view) -> dict:
         table_reference = view.table_reference
         schema, table_reference_without_schema = table_reference.split(".", 1)
-        job = self.client.create_job(
-            {
-                "query": {
-                    "query": view.query,
-                    "destinationTable": {
-                        "projectId": self.project_id,
-                        "datasetId": self.dataset_name,
-                        "tableId": table_reference_without_schema,
-                    },
-                    "createDisposition": "CREATE_IF_NEEDED",
-                    "writeDisposition": "WRITE_TRUNCATE",
+        return {
+            "query": {
+                "query": view.query,
+                "destinationTable": {
+                    "projectId": self.project_id,
+                    "datasetId": self.dataset_name,
+                    "tableId": table_reference_without_schema,
                 },
-                "labels": {
-                    "job_dataset": self.dataset_name,
-                    "job_schema": schema,
-                    "job_table": table_reference_without_schema.replace(
-                        f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
-                    ),
-                    "job_username": self.username,
-                    "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
-                    "service": "lea",
-                },
-            }
-        )
+                "createDisposition": "CREATE_IF_NEEDED",
+                "writeDisposition": "WRITE_TRUNCATE",
+            },
+            "labels": {
+                "job_dataset": self.dataset_name,
+                "job_schema": schema,
+                "job_table": table_reference_without_schema.replace(
+                    f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
+                ),
+                "job_username": self.username,
+                "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
+                "service": "lea",
+            },
+        }
+
+    def materialize_sql_view(self, view) -> QueryResult:
+        job_config = self.make_job_config(view)
+        job = self.client.create_job(job_config)
         job.result()
         cost_per_tb = 5
         return QueryResult(cost=(job.total_bytes_processed / 10**12) * cost_per_tb)
