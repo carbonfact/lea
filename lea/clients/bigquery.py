@@ -37,7 +37,11 @@ class BigQuery(Client):
     def client(self):
         from google.cloud import bigquery
 
-        return bigquery.Client(credentials=self.credentials)
+        return bigquery.Client(
+            project=self.project_id,
+            credentials=self.credentials,
+            location=self.location,
+        )
 
     def prepare(self, views):
         from google.cloud import bigquery
@@ -83,6 +87,7 @@ class BigQuery(Client):
                 "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
                 "service": "lea",
             },
+            "location": self.location,
         }
 
     def materialize_sql_view(self, view) -> QueryResult:
@@ -153,7 +158,11 @@ class BigQuery(Client):
 
     def read_sql(self, query: str) -> pd.DataFrame:
         return pandas_gbq.read_gbq(
-            query, credentials=self.client._credentials, progress_bar_type=None
+            query,
+            credentials=self.client._credentials,
+            project_id=self.project_id,
+            location=self.location,
+            progress_bar_type=None
         )
 
     def list_tables(self):
