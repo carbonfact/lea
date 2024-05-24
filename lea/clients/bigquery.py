@@ -162,7 +162,7 @@ class BigQuery(Client):
             credentials=self.client._credentials,
             project_id=self.project_id,
             location=self.location,
-            progress_bar_type=None
+            progress_bar_type=None,
         )
 
     def list_tables(self):
