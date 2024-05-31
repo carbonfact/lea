@@ -129,10 +129,13 @@ def diff(
 
 
 @app.command()
-def serve():
+def serve(
+    dev: bool = False,
+    port: int = 8000,
+):
     import uvicorn
 
-    uvicorn.run("lea.api:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("lea.api:app", host="127.0.0.1", port=port, reload=dev)
 
 
 def make_app(make_client):

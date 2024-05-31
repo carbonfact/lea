@@ -248,7 +248,7 @@ class Runner:
         incremental: bool,
     ):
         # Let's determine which views need to be run
-        selected_view_keys = self.select_view_keys(*select)
+        selected_view_keys = self.select_view_keys(*(select or []))
 
         # Let the user know the views we've decided which views will run
         self.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
@@ -443,7 +443,7 @@ class Runner:
 
     def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
         # Let's determine which views need to be run
-        selected_view_keys = self.select_view_keys(*select_views)
+        selected_view_keys = self.select_view_keys(*(select_views or []))
 
         # Now we determine the table reference mapping
         table_reference_mapping = self._make_table_reference_mapping(
@@ -577,9 +577,9 @@ class Runner:
         readme.write_text(readme_content.getvalue())
         self.log(f"Wrote {readme}", style="bold green")
 
-    def calculate_diff(self, select: set[str], target_client: lea.clients.Client) -> str:
+    def calculate_diff(self, select: list[str], target_client: lea.clients.Client) -> str:
         # Let's determine which views need to be run
-        selected_view_keys = self.select_view_keys(*select)
+        selected_view_keys = self.select_view_keys(*(select or []))
 
         # HACK
         if not isinstance(self.client, lea.clients.DuckDB):
