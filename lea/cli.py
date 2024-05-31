@@ -128,16 +128,6 @@ def diff(
     print(diff)
 
 
-@app.command()
-def serve(
-    dev: bool = False,
-    port: int = 8000,
-):
-    import uvicorn
-
-    uvicorn.run("lea.api:app", host="127.0.0.1", port=port, reload=dev)
-
-
 def make_app(make_client):
     # This is a hack to make the client available to the commands
     global _make_client
