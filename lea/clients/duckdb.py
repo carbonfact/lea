@@ -130,7 +130,10 @@ class DuckDB(Client):
         ('schema', 'subschema', 'table')
 
         """
-        database, leftover = table_reference.split(".", 1)
+        try:
+            database, leftover = table_reference.split(".", 1)
+        except ValueError:
+            raise Exception("Specify the full path to the table, e.g. 'schema.table'")
         if database == self.path.stem:
             schema, leftover = leftover.split(".", 1)
         else:
