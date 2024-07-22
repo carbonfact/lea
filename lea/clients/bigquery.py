@@ -38,6 +38,9 @@ class BigQuery(Client):
         from google.cloud import bigquery
 
         return bigquery.Client(
+            # TODO: enable this so the project ID from the credentials is used, which makes sense
+            # when the client is located in the project doing the compute (with slots allocated)
+            #project=self.credentials.project_id,
             project=self.project_id,
             credentials=self.credentials,
             location=self.location,
@@ -52,7 +55,7 @@ class BigQuery(Client):
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset = self.client.create_dataset(dataset, exists_ok=True)
-        console.log(f"Created dataset {dataset.dataset_id}")
+        console.log(f"Created dataset {dataset.dataset_id} in project {dataset.project}")
 
     def teardown(self):
         from google.cloud import bigquery
@@ -65,7 +68,7 @@ class BigQuery(Client):
 
     def make_job_config(self, view) -> dict:
         table_reference = view.table_reference
-        schema, table_reference_without_schema = table_reference.split(".", 1)
+        project_id, schema, table_reference_without_schema = table_reference.split(".", 2)
         return {
             "query": {
                 "query": view.query,
@@ -144,16 +147,15 @@ class BigQuery(Client):
             schema=[],
             write_disposition="WRITE_TRUNCATE",
         )
-        schema, table_reference = table_reference.split(".", 1)
         job = self.client.load_table_from_dataframe(
             dataframe,
-            f"{self.project_id}.{self.dataset_name}.{table_reference}",
+            table_reference,
             job_config=job_config,
         )
         job.result()
 
     def delete_table_reference(self, table_reference):
-        _, table_reference = table_reference.split(".", 1)
+        _, table_reference = table_reference.rsplit(".", 1)
         self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{table_reference}")
 
     def read_sql(self, query: str) -> pd.DataFrame:
@@ -217,6 +219,7 @@ class BigQuery(Client):
             table_reference = table_reference.replace(
                 f"{self._dataset_name}.", f"{self.dataset_name}."
             )
+            table_reference = f"{self.project_id}.{table_reference}"
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         return table_reference

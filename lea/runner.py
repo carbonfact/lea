@@ -288,16 +288,23 @@ class Runner:
             table.add_column("duration", justify="right")
             table.add_column("cost", justify="right")
 
-            not_done = [view_key for view_key in execution_order if view_key not in cache]
-            for i, view_key in list(enumerate(not_done, start=1))[-show:]:
+            def get_status(view_key):
                 if view_key in exceptions:
-                    status = ERRORED
+                    return ERRORED
                 elif view_key in skipped:
-                    status = SKIPPED
+                    return SKIPPED
                 elif view_key in jobs_ended_at:
-                    status = SUCCESS
-                else:
-                    status = RUNNING
+                    return SUCCESS
+                return RUNNING
+
+            not_done = [view_key for view_key in execution_order if view_key not in cache]
+            statuses = {view_key: get_status(view_key) for view_key in not_done}
+            not_done = (
+                [view_key for view_key in not_done if statuses[view_key] != RUNNING] +
+                [view_key for view_key in not_done if statuses[view_key] == RUNNING]
+            )
+            for i, view_key in list(enumerate(not_done, start=1))[-show:]:
+                status = statuses[view_key]
                 duration = (
                     (jobs_ended_at.get(view_key, dt.datetime.now()) - jobs_started_at[view_key])
                     if view_key in jobs_started_at
@@ -308,7 +315,7 @@ class Runner:
                 result = jobs[view_key].result() if status == SUCCESS else None
                 cost = result.cost if result else None
                 table.add_row(
-                    str(i),
+                    str(i) if status != RUNNING else "",
                     str(self.views[view_key]),
                     status,
                     duration_str,
@@ -331,7 +338,7 @@ class Runner:
         if cache:
             self.log(f"{len(cache):,d} views already done")
 
-        with rich.live.Live(display_progress(), vertical_overflow="visible") as live:
+        with rich.live.Live(display_progress(), vertical_overflow="ellipsis") as live:
             while self.dag.is_active():
                 for view_key in self.dag.get_ready():
                     # Check if the view_key can be skipped or not
