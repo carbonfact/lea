@@ -299,10 +299,9 @@ class Runner:
 
             not_done = [view_key for view_key in execution_order if view_key not in cache]
             statuses = {view_key: get_status(view_key) for view_key in not_done}
-            not_done = (
-                [view_key for view_key in not_done if statuses[view_key] != RUNNING] +
-                [view_key for view_key in not_done if statuses[view_key] == RUNNING]
-            )
+            not_done = [view_key for view_key in not_done if statuses[view_key] != RUNNING] + [
+                view_key for view_key in not_done if statuses[view_key] == RUNNING
+            ]
             for i, view_key in list(enumerate(not_done, start=1))[-show:]:
                 status = statuses[view_key]
                 duration = (
