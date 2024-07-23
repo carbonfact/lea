@@ -42,17 +42,17 @@ class DuckDB(Client):
     def prepare(self, views):
         schemas = set(view.schema for view in views)
         for schema in schemas:
-            self.con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+            self.con.cursor().sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
             console.log(f"Created schema {schema}")
 
     def teardown(self):
         os.remove(self.path)
 
     def materialize_sql_view(self, view):
-        self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS ({view.query})")
+        self.con.cursor().sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS ({view.query})")
 
     def materialize_sql_view_incremental(self, view, incremental_field_name):
-        self.con.sql(
+        self.con.cursor().sql(
             f"""
         INSERT INTO {view.table_reference}
         SELECT *
@@ -63,14 +63,18 @@ class DuckDB(Client):
 
     def materialize_python_view(self, view):
         dataframe = self.read_python_view(view)  # noqa: F841
-        self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
+        self.con.cursor().sql(
+            f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe"
+        )
 
     def materialize_json_view(self, view):
         dataframe = pd.read_json(view.path)  # noqa: F841
-        self.con.sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe")
+        self.con.cursor().sql(
+            f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe"
+        )
 
     def delete_table_reference(self, table_reference):
-        self.con.sql(f"DROP TABLE IF EXISTS {table_reference}")
+        self.con.cursor().sql(f"DROP TABLE IF EXISTS {table_reference}")
 
     def read_sql(self, query: str) -> pd.DataFrame:
         return self.con.cursor().sql(query).df()
@@ -154,8 +158,8 @@ class DuckDB(Client):
         try:
             # Concatenate all the statements into one string and execute them
             sql = "\n".join(f"{statement};" for statement in statements)
-            self.con.execute(f"BEGIN TRANSACTION; {sql} COMMIT;")
+            self.con.cursor().execute(f"BEGIN TRANSACTION; {sql} COMMIT;")
         except duckdb.ProgrammingError as e:
             # Make sure to rollback if there's an error
-            self.con.execute("ROLLBACK")
+            self.con.cursor().execute("ROLLBACK")
             raise e
