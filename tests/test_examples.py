@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pathlib
 import shutil
-import pytest
 
 import duckdb
 from typer.testing import CliRunner
@@ -35,7 +34,6 @@ def test_jaffle_shop(monkeypatch):
     with duckdb.connect("tests/jaffle_shop_max.db") as con:
         tables = con.sql("SELECT table_schema, table_name FROM information_schema.tables").df()
     assert tables.shape[0] == 7
-    
 
     # Check number of rows in core__customers
     with duckdb.connect("tests/jaffle_shop_max.db") as con:
@@ -203,52 +201,54 @@ def test_incremental(monkeypatch):
     with duckdb.connect("tests/incremental_max.db") as con:
         assert len(con.sql("SELECT * FROM core.events").df()) == 5
 
+
 def test_jaffle_shop_materialize_ctes(monkeypatch):
     app = make_app(make_client=make_client)
     here = pathlib.Path(__file__).parent
     views_path = str((here.parent / "examples" / "jaffle_shop" / "views").absolute())
 
-    # Set environment variables
     monkeypatch.setenv("LEA_USERNAME", "max")
     monkeypatch.setenv("LEA_WAREHOUSE", "duckdb")
     monkeypatch.setenv("LEA_DUCKDB_PATH", "jaffle_shop_ctes.db")
 
-    # Prepare
     result = runner.invoke(app, ["prepare", views_path])
-    assert result.exit_code == 0, f"Prepare command failed with exit code {result.exit_code}: {result.output}"
+    assert (
+        result.exit_code == 0
+    ), f"Prepare command failed with exit code {result.exit_code}: {result.output}"
 
-    # Run with materialize_ctes option
     result = runner.invoke(app, ["run", views_path, "--fresh", "--materialize_ctes"])
     print(result.output)
 
-    # Run with materialize_ctes option
     result = runner.invoke(app, ["run", views_path, "--fresh", "--materialize_ctes"])
     print(result.output)
-    assert result.exit_code == 0, f"Run command failed with exit code {result.exit_code}: {result.output}"
+    assert (
+        result.exit_code == 0
+    ), f"Run command failed with exit code {result.exit_code}: {result.output}"
 
-    # Connect to the database and check for materialized CTEs
     with duckdb.connect("jaffle_shop_ctes_max.db") as con:
         # Get all tables
-        tables = con.execute("""
-            SELECT table_schema, table_name 
-            FROM information_schema.tables 
+        tables = con.execute(
+            """
+            SELECT table_schema, table_name
+            FROM information_schema.tables
             WHERE table_schema IN ('core', 'analytics', 'staging')
-        """).fetchall()
-        
+        """
+        ).fetchall()
+
         print("\nAll tables:")
         for schema, table in tables:
             print(f"{schema}.{table}")
-        
+
         # Check for CTE tables
-        cte_tables = [f"{schema}.{table}" for schema, table in tables if '__' in table]
+        cte_tables = [f"{schema}.{table}" for schema, table in tables if "__" in table]
         print("\nCTE tables:")
         for table in cte_tables:
             print(table)
-        
+
         assert len(cte_tables) > 0, "No CTE tables found"
-        
+
         # Check for specific CTEs
-        expected_ctes = ['core.customers__customer_orders', 'core.customers__customer_payments']
+        expected_ctes = ["core.customers__customer_orders", "core.customers__customer_payments"]
         for cte in expected_ctes:
             assert cte in cte_tables, f"{cte} CTE not found"
 
@@ -263,7 +263,6 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
             except duckdb.CatalogException as e:
                 assert False, f"Materialized CTE '{cte_name}' not found or not accessible: {e}"
 
-        # Verify main view
         try:
             result = con.execute("SELECT * FROM core.customers LIMIT 5").fetchall()
             print("\ncore.customers data:")

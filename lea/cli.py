@@ -68,7 +68,9 @@ def run(
     fail_fast: bool = False,
     wap: bool = False,
     incremental: bool = True,
-    materialize_ctes: bool = typer.Option(False, "--materialize_ctes", help="Materialize CTEs as separate tables"),
+    materialize_ctes: bool = typer.Option(
+        False, "--materialize_ctes", help="Materialize CTEs as separate tables"
+    ),
     env: str = EnvPath,
 ):
     client = _make_client(production, wap_mode=wap)

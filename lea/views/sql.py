@@ -14,8 +14,6 @@ import sqlglot
 import sqlglot.optimizer.qualify
 import sqlglot.optimizer.scope
 
-from typing import Optional
-
 import lea
 
 from .base import Field, View
@@ -219,7 +217,13 @@ class SQLView(View):
 
 
 class InMemorySQLView(SQLView):
-    def __init__(self, key: tuple[str, ...], query: str, client: lea.clients.base.Client, origin: Optional['InMemorySQLView'] = None):
+    def __init__(
+        self,
+        key: tuple[str, ...],
+        query: str,
+        client: lea.clients.base.Client,
+        origin: InMemorySQLView | None = None,
+    ):
         self._key = key
         self._query = query
         self.client = client
@@ -232,7 +236,7 @@ class InMemorySQLView(SQLView):
     @property
     def query(self):
         return self._query
-    
+
     @query.setter
     def query(self, new_query):
         self._query = new_query

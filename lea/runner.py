@@ -15,12 +15,10 @@ import pandas as pd
 import rich.console
 import rich.live
 import rich.table
-
 import sqlglot
-from sqlglot.expressions import With, CTE
-from lea.views.sql import SQLView, InMemorySQLView
 
 import lea
+from lea.views.sql import InMemorySQLView, SQLView
 
 console = rich.console.Console(force_interactive=True)
 
@@ -134,14 +132,14 @@ class Runner:
             for q in _expand_query(query)
             for selected in self.dag.select(q)
         }
-    
+
     def _split_query(self, query):
         ast = sqlglot.parse_one(query, dialect=self.client.sqlglot_dialect)
         ctes = {}
         main_query = query
 
         if isinstance(ast, sqlglot.exp.Select):
-            with_clause = ast.args.get('with')
+            with_clause = ast.args.get("with")
             if with_clause and isinstance(with_clause, sqlglot.exp.With):
                 for cte in with_clause.expressions:
                     if isinstance(cte, sqlglot.exp.CTE):
@@ -150,17 +148,16 @@ class Runner:
                         ctes[cte_name] = cte_query
 
                 # Extract the main query (the part after the CTEs)
-                if 'expression' in ast.args:
-                    main_query = ast.args['expression'].sql(dialect=self.client.sqlglot_dialect)
+                if "expression" in ast.args:
+                    main_query = ast.args["expression"].sql(dialect=self.client.sqlglot_dialect)
                 else:
                     # If 'expression' is not in args, use the entire SELECT statement
                     main_query = ast.sql(dialect=self.client.sqlglot_dialect)
 
-        self.log(f"Split query result:")
+        self.log("Split query result:")
         self.log(f"Number of CTEs found: {len(ctes)}")
         for cte_name, cte_query in ctes.items():
             self.log(f"CTE '{cte_name}': {cte_query[:100]}...")
-        self.log(f"Main query: {main_query[:100]}...")
 
         return ctes, main_query
 
@@ -182,9 +179,7 @@ class Runner:
                 self.log(f"Attempting to materialize CTE: {materialized_table}")
                 self.log(f"CTE Query: {cte_query}")
                 cte_view = InMemorySQLView(
-                    key=tuple(materialized_table.split('.')),
-                    query=cte_query,
-                    client=self.client
+                    key=tuple(materialized_table.split(".")), query=cte_query, client=self.client
                 )
                 self.client.materialize_view(cte_view)
                 self.log(f"Successfully materialized CTE: {materialized_table}")
@@ -197,11 +192,7 @@ class Runner:
         try:
             self.log(f"Attempting to materialize main view: {view.key[0]}.{view.key[1]}")
             self.log(f"Main Query: {main_query}")
-            updated_view = InMemorySQLView(
-                key=view.key,
-                query=main_query,
-                client=self.client
-            )
+            updated_view = InMemorySQLView(key=view.key, query=main_query, client=self.client)
             self.client.materialize_view(updated_view)
             self.log(f"Successfully materialized main view: {view.key[0]}.{view.key[1]}")
         except Exception as e:
@@ -454,9 +445,7 @@ class Runner:
                         )
                         if materialize_ctes and isinstance(view, SQLView):
                             print(self._materialize_ctes_and_view)
-                            job = functools.partial(
-                                self._materialize_ctes_and_view, 
-                                view=view)
+                            job = functools.partial(self._materialize_ctes_and_view, view=view)
                         else:
                             job = functools.partial(
                                 self.client.materialize_view,
