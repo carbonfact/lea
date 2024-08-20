@@ -149,7 +149,7 @@ class BigQuery(Client):
         )
         job = self.client.load_table_from_dataframe(
             dataframe,
-            table_reference.replace('`', ''),
+            table_reference.replace("`", ""),
             job_config=job_config,
         )
         job.result()
