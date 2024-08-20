@@ -211,7 +211,7 @@ class BigQuery(Client):
         'dataset.schema__table'
 
         >>> client._view_key_to_table_reference(("schema", "table"), with_context=True)
-        'dataset_max.schema__table'
+        'project.dataset_max.schema__table'
 
         """
         table_reference = f"{self._dataset_name}.{lea._SEP.join(view_key)}"
