@@ -149,7 +149,7 @@ class BigQuery(Client):
         )
         job = self.client.load_table_from_dataframe(
             dataframe,
-            table_reference,
+            table_reference.replace('`', ''),
             job_config=job_config,
         )
         job.result()
@@ -219,7 +219,7 @@ class BigQuery(Client):
             table_reference = table_reference.replace(
                 f"{self._dataset_name}.", f"{self.dataset_name}."
             )
-            table_reference = f"{self.project_id}.{table_reference}"
+            table_reference = f"`{self.project_id}`.{table_reference}"
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         return table_reference
