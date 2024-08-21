@@ -51,16 +51,6 @@ class DuckDB(Client):
     def materialize_sql_view(self, view):
         self.con.cursor().sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS ({view.query})")
 
-    def materialize_sql_view_incremental(self, view, incremental_field_name):
-        self.con.cursor().sql(
-            f"""
-        INSERT INTO {view.table_reference}
-        SELECT *
-        FROM ({view.query})
-        WHERE {incremental_field_name} > (SELECT MAX({incremental_field_name}) FROM {view.table_reference})
-        """
-        )
-
     def materialize_python_view(self, view):
         dataframe = self.read_python_view(view)  # noqa: F841
         self.con.cursor().sql(

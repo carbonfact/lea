@@ -100,38 +100,6 @@ class BigQuery(Client):
         cost_per_tb = 5
         return QueryResult(cost=(job.total_bytes_processed / 10**12) * cost_per_tb)
 
-    def materialize_sql_view_incremental(self, view, incremental_field_name):
-        table_reference = view.table_reference
-        schema, table_reference_without_schema = table_reference.split(".", 1)
-        job = self.client.create_job(
-            {
-                "query": {
-                    "query": f"""
-                    SELECT *
-                    FROM ({view.query})
-                    WHERE {incremental_field_name} > (SELECT MAX({incremental_field_name}) FROM {view.table_reference})
-                    """,
-                    "destinationTable": {
-                        "projectId": self.project_id,
-                        "datasetId": self.dataset_name,
-                        "tableId": table_reference_without_schema,
-                    },
-                    "createDisposition": "CREATE_IF_NEEDED",
-                    "writeDisposition": "WRITE_APPEND",
-                },
-                "labels": {
-                    "job_dataset": self.dataset_name,
-                    "job_schema": schema,
-                    "job_table": table_reference_without_schema.replace(
-                        f"{lea._SEP}{lea._WAP_MODE_SUFFIX}", ""
-                    ),
-                    "job_username": self.username,
-                    "job_is_github_actions": "GITHUB_ACTIONS" in os.environ,
-                },
-            }
-        )
-        job.result()
-
     def materialize_python_view(self, view):
         dataframe = self.read_python_view(view)
         self._materialize_pandas_dataframe(dataframe, view.table_reference)
@@ -211,7 +179,7 @@ class BigQuery(Client):
         'dataset.schema__table'
 
         >>> client._view_key_to_table_reference(("schema", "table"), with_context=True)
-        'project.dataset_max.schema__table'
+        '`project`.dataset_max.schema__table'
 
         """
         table_reference = f"{self._dataset_name}.{lea._SEP.join(view_key)}"

@@ -168,35 +168,3 @@ def test_diff(monkeypatch):
 """
         in diff.stdout
     )
-
-
-def test_incremental(monkeypatch):
-    app = make_app(make_client=make_client)
-    here = pathlib.Path(__file__).parent
-    today_views_path = str((here.parent / "examples" / "incremental" / "views_today").absolute())
-    tomorrow_views_path = str(
-        (here.parent / "examples" / "incremental" / "views_tomorrow").absolute()
-    )
-
-    # Set environment variables
-    monkeypatch.setenv("LEA_USERNAME", "max")
-    monkeypatch.setenv("LEA_WAREHOUSE", "duckdb")
-    monkeypatch.setenv("LEA_DUCKDB_PATH", "tests/incremental.db")
-
-    # Prepare
-    assert runner.invoke(app, ["prepare", today_views_path]).exit_code == 0
-
-    # Run today's data
-    assert runner.invoke(app, ["run", today_views_path]).exit_code == 0
-    with duckdb.connect("tests/incremental_max.db") as con:
-        assert len(con.sql("SELECT * FROM core.events").df()) == 3
-
-    # Run tomorrow's data
-    assert runner.invoke(app, ["run", tomorrow_views_path]).exit_code == 0
-    with duckdb.connect("tests/incremental_max.db") as con:
-        assert len(con.sql("SELECT * FROM core.events").df()) == 4
-
-    # Run tomorrow's data with a full refresh
-    assert runner.invoke(app, ["run", tomorrow_views_path, "--no-incremental"]).exit_code == 0
-    with duckdb.connect("tests/incremental_max.db") as con:
-        assert len(con.sql("SELECT * FROM core.events").df()) == 5
