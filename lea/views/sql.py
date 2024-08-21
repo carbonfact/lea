@@ -38,6 +38,32 @@ class CommentBlock(collections.UserList):
         return self[-1].line
 
 
+def merge_adjacent_comments(comments: list[Comment]) -> list[CommentBlock]:
+    if not comments:
+        return []
+
+    # Sort comments by their line number
+    comments.sort(key=lambda c: c.line)
+
+    merged_blocks = []
+    current_block = [comments[0]]
+
+    # Iterate through comments and group adjacent ones
+    for i in range(1, len(comments)):
+        if comments[i].line == comments[i - 1].line + 1:  # Check if adjacent
+            current_block.append(comments[i])
+        else:
+            # Create a CommentBlock for the current group
+            merged_blocks.append(CommentBlock(current_block))
+            # Start a new block
+            current_block = [comments[i]]
+
+    # Add the last block
+    merged_blocks.append(CommentBlock(current_block))
+
+    return merged_blocks
+
+
 @dataclasses.dataclass
 class SQLView(View):
     @property
@@ -72,8 +98,9 @@ class SQLView(View):
 
     @property
     def fields(self):
-        if hasattr(self, "_fields"):
-            return self._fields
+        # TMP
+        # if hasattr(self, "_fields"):
+        #     return self._fields
         try:
             field_names = self.ast.named_selects
         except sqlglot.errors.ParseError:
@@ -150,23 +177,7 @@ class SQLView(View):
         ]
 
         # Pack comments into CommentBlock objects
-        comment_blocks = [CommentBlock([comment]) for comment in comments]
-        comment_blocks = sorted(comment_blocks, key=lambda cb: cb.first_line)
-
-        change = True
-        while change:
-            change = False
-            for comment_block in comment_blocks:
-                next_comment_block = next(
-                    (cb for cb in comment_blocks if cb.first_line == comment_block.last_line + 1),
-                    None,
-                )
-                if next_comment_block:
-                    comment_block.extend(next_comment_block)
-                    next_comment_block.clear()
-                    comment_blocks = [cb for cb in comment_blocks if cb]
-                    change = True
-                    break
+        comment_blocks = merge_adjacent_comments(comments)
 
         # We assume the tokens are stored. Therefore, by looping over them and building a dictionary,
         # each key will be unique and the last value will be the last variable in the line.
