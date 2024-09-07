@@ -341,14 +341,6 @@ class Runner:
                 self.client.delete_table_reference(existing_view_keys[view_key])
             self.log(f"Removed {'.'.join(view_key)}")
 
-        # Some views are incremental. But incremental updates can only be made if the view exists
-        # in the first place. To handle this, we remove the #INCREMENTAL tag from fields that are
-        # part of views that don't exist yet.
-        for view_key in selected_view_keys - (set(existing_view_keys) if incremental else set()):
-            view = self.regular_views[view_key]
-            for i, field in enumerate(view.fields):
-                view._fields[i].tags.discard("#INCREMENTAL")  # HACK
-
         def display_progress() -> rich.table.Table:
             if not self.verbose:
                 return None

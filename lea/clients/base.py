@@ -40,17 +40,7 @@ class Client(abc.ABC):
 
     def materialize_view(self, view: lea.views.View) -> QueryResult:
         if isinstance(view, lea.views.SQLView):
-            incremental_fields = [field for field in view.fields if field.is_incremental]
-            if len(incremental_fields) > 1:
-                raise ValueError(
-                    f"Multiple incremental fields are not supported (found in {str(self)})"
-                )
-            elif len(incremental_fields) == 1:
-                return self.materialize_sql_view_incremental(
-                    view, incremental_field_name=incremental_fields[0].name
-                )
-            else:
-                return self.materialize_sql_view(view)
+            return self.materialize_sql_view(view)
         elif isinstance(view, lea.views.PythonView):
             return self.materialize_python_view(view)
         elif isinstance(view, lea.views.JSONView):
@@ -60,12 +50,6 @@ class Client(abc.ABC):
 
     @abc.abstractmethod
     def materialize_sql_view(self, view: lea.views.SQLView):
-        ...
-
-    @abc.abstractmethod
-    def materialize_sql_view_incremental(
-        self, view: lea.views.SQLView, incremental_field_name: str
-    ):
         ...
 
     @abc.abstractmethod

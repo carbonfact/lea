@@ -61,7 +61,7 @@ class View(abc.ABC):
             yield
 
         for field in self.fields:
-            for tag in filter(lambda t: t not in {"#INCREMENTAL"}, field.tags):
+            for tag in field.tags:
                 if tag == "#NO_NULLS":
                     yield lea.views.InMemorySQLView(
                         key=(*self.key, field.name, "NO_NULLS"),
@@ -105,10 +105,6 @@ class Field:
     name: str
     tags: set[str]
     description: str
-
-    @property
-    def is_incremental(self):
-        return "#INCREMENTAL" in self.tags
 
     @property
     def is_unique(self):
