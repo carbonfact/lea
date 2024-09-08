@@ -41,7 +41,7 @@ class BigQuery(Client):
             # TODO: enable this so the project ID from the credentials is used, which makes sense
             # when the client is located in the project doing the compute (with slots allocated)
             project=self.credentials.project_id,
-            #project=self.project_id,
+            # project=self.project_id,
             credentials=self.credentials,
             location=self.location,
         )
