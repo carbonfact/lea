@@ -157,7 +157,7 @@ class BigQuery(Client):
         """
         )
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool, with_project_id=False) -> str:
         """
 
         >>> client = BigQuery(
@@ -190,6 +190,8 @@ class BigQuery(Client):
             table_reference = f"`{self.project_id}`.{table_reference}"
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
+        elif with_project_id:
+            table_reference = f"{self.project_id}.{table_reference}"
         return table_reference
 
     def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
