@@ -157,7 +157,9 @@ class BigQuery(Client):
         """
         )
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool, with_project_id=False) -> str:
+    def _view_key_to_table_reference(
+        self, view_key: tuple[str], with_context: bool, with_project_id=False
+    ) -> str:
         """
 
         >>> client = BigQuery(

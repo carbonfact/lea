@@ -216,19 +216,19 @@ class Runner:
             warnings.warn("Setting freeze_unselected without selecting views is not encouraged")
 
         table_reference_mapping = {
-            self.client._view_key_to_table_reference(
-                view_key, with_context=False
-            ): (
+            self.client._view_key_to_table_reference(view_key, with_context=False): (
                 # When freeze_unselected is specified, it means we want our views to target the production
                 # database. Therefore, we only have to rename the table references for the views that were
                 # selected.
-                self.client._view_key_to_table_reference(view_key, with_context=True) if (freeze_unselected and view_key in selected_view_keys)
+                self.client._view_key_to_table_reference(view_key, with_context=True)
+                if (freeze_unselected and view_key in selected_view_keys)
                 # If freeze_unselected is specified, we want to make sure the unselected views are
                 # targeting the right project.
-                else self.client._view_key_to_table_reference(view_key, with_context=False, with_project_id=True)
+                else self.client._view_key_to_table_reference(
+                    view_key, with_context=False, with_project_id=True
+                )
             )
-            for view_key in
-            self.regular_views
+            for view_key in self.regular_views
         }
 
         return table_reference_mapping
