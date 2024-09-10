@@ -17,9 +17,10 @@ console = rich.console.Console()
 
 
 class BigQuery(Client):
-    def __init__(self, credentials, location, project_id, dataset_name, username, wap_mode):
+    def __init__(self, credentials, location, write_project_id, compute_project_id, dataset_name, username, wap_mode):
         self.credentials = credentials
-        self.project_id = project_id
+        self.write_project_id = write_project_id
+        self.compute_project_id = compute_project_id
         self.location = location
         self._dataset_name = dataset_name
         self.username = username
@@ -38,10 +39,7 @@ class BigQuery(Client):
         from google.cloud import bigquery
 
         return bigquery.Client(
-            # TODO: enable this so the project ID from the credentials is used, which makes sense
-            # when the client is located in the project doing the compute (with slots allocated)
-            project=self.credentials.project_id,
-            # project=self.project_id,
+            project=self.compute_project_id,
             credentials=self.credentials,
             location=self.location,
         )
@@ -50,7 +48,7 @@ class BigQuery(Client):
         from google.cloud import bigquery
 
         dataset_ref = bigquery.DatasetReference(
-            project=self.project_id, dataset_id=self.dataset_name
+            project=self.write_project_id, dataset_id=self.dataset_name
         )
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
@@ -73,7 +71,7 @@ class BigQuery(Client):
             "query": {
                 "query": view.query,
                 "destinationTable": {
-                    "projectId": self.project_id,
+                    "projectId": self.write_project_id,
                     "datasetId": self.dataset_name,
                     "tableId": table_reference_without_schema,
                 },
@@ -124,13 +122,13 @@ class BigQuery(Client):
 
     def delete_table_reference(self, table_reference):
         _, table_reference = table_reference.rsplit(".", 1)
-        self.client.delete_table(f"{self.project_id}.{self.dataset_name}.{table_reference}")
+        self.client.delete_table(f"{self.write_project_id}.{self.dataset_name}.{table_reference}")
 
     def read_sql(self, query: str) -> pd.DataFrame:
         return pandas_gbq.read_gbq(
             query,
             credentials=self.client._credentials,
-            project_id=self.project_id,
+            project_id=self.write_project_id,
             location=self.location,
             progress_bar_type=None,
         )
@@ -189,11 +187,11 @@ class BigQuery(Client):
             table_reference = table_reference.replace(
                 f"{self._dataset_name}.", f"{self.dataset_name}."
             )
-            table_reference = f"`{self.project_id}`.{table_reference}"
+            table_reference = f"`{self.write_project_id}`.{table_reference}"
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         elif with_project_id:
-            table_reference = f"{self.project_id}.{table_reference}"
+            table_reference = f"{self.write_project_id}.{table_reference}"
         return table_reference
 
     def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:

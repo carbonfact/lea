@@ -20,12 +20,15 @@ def make_client(production: bool, wap_mode=False):
         scopes = scopes_str.split(",")
         scopes = [scope.strip() for scope in scopes]
 
+        credentials = service_account.Credentials.from_service_account_info(
+            json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"], strict=False), scopes=scopes
+        )
+
         return BigQuery(
-            credentials=service_account.Credentials.from_service_account_info(
-                json.loads(os.environ["LEA_BQ_SERVICE_ACCOUNT"], strict=False), scopes=scopes
-            ),
+            credentials=credentials,
             location=os.environ["LEA_BQ_LOCATION"],
-            project_id=os.environ["LEA_BQ_PROJECT_ID"],
+            write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
+            compute_project_id=os.environ.get("LEA_BQ_COMPUTE_PROJECT_ID", credentials.project_id),
             dataset_name=os.environ["LEA_BQ_DATASET_NAME"],
             username=username,
             wap_mode=wap_mode,
