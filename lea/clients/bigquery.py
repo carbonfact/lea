@@ -17,7 +17,16 @@ console = rich.console.Console()
 
 
 class BigQuery(Client):
-    def __init__(self, credentials, location, write_project_id, compute_project_id, dataset_name, username, wap_mode):
+    def __init__(
+        self,
+        credentials,
+        location,
+        write_project_id,
+        compute_project_id,
+        dataset_name,
+        username,
+        wap_mode,
+    ):
         self.credentials = credentials
         self.write_project_id = write_project_id
         self.compute_project_id = compute_project_id
