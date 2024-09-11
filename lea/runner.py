@@ -461,9 +461,7 @@ class Runner:
 
         # List assertion tests
         assertion_tests = [
-            test
-            for view in self.regular_views.values()
-            for test in view.yield_assertion_tests()
+            test for view in self.regular_views.values() for test in view.yield_assertion_tests()
         ]
         self.log(f"Found {len(assertion_tests):,d} assertion tests")
 
@@ -545,10 +543,10 @@ class Runner:
                     content.write(f"{view.description}\n\n")
 
                 # Write down the query
-                table_reference = self.client._view_key_to_table_reference(view.key, with_context=False)
-                content.write(
-                    "```sql\n" "SELECT *\n" f"FROM {table_reference}\n" "```\n\n"
+                table_reference = self.client._view_key_to_table_reference(
+                    view.key, with_context=False
                 )
+                content.write("```sql\n" "SELECT *\n" f"FROM {table_reference}\n" "```\n\n")
                 # Write down the columns
                 view_columns = pd.DataFrame(
                     {
