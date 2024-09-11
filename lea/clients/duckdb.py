@@ -20,16 +20,20 @@ class DuckDB(Client):
     def __init__(self, path: str, username: str | None = None, wap_mode: bool = False):
         import duckdb
 
+        path_ = pathlib.Path(path)
         if path.startswith("md:"):
-            path = f"{path}_{username}" if username is not None else path
-        else:
-            path = pathlib.Path(path)
-            if username is not None:
-                path = (path.parent / f"{path.stem}_{username}{path.suffix}").absolute()
-        self.path = path
+            path_ = pathlib.Path(f"{path}_{username}" if username is not None else path)
+        elif username is not None:
+            path_ = pathlib.Path(path)
+            path_ = path_.parent / f"{path_.stem}_{username}{path_.suffix}"
+        self.path_ = path_
         self.username = username
         self.wap_mode = wap_mode
-        self.con = duckdb.connect(str(self.path))
+        self.con = (
+            duckdb.connect(":memory:")
+            if path == ":memory:"
+            else duckdb.connect(str(self.path_.absolute()))
+        )
 
     @property
     def sqlglot_dialect(self):
@@ -73,7 +77,7 @@ class DuckDB(Client):
         return self.read_sql(
             f"""
         SELECT
-            '{self.path.stem}' || '.' || schema_name || '.' || table_name AS table_reference,
+            '{self.path_.stem}' || '.' || schema_name || '.' || table_name AS table_reference,
             estimated_size AS n_rows,  -- TODO: Figure out how to get the exact number
             estimated_size AS n_bytes  -- TODO: Figure out how to get this
         FROM duckdb_tables()
@@ -84,14 +88,16 @@ class DuckDB(Client):
         return self.read_sql(
             f"""
         SELECT
-            '{self.path.stem}' || '.' || table_schema || '.' || table_name AS table_reference,
+            '{self.path_.stem}' || '.' || table_schema || '.' || table_name AS table_reference,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
         """
         )
 
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_context: bool) -> str:
+    def _view_key_to_table_reference(
+        self, view_key: tuple[str], with_context: bool, with_project_id=False
+    ) -> str:
         """
 
         >>> client = DuckDB(path=":memory:", username=None)
@@ -103,16 +109,17 @@ class DuckDB(Client):
         'schema.subschema__table'
 
         """
+        leftover: list[str] = []
         schema, *leftover = view_key
         table_reference = f"{schema}.{lea._SEP.join(leftover)}"
         if with_context:
             if self.username:
-                table_reference = f"{self.path.stem}.{table_reference}"
+                table_reference = f"{self.path_.stem}.{table_reference}"
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         return table_reference
 
-    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
+    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str, ...]:
         """
 
         >>> client = DuckDB(path=":memory:", username=None)
@@ -125,7 +132,7 @@ class DuckDB(Client):
 
         """
         database, leftover = table_reference.split(".", 1)
-        if database == self.path.stem:
+        if database == self.path_.stem:
             schema, leftover = leftover.split(".", 1)
         else:
             schema = database

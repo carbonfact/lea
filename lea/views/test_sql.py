@@ -19,7 +19,8 @@ import lea
                 lea.clients.BigQuery(
                     credentials=None,
                     location=None,
-                    project_id=None,
+                    compute_project_id=None,
+                    write_project_id=None,
                     dataset_name="dataset",
                     username="max",
                     wap_mode=False,

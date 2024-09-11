@@ -172,7 +172,8 @@ class BigQuery(Client):
         >>> client = BigQuery(
         ...     credentials=None,
         ...     location="US",
-        ...     project_id="project",
+        ...     compute_project_id="compute",
+        ...     write_project_id="write",
         ...     dataset_name="dataset",
         ...     username="max",
         ...     wap_mode=False
@@ -188,7 +189,7 @@ class BigQuery(Client):
         'dataset.schema__table'
 
         >>> client._view_key_to_table_reference(("schema", "table"), with_context=True)
-        '`project`.dataset_max.schema__table'
+        '`write`.dataset_max.schema__table'
 
         """
         table_reference = f"{self._dataset_name}.{lea._SEP.join(view_key)}"
@@ -203,13 +204,14 @@ class BigQuery(Client):
             table_reference = f"{self.write_project_id}.{table_reference}"
         return table_reference
 
-    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
+    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str, ...]:
         """
 
         >>> client = BigQuery(
         ...     credentials=None,
         ...     location="US",
-        ...     project_id="project",
+        ...     compute_project_id="compute",
+        ...     write_project_id="write",
         ...     dataset_name="dataset",
         ...     username="max",
         ...     wap_mode=False

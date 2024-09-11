@@ -35,7 +35,7 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str]:
+    def _table_reference_to_view_key(self, table_reference: str) -> tuple[str, ...]:
         ...
 
     def materialize_view(self, view: lea.views.View) -> QueryResult:

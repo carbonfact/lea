@@ -233,7 +233,7 @@ class Runner:
             for view_key in self.regular_views
         }
 
-        return table_reference_mapping
+        return {k: v for k, v in table_reference_mapping.items() if v != k}
 
     def prepare(self):
         self.client.prepare(self.regular_views.values())
