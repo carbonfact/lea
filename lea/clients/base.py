@@ -31,7 +31,7 @@ class Client(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _view_key_to_table_reference(self, view_key: tuple[str], with_username: bool) -> str:
+    def _view_key_to_table_reference(self, view_key: tuple[str, ...], with_context: bool, with_project_id=False) -> str:
         ...
 
     @abc.abstractmethod
@@ -87,26 +87,29 @@ class Client(abc.ABC):
         }
 
     def make_column_test_unique(self, view: lea.views.View, column: str) -> str:
+        table_reference = self._view_key_to_table_reference(view.key, with_context=False)
         return self.load_assertion_test_template("#UNIQUE").render(
-            table=view.table_reference, column=column
+            table=table_reference, column=column
         )
 
     def make_column_test_unique_by(self, view: lea.views.View, column: str, by: str) -> str:
+        table_reference = self._view_key_to_table_reference(view.key, with_context=False)
         return self.load_assertion_test_template("#UNIQUE_BY").render(
-            table=view.table_reference,
+            table=table_reference,
             column=column,
             by=by,
         )
 
     def make_column_test_no_nulls(self, view: lea.views.View, column: str) -> str:
+        table_reference = self._view_key_to_table_reference(view.key, with_context=False)
         return self.load_assertion_test_template("#NO_NULLS").render(
-            table=view.table_reference, column=column
+            table=table_reference, column=column
         )
 
     def make_column_test_set(self, view: lea.views.View, column: str, elements: set[str]) -> str:
-        schema, *leftover = view.key
+        table_reference = self._view_key_to_table_reference(view.key, with_context=False)
         return self.load_assertion_test_template("#SET").render(
-            table=view.table_reference,
+            table=table_reference,
             column=column,
             elements=elements,
         )

@@ -461,7 +461,9 @@ class Runner:
 
         # List assertion tests
         assertion_tests = [
-            test for view in self.regular_views.values() for test in view.yield_assertion_tests()
+            test
+            for view in self.regular_views.values()
+            for test in view.yield_assertion_tests()
         ]
         self.log(f"Found {len(assertion_tests):,d} assertion tests")
 
@@ -488,7 +490,12 @@ class Runner:
             jobs = {executor.submit(self.client.read_sql, test.query): test for test in tests}
             for job in concurrent.futures.as_completed(jobs):
                 test = jobs[job]
-                conflicts = job.result()
+                try:
+                    conflicts = job.result()
+                except Exception as e:
+                    print(f"Error in {test}")
+                    print(e)
+                    raise RuntimeError(f"Test {test} failed")
                 if conflicts.empty:
                     self.log(f"SUCCESS {test}", style="bold green")
                 else:
@@ -538,8 +545,9 @@ class Runner:
                     content.write(f"{view.description}\n\n")
 
                 # Write down the query
+                table_reference = self.client._view_key_to_table_reference(view.key, with_context=False)
                 content.write(
-                    "```sql\n" "SELECT *\n" f"FROM {view.table_reference_in_production}\n" "```\n\n"
+                    "```sql\n" "SELECT *\n" f"FROM {table_reference}\n" "```\n\n"
                 )
                 # Write down the columns
                 view_columns = pd.DataFrame(

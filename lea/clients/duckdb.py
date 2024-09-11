@@ -53,18 +53,21 @@ class DuckDB(Client):
         os.remove(self.path)
 
     def materialize_sql_view(self, view):
-        self.con.cursor().sql(f"CREATE OR REPLACE TABLE {view.table_reference} AS ({view.query})")
+        table_reference = self._view_key_to_table_reference(view.key, with_context=True)
+        self.con.cursor().sql(f"CREATE OR REPLACE TABLE {table_reference} AS ({view.query})")
 
     def materialize_python_view(self, view):
         dataframe = self.read_python_view(view)  # noqa: F841
+        table_reference = self._view_key_to_table_reference(view.key, with_context=True)
         self.con.cursor().sql(
-            f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe"
+            f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe"
         )
 
     def materialize_json_view(self, view):
         dataframe = pd.read_json(view.path)  # noqa: F841
+        table_reference = self._view_key_to_table_reference(view.key, with_context=True)
         self.con.cursor().sql(
-            f"CREATE OR REPLACE TABLE {view.table_reference} AS SELECT * FROM dataframe"
+            f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe"
         )
 
     def delete_table_reference(self, table_reference):

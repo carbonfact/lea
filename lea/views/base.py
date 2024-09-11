@@ -42,14 +42,6 @@ class View(abc.ABC):
         return self.key[0]
 
     @property
-    def table_reference(self):
-        return self.client._view_key_to_table_reference(self.key, with_context=True)
-
-    @property
-    def table_reference_in_production(self):
-        return self.client._view_key_to_table_reference(self.key, with_context=False)
-
-    @property
     @abc.abstractmethod
     def dependent_view_keys(self) -> set[tuple[str, ...]]:
         """Return table references that the view depends on."""
