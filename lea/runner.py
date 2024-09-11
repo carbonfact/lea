@@ -226,7 +226,8 @@ class Runner:
                     else self.client._view_key_to_table_reference(
                         view_key, with_context=False, with_project_id=True
                     )
-                ) if freeze_unselected
+                )
+                if freeze_unselected
                 else self.client._view_key_to_table_reference(view_key, with_context=True)
             )
             for view_key in self.regular_views
