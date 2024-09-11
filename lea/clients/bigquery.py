@@ -74,7 +74,7 @@ class BigQuery(Client):
         console.log(f"Deleted dataset {dataset.dataset_id}")
 
     def make_job_config(self, view) -> dict:
-        table_reference = self.client._view_key_to_table_reference(self.key, with_context=True)
+        table_reference = self._view_key_to_table_reference(view.key, with_context=True)
         project_id, schema, table_reference_without_schema = table_reference.split(".", 2)
         return {
             "query": {
