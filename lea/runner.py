@@ -220,13 +220,14 @@ class Runner:
                 # When freeze_unselected is specified, it means we want our views to target the production
                 # database. Therefore, we only have to rename the table references for the views that were
                 # selected.
-                self.client._view_key_to_table_reference(view_key, with_context=True)
-                if (freeze_unselected and view_key in selected_view_keys)
-                # If freeze_unselected is specified, we want to make sure the unselected views are
-                # targeting the right project.
-                else self.client._view_key_to_table_reference(
-                    view_key, with_context=False, with_project_id=True
-                )
+                (
+                    self.client._view_key_to_table_reference(view_key, with_context=True)
+                    if view_key in selected_view_keys
+                    else self.client._view_key_to_table_reference(
+                        view_key, with_context=False, with_project_id=True
+                    )
+                ) if freeze_unselected
+                else self.client._view_key_to_table_reference(view_key, with_context=True)
             )
             for view_key in self.regular_views
         }
