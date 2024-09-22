@@ -212,7 +212,7 @@ class Runner:
         """
         Create InMemorySQLView objects for CTEs and the main query.
 
-        This method generates separate views for each CTE (Common Table Expression) 
+        This method generates separate views for each CTE (Common Table Expression)
         and the main query. It also sets up the dependencies between these views.
 
         Args:
@@ -222,7 +222,7 @@ class Runner:
             dependencies (dict[str, set[str]]): A dictionary of dependencies between CTEs and the main query.
 
         Returns:
-            list[InMemorySQLView]: A list of InMemorySQLView objects, including all CTE views 
+            list[InMemorySQLView]: A list of InMemorySQLView objects, including all CTE views
             and the main view.
 
         Note:
