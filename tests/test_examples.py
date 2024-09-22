@@ -168,3 +168,116 @@ def test_diff(monkeypatch):
 """
         in diff.stdout
     )
+
+
+def test_incremental(monkeypatch):
+    app = make_app(make_client=make_client)
+    here = pathlib.Path(__file__).parent
+    today_views_path = str((here.parent / "examples" / "incremental" / "views_today").absolute())
+    tomorrow_views_path = str(
+        (here.parent / "examples" / "incremental" / "views_tomorrow").absolute()
+    )
+
+    # Set environment variables
+    monkeypatch.setenv("LEA_USERNAME", "max")
+    monkeypatch.setenv("LEA_WAREHOUSE", "duckdb")
+    monkeypatch.setenv("LEA_DUCKDB_PATH", "example/incremental.db")
+
+    # Prepare
+    assert runner.invoke(app, ["prepare", today_views_path]).exit_code == 0
+
+    # Run today's data
+    assert runner.invoke(app, ["run", today_views_path]).exit_code == 0
+    with duckdb.connect("tests/incremental_max.db") as con:
+        assert len(con.sql("SELECT * FROM core.events").df()) == 3
+
+    # Run tomorrow's data
+    assert runner.invoke(app, ["run", tomorrow_views_path]).exit_code == 0
+    with duckdb.connect("tests/incremental_max.db") as con:
+        assert len(con.sql("SELECT * FROM core.events").df()) == 4
+
+    # Run tomorrow's data with a full refresh
+    assert runner.invoke(app, ["run", tomorrow_views_path, "--no-incremental"]).exit_code == 0
+    with duckdb.connect("tests/incremental_max.db") as con:
+        assert len(con.sql("SELECT * FROM core.events").df()) == 5
+
+
+def test_jaffle_shop_materialize_ctes(monkeypatch):
+    app = make_app(make_client=make_client)
+    here = pathlib.Path(__file__).parent
+    views_path = str((here.parent / "examples" / "jaffle_shop" / "views").absolute())
+
+    monkeypatch.setenv("LEA_USERNAME", "max")
+    monkeypatch.setenv("LEA_WAREHOUSE", "duckdb")
+    monkeypatch.setenv("LEA_DUCKDB_PATH", "jaffle_shop_ctes.db")
+
+    # Prepare
+    result = runner.invoke(app, ["prepare", views_path])
+    assert (
+        result.exit_code == 0
+    ), f"Prepare command failed with exit code {result.exit_code}: {result.output}"
+
+    # Run with CTE materialization
+    result = runner.invoke(app, ["run", views_path, "--fresh", "--materialize_ctes"])
+    print(result.output)
+    assert (
+        result.exit_code == 0
+    ), f"Run command failed with exit code {result.exit_code}: {result.output}"
+
+    with duckdb.connect("jaffle_shop_ctes_max.db") as con:
+        # Check if core schema exists
+        schemas = con.execute(
+            "SELECT DISTINCT schema_name FROM information_schema.schemata"
+        ).fetchall()
+        assert ("core",) in schemas, "Core schema not created"
+
+        # Get all tables in core schema
+        core_tables = con.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'core'
+        """
+        ).fetchall()
+
+        print("\nTables in core schema:")
+        for table in core_tables:
+            print(f"core.{table[0]}")
+
+        # Check for CTE tables in core schema
+        cte_tables = [f"core.{table[0]}" for table in core_tables if "__" in table[0]]
+        print("\nCTE tables in core schema:")
+        for table in cte_tables:
+            print(table)
+
+        assert len(cte_tables) > 0, "No CTE tables found in core schema"
+
+        # Check for specific CTEs from customers.sql
+        expected_customer_ctes = [
+            "core.customers__customer_orders",
+            "core.customers__customer_payments",
+        ]
+        for cte in expected_customer_ctes:
+            assert cte in cte_tables, f"{cte} CTE not found"
+
+        # Check for specific CTEs from orders.sql.jinja
+        expected_order_ctes = ["core.orders__order_payments"]
+        for cte in expected_order_ctes:
+            assert cte in cte_tables, f"{cte} CTE not found"
+
+        # Verify content of CTEs and main views
+        for table_name in (
+            expected_customer_ctes + expected_order_ctes + ["core.customers", "core.orders"]
+        ):
+            try:
+                result = con.execute(f"SELECT * FROM {table_name} LIMIT 5").fetchall()
+                print(f"\n{table_name} data:")
+                for row in result:
+                    print(row)
+                assert result, f"No data found in table: {table_name}"
+            except duckdb.CatalogException as e:
+                assert False, f"Table '{table_name}' not found or not accessible: {e}"
+
+        # WIP : dependencies
+
+        print("\nAll core schema CTE materialization tests passed successfully.")

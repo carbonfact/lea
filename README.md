@@ -349,6 +349,14 @@ lea teardown
 
 This deletes the schema created by `lea prepare`. This is handy during continuous integration. For example, you might create a temporary schema in a branch. You would typically want to delete it after testing is finished and/or when the branch is merged.
 
+### `lea materialize ctes`
+
+```sh
+lea run --materialize_ctes
+```
+
+Splits a query into its CTEs and materializes each one. For more information, [see](https://github.com/carbonfact/lea/issues/21).
+
 ### Jinja templating
 
 SQL queries can be templated with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/). A `.sql.jinja` extension is necessary for lea to recognise them.

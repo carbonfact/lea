@@ -228,10 +228,17 @@ class SQLView(View):
 
 
 class InMemorySQLView(SQLView):
-    def __init__(self, key: tuple[str, ...], query: str, client: lea.clients.base.Client):
+    def __init__(
+        self,
+        key: tuple[str, ...],
+        query: str,
+        client: lea.clients.base.Client,
+        origin: InMemorySQLView | None = None,
+    ):
         self._key = key
         self._query = query
         self.client = client
+        self.origin = origin
 
     @property
     def key(self):
@@ -240,3 +247,7 @@ class InMemorySQLView(SQLView):
     @property
     def query(self):
         return self._query
+
+    @query.setter
+    def query(self, new_query):
+        self._query = new_query

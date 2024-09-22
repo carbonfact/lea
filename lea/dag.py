@@ -44,6 +44,14 @@ class DAGOfViews(graphlib.TopologicalSorter):
 
         return list(_list_descendants(node))
 
+    def prepare(self):
+        self._ready_nodes = None  # Reset the ready nodes
+        super().prepare()  # Call the parent class method
+
+    def add_node(self, key, dependent_keys):
+        self.graph[key] = dependent_keys
+        self.prepare()
+
     @property
     def roots(self):
         """A root is a view that doesn't depend on any other view.
