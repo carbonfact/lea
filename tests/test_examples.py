@@ -211,65 +211,89 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
     monkeypatch.setenv("LEA_WAREHOUSE", "duckdb")
     monkeypatch.setenv("LEA_DUCKDB_PATH", "jaffle_shop_ctes.db")
 
+    # Prepare
     result = runner.invoke(app, ["prepare", views_path])
-    assert (
-        result.exit_code == 0
-    ), f"Prepare command failed with exit code {result.exit_code}: {result.output}"
+    assert result.exit_code == 0, f"Prepare command failed with exit code {result.exit_code}: {result.output}"
 
+    # Run with CTE materialization
     result = runner.invoke(app, ["run", views_path, "--fresh", "--materialize_ctes"])
     print(result.output)
-
-    result = runner.invoke(app, ["run", views_path, "--fresh", "--materialize_ctes"])
-    print(result.output)
-    assert (
-        result.exit_code == 0
-    ), f"Run command failed with exit code {result.exit_code}: {result.output}"
+    assert result.exit_code == 0, f"Run command failed with exit code {result.exit_code}: {result.output}"
 
     with duckdb.connect("jaffle_shop_ctes_max.db") as con:
-        # Get all tables
-        tables = con.execute(
+        # Check if core schema exists
+        schemas = con.execute("SELECT DISTINCT schema_name FROM information_schema.schemata").fetchall()
+        assert ('core',) in schemas, "Core schema not created"
+
+        # Get all tables in core schema
+        core_tables = con.execute(
             """
-            SELECT table_schema, table_name
+            SELECT table_name
             FROM information_schema.tables
-            WHERE table_schema IN ('core', 'analytics', 'staging')
+            WHERE table_schema = 'core'
         """
         ).fetchall()
 
-        print("\nAll tables:")
-        for schema, table in tables:
-            print(f"{schema}.{table}")
+        print("\nTables in core schema:")
+        for table in core_tables:
+            print(f"core.{table[0]}")
 
-        # Check for CTE tables
-        cte_tables = [f"{schema}.{table}" for schema, table in tables if "__" in table]
-        print("\nCTE tables:")
+        # Check for CTE tables in core schema
+        cte_tables = [f"core.{table[0]}" for table in core_tables if "__" in table[0]]
+        print("\nCTE tables in core schema:")
         for table in cte_tables:
             print(table)
 
-        assert len(cte_tables) > 0, "No CTE tables found"
+        assert len(cte_tables) > 0, "No CTE tables found in core schema"
 
-        # Check for specific CTEs
-        expected_ctes = ["core.customers__customer_orders", "core.customers__customer_payments"]
-        for cte in expected_ctes:
+        # Check for specific CTEs from customers.sql
+        expected_customer_ctes = ["core.customers__customer_orders", "core.customers__customer_payments"]
+        for cte in expected_customer_ctes:
             assert cte in cte_tables, f"{cte} CTE not found"
 
-        # Verify content of CTEs
-        for cte_name in expected_ctes:
+        # Check for specific CTEs from orders.sql.jinja
+        expected_order_ctes = ["core.orders__order_payments"]
+        for cte in expected_order_ctes:
+            assert cte in cte_tables, f"{cte} CTE not found"
+
+        # Verify content of CTEs and main views
+        for table_name in expected_customer_ctes + expected_order_ctes + ["core.customers", "core.orders"]:
             try:
-                result = con.execute(f"SELECT * FROM {cte_name} LIMIT 5").fetchall()
-                print(f"\n{cte_name} data:")
+                result = con.execute(f"SELECT * FROM {table_name} LIMIT 5").fetchall()
+                print(f"\n{table_name} data:")
                 for row in result:
                     print(row)
-                assert result, f"No data found in materialized CTE: {cte_name}"
+                assert result, f"No data found in table: {table_name}"
             except duckdb.CatalogException as e:
-                assert False, f"Materialized CTE '{cte_name}' not found or not accessible: {e}"
+                assert False, f"Table '{table_name}' not found or not accessible: {e}"
 
-        try:
-            result = con.execute("SELECT * FROM core.customers LIMIT 5").fetchall()
-            print("\ncore.customers data:")
-            for row in result:
-                print(row)
-            assert result, "No data found in core.customers view"
-        except duckdb.CatalogException as e:
-            assert False, f"core.customers view not found or not accessible: {e}"
+        # Verify that main views depend on their respective CTE tables
+        dependencies = con.execute(
+            """
+            SELECT DISTINCT dependent_table.table_name as dependent, 
+                            source_table.table_name as source
+            FROM information_schema.table_constraints AS dependent_table
+            JOIN information_schema.key_column_usage AS kcu
+                ON dependent_table.constraint_name = kcu.constraint_name
+            JOIN information_schema.table_constraints AS source_table
+                ON kcu.referenced_table_name = source_table.table_name
+            WHERE dependent_table.constraint_type = 'FOREIGN KEY'
+                AND dependent_table.table_schema = 'core'
+            """
+        ).fetchall()
 
-    print("\nAll CTE materialization tests passed successfully.")
+        print("\nDependencies in core schema:")
+        for dep, src in dependencies:
+            print(f"{dep} depends on {src}")
+
+        # Verify dependencies for customers view
+        customer_dependencies = [src for dep, src in dependencies if dep == "customers"]
+        for cte in expected_customer_ctes:
+            assert cte.split('.')[-1] in customer_dependencies, f"Customers view does not depend on {cte}"
+
+        # Verify dependencies for orders view
+        order_dependencies = [src for dep, src in dependencies if dep == "orders"]
+        for cte in expected_order_ctes:
+            assert cte.split('.')[-1] in order_dependencies, f"Orders view does not depend on {cte}"
+
+        print("\nAll core schema CTE materialization tests passed successfully.")
