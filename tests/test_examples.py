@@ -213,17 +213,23 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
 
     # Prepare
     result = runner.invoke(app, ["prepare", views_path])
-    assert result.exit_code == 0, f"Prepare command failed with exit code {result.exit_code}: {result.output}"
+    assert (
+        result.exit_code == 0
+    ), f"Prepare command failed with exit code {result.exit_code}: {result.output}"
 
     # Run with CTE materialization
     result = runner.invoke(app, ["run", views_path, "--fresh", "--materialize_ctes"])
     print(result.output)
-    assert result.exit_code == 0, f"Run command failed with exit code {result.exit_code}: {result.output}"
+    assert (
+        result.exit_code == 0
+    ), f"Run command failed with exit code {result.exit_code}: {result.output}"
 
     with duckdb.connect("jaffle_shop_ctes_max.db") as con:
         # Check if core schema exists
-        schemas = con.execute("SELECT DISTINCT schema_name FROM information_schema.schemata").fetchall()
-        assert ('core',) in schemas, "Core schema not created"
+        schemas = con.execute(
+            "SELECT DISTINCT schema_name FROM information_schema.schemata"
+        ).fetchall()
+        assert ("core",) in schemas, "Core schema not created"
 
         # Get all tables in core schema
         core_tables = con.execute(
@@ -247,7 +253,10 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
         assert len(cte_tables) > 0, "No CTE tables found in core schema"
 
         # Check for specific CTEs from customers.sql
-        expected_customer_ctes = ["core.customers__customer_orders", "core.customers__customer_payments"]
+        expected_customer_ctes = [
+            "core.customers__customer_orders",
+            "core.customers__customer_payments",
+        ]
         for cte in expected_customer_ctes:
             assert cte in cte_tables, f"{cte} CTE not found"
 
@@ -257,7 +266,9 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
             assert cte in cte_tables, f"{cte} CTE not found"
 
         # Verify content of CTEs and main views
-        for table_name in expected_customer_ctes + expected_order_ctes + ["core.customers", "core.orders"]:
+        for table_name in (
+            expected_customer_ctes + expected_order_ctes + ["core.customers", "core.orders"]
+        ):
             try:
                 result = con.execute(f"SELECT * FROM {table_name} LIMIT 5").fetchall()
                 print(f"\n{table_name} data:")
@@ -270,7 +281,7 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
         # Verify that main views depend on their respective CTE tables
         dependencies = con.execute(
             """
-            SELECT DISTINCT dependent_table.table_name as dependent, 
+            SELECT DISTINCT dependent_table.table_name as dependent,
                             source_table.table_name as source
             FROM information_schema.table_constraints AS dependent_table
             JOIN information_schema.key_column_usage AS kcu
@@ -289,11 +300,13 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
         # Verify dependencies for customers view
         customer_dependencies = [src for dep, src in dependencies if dep == "customers"]
         for cte in expected_customer_ctes:
-            assert cte.split('.')[-1] in customer_dependencies, f"Customers view does not depend on {cte}"
+            assert (
+                cte.split(".")[-1] in customer_dependencies
+            ), f"Customers view does not depend on {cte}"
 
         # Verify dependencies for orders view
         order_dependencies = [src for dep, src in dependencies if dep == "orders"]
         for cte in expected_order_ctes:
-            assert cte.split('.')[-1] in order_dependencies, f"Orders view does not depend on {cte}"
+            assert cte.split(".")[-1] in order_dependencies, f"Orders view does not depend on {cte}"
 
         print("\nAll core schema CTE materialization tests passed successfully.")
