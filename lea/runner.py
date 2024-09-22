@@ -9,6 +9,7 @@ import pickle
 import re
 import time
 import warnings
+from typing import Any
 
 import git
 import pandas as pd
@@ -19,7 +20,6 @@ import sqlglot
 
 import lea
 from lea.views.sql import InMemorySQLView, SQLView
-from typing import Dict, Set, List, Tuple, Any
 
 console = rich.console.Console(force_interactive=True)
 
@@ -80,7 +80,9 @@ class Runner:
         if self.verbose:
             console.print(message, **kwargs)
 
-    def _display_progress(self, jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show):
+    def _display_progress(
+        self, jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show
+    ):
         table = rich.table.Table(box=None)
         table.add_column("#")
         table.add_column("view")
@@ -171,8 +173,10 @@ class Runner:
             for q in _expand_query(query)
             for selected in self.dag.select(q)
         }
-    
-    def _analyze_cte_dependencies(self, ctes: Dict[str, str], main_query: str) -> Dict[str, Set[str]]:
+
+    def _analyze_cte_dependencies(
+        self, ctes: dict[str, str], main_query: str
+    ) -> dict[str, set[str]]:
         """
         Analyze dependencies between CTEs and the main query.
 
@@ -184,41 +188,41 @@ class Runner:
             Dict[str, Set[str]]: A dictionary where keys are CTE names (plus 'main' for the main query)
                                 and values are sets of CTE names they depend on.
         """
-        dependencies: Dict[str, Set[str]] = {cte_name: set() for cte_name in ctes}
-        dependencies['main'] = set()
-        
+        dependencies: dict[str, set[str]] = {cte_name: set() for cte_name in ctes}
+        dependencies["main"] = set()
+
         for cte_name, cte_query in ctes.items():
             for other_cte in ctes:
                 if other_cte in cte_query:
                     dependencies[cte_name].add(other_cte)
-        
+
         for cte_name in ctes:
             if cte_name in main_query:
-                dependencies['main'].add(cte_name)
-        
+                dependencies["main"].add(cte_name)
+
         return dependencies
 
-    def _create_cte_views(self, view: SQLView, ctes: Dict[str, str], main_query: str, dependencies: Dict[str, Set[str]]) -> List[InMemorySQLView]:
-        cte_views: List[InMemorySQLView] = []
+    def _create_cte_views(
+        self,
+        view: SQLView,
+        ctes: dict[str, str],
+        main_query: str,
+        dependencies: dict[str, set[str]],
+    ) -> list[InMemorySQLView]:
+        cte_views: list[InMemorySQLView] = []
         for cte_name, cte_query in ctes.items():
             cte_view = InMemorySQLView(
-                key=(view.key[0], f"{view.key[1]}__{cte_name}"),
-                query=cte_query,
-                client=self.client
+                key=(view.key[0], f"{view.key[1]}__{cte_name}"), query=cte_query, client=self.client
             )
             cte_view.dependent_view_keys = dependencies[cte_name]  # Ajout comme attribut
             cte_views.append(cte_view)
-        
-        main_view = InMemorySQLView(
-            key=view.key,
-            query=main_query,
-            client=self.client
-        )
-        main_view.dependent_view_keys = dependencies['main']  # Ajout comme attribut
-        
+
+        main_view = InMemorySQLView(key=view.key, query=main_query, client=self.client)
+        main_view.dependent_view_keys = dependencies["main"]  # Ajout comme attribut
+
         return cte_views + [main_view]
 
-    def _split_query(self, query: str) -> Tuple[Dict[str, str], str]:
+    def _split_query(self, query: str) -> tuple[dict[str, str], str]:
         """
         Split a SQL query into its CTEs and main query.
 
@@ -231,7 +235,7 @@ class Runner:
                 - The main query string.
         """
         ast = sqlglot.parse_one(query, dialect=self.client.sqlglot_dialect)
-        ctes: Dict[str, str] = {}
+        ctes: dict[str, str] = {}
         main_query = query
 
         if isinstance(ast, sqlglot.exp.Select):
@@ -356,7 +360,7 @@ class Runner:
 
     def run(
         self,
-        select: List[str],
+        select: list[str],
         freeze_unselected: bool,
         print_views: bool,
         dry: bool,
@@ -389,18 +393,18 @@ class Runner:
         tic = time.time()
 
         # Let's determine which views need to be run
-        selected_view_keys: Set[tuple] = self.select_view_keys(*(select or []))
+        selected_view_keys: set[tuple] = self.select_view_keys(*(select or []))
 
         # Let the user know the views we've decided which views will run
         self.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
 
         # Now we determine the table reference mapping
-        table_reference_mapping: Dict[str, str] = self._make_table_reference_mapping(
+        table_reference_mapping: dict[str, str] = self._make_table_reference_mapping(
             selected_view_keys=selected_view_keys, freeze_unselected=freeze_unselected
         )
 
         # Remove orphan views
-        existing_view_keys: Dict[tuple, str] = self.client.list_existing_view_keys()
+        existing_view_keys: dict[tuple, str] = self.client.list_existing_view_keys()
         for view_key in set(existing_view_keys.keys()) - selected_view_keys:
             if view_key in self.regular_views:
                 continue
@@ -415,21 +419,30 @@ class Runner:
                 for i, field in enumerate(view.fields):
                     view._fields[i].tags.discard("#INCREMENTAL")  # HACK
 
-        executor: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
-        jobs: Dict[tuple, Any] = {}
-        execution_order: List[tuple] = []
-        jobs_started_at: Dict[tuple, dt.datetime] = {}
-        jobs_ended_at: Dict[tuple, dt.datetime] = {}
-        exceptions: Dict[tuple, Exception] = {}
-        skipped: Set[tuple] = set()
+        executor: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=threads
+        )
+        jobs: dict[tuple, Any] = {}
+        execution_order: list[tuple] = []
+        jobs_started_at: dict[tuple, dt.datetime] = {}
+        jobs_ended_at: dict[tuple, dt.datetime] = {}
+        exceptions: dict[tuple, Exception] = {}
+        skipped: set[tuple] = set()
         cache_path = pathlib.Path(".cache.pkl")
-        cache: Set[tuple] = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
+        cache: set[tuple] = (
+            set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
+        )
 
         if cache:
             self.log(f"{len(cache):,d} views already done")
 
-        with rich.live.Live(self._display_progress(jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show), vertical_overflow="ellipsis") as live:
-            views_to_materialize: List[SQLView] = []
+        with rich.live.Live(
+            self._display_progress(
+                jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show
+            ),
+            vertical_overflow="ellipsis",
+        ) as live:
+            views_to_materialize: list[SQLView] = []
             for view_key in selected_view_keys:
                 view = self.views[view_key].with_context(
                     table_reference_mapping=table_reference_mapping
@@ -440,7 +453,9 @@ class Runner:
                     # Analyze dependencies between CTEs and main query
                     dependencies = self._analyze_cte_dependencies(ctes, main_query)
                     # Create separate views for CTEs and main query
-                    views_to_materialize.extend(self._create_cte_views(view, ctes, main_query, dependencies))
+                    views_to_materialize.extend(
+                        self._create_cte_views(view, ctes, main_query, dependencies)
+                    )
                 else:
                     views_to_materialize.append(view)
 
@@ -497,8 +512,17 @@ class Runner:
                                     f"Error in {self.views[view_key]}"
                                 ) from exception
 
-                live.update(self._display_progress(jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show))
-
+                live.update(
+                    self._display_progress(
+                        jobs,
+                        jobs_started_at,
+                        jobs_ended_at,
+                        exceptions,
+                        skipped,
+                        execution_order,
+                        show,
+                    )
+                )
 
             # Save the cache
             all_done = not exceptions and not skipped
@@ -763,4 +787,3 @@ class Runner:
             print_()
 
         return buffer.getvalue().rstrip()
-    
