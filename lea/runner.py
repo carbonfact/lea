@@ -209,16 +209,37 @@ class Runner:
         main_query: str,
         dependencies: dict[str, set[str]],
     ) -> list[InMemorySQLView]:
+        """
+        Create InMemorySQLView objects for CTEs and the main query.
+
+        This method generates separate views for each CTE (Common Table Expression) 
+        and the main query. It also sets up the dependencies between these views.
+
+        Args:
+            view (SQLView): The original SQLView object.
+            ctes (dict[str, str]): A dictionary of CTE names and their corresponding queries.
+            main_query (str): The main SQL query string.
+            dependencies (dict[str, set[str]]): A dictionary of dependencies between CTEs and the main query.
+
+        Returns:
+            list[InMemorySQLView]: A list of InMemorySQLView objects, including all CTE views 
+            and the main view.
+
+        Note:
+            - CTE views are named as "{original_view_name}__{cte_name}".
+            - The main view retains the original view's key.
+            - Dependencies are set as attributes on each view object.
+        """
         cte_views: list[InMemorySQLView] = []
         for cte_name, cte_query in ctes.items():
             cte_view = InMemorySQLView(
                 key=(view.key[0], f"{view.key[1]}__{cte_name}"), query=cte_query, client=self.client
             )
-            cte_view.dependent_view_keys = dependencies[cte_name]  # Ajout comme attribut
+            cte_view.dependent_view_keys = dependencies[cte_name]
             cte_views.append(cte_view)
 
         main_view = InMemorySQLView(key=view.key, query=main_query, client=self.client)
-        main_view.dependent_view_keys = dependencies["main"]  # Ajout comme attribut
+        main_view.dependent_view_keys = dependencies["main"]
 
         return cte_views + [main_view]
 
