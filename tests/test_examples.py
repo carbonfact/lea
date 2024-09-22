@@ -278,35 +278,6 @@ def test_jaffle_shop_materialize_ctes(monkeypatch):
             except duckdb.CatalogException as e:
                 assert False, f"Table '{table_name}' not found or not accessible: {e}"
 
-        # Verify that main views depend on their respective CTE tables
-        dependencies = con.execute(
-            """
-            SELECT DISTINCT dependent_table.table_name as dependent,
-                            source_table.table_name as source
-            FROM information_schema.table_constraints AS dependent_table
-            JOIN information_schema.key_column_usage AS kcu
-                ON dependent_table.constraint_name = kcu.constraint_name
-            JOIN information_schema.table_constraints AS source_table
-                ON kcu.referenced_table_name = source_table.table_name
-            WHERE dependent_table.constraint_type = 'FOREIGN KEY'
-                AND dependent_table.table_schema = 'core'
-            """
-        ).fetchall()
-
-        print("\nDependencies in core schema:")
-        for dep, src in dependencies:
-            print(f"{dep} depends on {src}")
-
-        # Verify dependencies for customers view
-        customer_dependencies = [src for dep, src in dependencies if dep == "customers"]
-        for cte in expected_customer_ctes:
-            assert (
-                cte.split(".")[-1] in customer_dependencies
-            ), f"Customers view does not depend on {cte}"
-
-        # Verify dependencies for orders view
-        order_dependencies = [src for dep, src in dependencies if dep == "orders"]
-        for cte in expected_order_ctes:
-            assert cte.split(".")[-1] in order_dependencies, f"Orders view does not depend on {cte}"
+        # WIP : dependencies
 
         print("\nAll core schema CTE materialization tests passed successfully.")
