@@ -19,6 +19,7 @@ import sqlglot
 
 import lea
 from lea.views.sql import InMemorySQLView, SQLView
+from typing import Dict, Set, List, Tuple, Any
 
 console = rich.console.Console(force_interactive=True)
 
@@ -79,6 +80,44 @@ class Runner:
         if self.verbose:
             console.print(message, **kwargs)
 
+    def _display_progress(self, jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show):
+        table = rich.table.Table(box=None)
+        table.add_column("#")
+        table.add_column("view")
+        table.add_column("status")
+        table.add_column("duration", justify="right")
+
+        def get_status(view_key):
+            if view_key in exceptions:
+                return ERRORED
+            elif view_key in skipped:
+                return SKIPPED
+            elif view_key in jobs_ended_at:
+                return SUCCESS
+            return RUNNING
+
+        not_done = [view_key for view_key in execution_order if view_key not in jobs_ended_at]
+        statuses = {view_key: get_status(view_key) for view_key in not_done}
+        not_done = [view_key for view_key in not_done if statuses[view_key] != RUNNING] + [
+            view_key for view_key in not_done if statuses[view_key] == RUNNING
+        ]
+        for i, view_key in list(enumerate(not_done, start=1))[-show:]:
+            status = statuses[view_key]
+            duration = (
+                (jobs_ended_at.get(view_key, dt.datetime.now()) - jobs_started_at[view_key])
+                if view_key in jobs_started_at
+                else None
+            )
+            duration_str = f"{int(duration.total_seconds())}s" if duration else ""
+            table.add_row(
+                str(i) if status != RUNNING else "",
+                str(self.views[view_key]),
+                status,
+                duration_str,
+            )
+
+        return table
+
     def select_view_keys(self, *queries: str) -> set:
         """Selects view keys from one or more graph operators.
 
@@ -132,10 +171,67 @@ class Runner:
             for q in _expand_query(query)
             for selected in self.dag.select(q)
         }
+    
+    def _analyze_cte_dependencies(self, ctes: Dict[str, str], main_query: str) -> Dict[str, Set[str]]:
+        """
+        Analyze dependencies between CTEs and the main query.
 
-    def _split_query(self, query):
+        Args:
+            ctes (Dict[str, str]): A dictionary of CTE names and their corresponding queries.
+            main_query (str): The main query string.
+
+        Returns:
+            Dict[str, Set[str]]: A dictionary where keys are CTE names (plus 'main' for the main query)
+                                and values are sets of CTE names they depend on.
+        """
+        dependencies: Dict[str, Set[str]] = {cte_name: set() for cte_name in ctes}
+        dependencies['main'] = set()
+        
+        for cte_name, cte_query in ctes.items():
+            for other_cte in ctes:
+                if other_cte in cte_query:
+                    dependencies[cte_name].add(other_cte)
+        
+        for cte_name in ctes:
+            if cte_name in main_query:
+                dependencies['main'].add(cte_name)
+        
+        return dependencies
+
+    def _create_cte_views(self, view: SQLView, ctes: Dict[str, str], main_query: str, dependencies: Dict[str, Set[str]]) -> List[InMemorySQLView]:
+        cte_views: List[InMemorySQLView] = []
+        for cte_name, cte_query in ctes.items():
+            cte_view = InMemorySQLView(
+                key=(view.key[0], f"{view.key[1]}__{cte_name}"),
+                query=cte_query,
+                client=self.client
+            )
+            cte_view.dependent_view_keys = dependencies[cte_name]  # Ajout comme attribut
+            cte_views.append(cte_view)
+        
+        main_view = InMemorySQLView(
+            key=view.key,
+            query=main_query,
+            client=self.client
+        )
+        main_view.dependent_view_keys = dependencies['main']  # Ajout comme attribut
+        
+        return cte_views + [main_view]
+
+    def _split_query(self, query: str) -> Tuple[Dict[str, str], str]:
+        """
+        Split a SQL query into its CTEs and main query.
+
+        Args:
+            query (str): The full SQL query string.
+
+        Returns:
+            Tuple[Dict[str, str], str]: A tuple containing:
+                - A dictionary of CTE names and their corresponding queries.
+                - The main query string.
+        """
         ast = sqlglot.parse_one(query, dialect=self.client.sqlglot_dialect)
-        ctes = {}
+        ctes: Dict[str, str] = {}
         main_query = query
 
         if isinstance(ast, sqlglot.exp.Select):
@@ -147,59 +243,12 @@ class Runner:
                         cte_query = cte.this.sql(dialect=self.client.sqlglot_dialect)
                         ctes[cte_name] = cte_query
 
-                # Extract the main query (the part after the CTEs)
                 if "expression" in ast.args:
                     main_query = ast.args["expression"].sql(dialect=self.client.sqlglot_dialect)
                 else:
-                    # If 'expression' is not in args, use the entire SELECT statement
                     main_query = ast.sql(dialect=self.client.sqlglot_dialect)
 
-        self.log("Split query result:")
-        self.log(f"Number of CTEs found: {len(ctes)}")
-        for cte_name, cte_query in ctes.items():
-            self.log(f"CTE '{cte_name}': {cte_query[:100]}...")
-
         return ctes, main_query
-
-    def _materialize_ctes_and_view(self, view):
-        self.log(f"Processing view: {view.key[0]}.{view.key[1]}")
-        self.log(f"Original query:\n{view.query}")
-
-        try:
-            ctes, main_query = self._split_query(view.query)
-        except Exception as e:
-            self.log(f"Error splitting query for {view.key[0]}.{view.key[1]}: {str(e)}")
-            self.log(f"Exception type: {type(e)}")
-            self.log(f"Exception args: {e.args}")
-            raise
-
-        for cte_name, cte_query in ctes.items():
-            try:
-                materialized_table = f"{view.key[0]}.{view.key[1]}__{cte_name}"
-                self.log(f"Attempting to materialize CTE: {materialized_table}")
-                self.log(f"CTE Query: {cte_query}")
-                cte_view = InMemorySQLView(
-                    key=tuple(materialized_table.split(".")), query=cte_query, client=self.client
-                )
-                self.client.materialize_view(cte_view)
-                self.log(f"Successfully materialized CTE: {materialized_table}")
-            except Exception as e:
-                self.log(f"Error materializing CTE {cte_name}: {str(e)}")
-                self.log(f"Exception type: {type(e)}")
-                self.log(f"Exception args: {e.args}")
-                raise
-
-        try:
-            self.log(f"Attempting to materialize main view: {view.key[0]}.{view.key[1]}")
-            self.log(f"Main Query: {main_query}")
-            updated_view = InMemorySQLView(key=view.key, query=main_query, client=self.client)
-            self.client.materialize_view(updated_view)
-            self.log(f"Successfully materialized main view: {view.key[0]}.{view.key[1]}")
-        except Exception as e:
-            self.log(f"Error materializing main view {view.key[0]}.{view.key[1]}: {str(e)}")
-            self.log(f"Exception type: {type(e)}")
-            self.log(f"Exception args: {e.args}")
-            raise
 
     def _make_table_reference_mapping(
         self, selected_view_keys: set[tuple[str]], freeze_unselected: bool
@@ -307,7 +356,7 @@ class Runner:
 
     def run(
         self,
-        select: list[str],
+        select: List[str],
         freeze_unselected: bool,
         print_views: bool,
         dry: bool,
@@ -317,23 +366,41 @@ class Runner:
         fail_fast: bool,
         incremental: bool,
         materialize_ctes: bool,
-    ):
+    ) -> None:
+        """
+        Run the materialization process for selected views.
+
+        Args:
+            select (List[str]): List of view selectors.
+            freeze_unselected (bool): Whether to freeze unselected views.
+            print_views (bool): Whether to print views instead of materializing them.
+            dry (bool): Whether to perform a dry run.
+            fresh (bool): Whether to ignore the cache and run all views.
+            threads (int): Number of threads to use for parallel execution.
+            show (int): Number of views to show in the progress display.
+            fail_fast (bool): Whether to stop on the first error.
+            incremental (bool): Whether to perform incremental updates.
+            materialize_ctes (bool): Whether to materialize CTEs separately.
+
+        Returns:
+            None
+        """
+
+        tic = time.time()
+
         # Let's determine which views need to be run
-        selected_view_keys = self.select_view_keys(*(select or []))
+        selected_view_keys: Set[tuple] = self.select_view_keys(*(select or []))
 
         # Let the user know the views we've decided which views will run
         self.log(f"{len(selected_view_keys):,d} out of {len(self.regular_views):,d} views selected")
 
         # Now we determine the table reference mapping
-        table_reference_mapping = self._make_table_reference_mapping(
+        table_reference_mapping: Dict[str, str] = self._make_table_reference_mapping(
             selected_view_keys=selected_view_keys, freeze_unselected=freeze_unselected
         )
 
         # Remove orphan views
-        # It's really important to remove views that aren't part of the refresh anymore. There
-        # might be consumers that still depend on them, which is error-prone. You don't want
-        # consumers to depend on stale data.
-        existing_view_keys = self.client.list_existing_view_keys()
+        existing_view_keys: Dict[tuple, str] = self.client.list_existing_view_keys()
         for view_key in set(existing_view_keys.keys()) - selected_view_keys:
             if view_key in self.regular_views:
                 continue
@@ -341,66 +408,46 @@ class Runner:
                 self.client.delete_table_reference(existing_view_keys[view_key])
             self.log(f"Removed {'.'.join(view_key)}")
 
-        def display_progress() -> rich.table.Table:
-            if not self.verbose:
-                return None
-            table = rich.table.Table(box=None)
-            table.add_column("#")
-            table.add_column("view")
-            table.add_column("status")
-            table.add_column("duration", justify="right")
-            table.add_column("cost", justify="right")
+        # Handle incremental updates
+        if incremental:
+            for view_key in selected_view_keys - set(existing_view_keys):
+                view = self.regular_views[view_key]
+                for i, field in enumerate(view.fields):
+                    view._fields[i].tags.discard("#INCREMENTAL")  # HACK
 
-            def get_status(view_key):
-                if view_key in exceptions:
-                    return ERRORED
-                elif view_key in skipped:
-                    return SKIPPED
-                elif view_key in jobs_ended_at:
-                    return SUCCESS
-                return RUNNING
-
-            not_done = [view_key for view_key in execution_order if view_key not in cache]
-            statuses = {view_key: get_status(view_key) for view_key in not_done}
-            not_done = [view_key for view_key in not_done if statuses[view_key] != RUNNING] + [
-                view_key for view_key in not_done if statuses[view_key] == RUNNING
-            ]
-            for i, view_key in list(enumerate(not_done, start=1))[-show:]:
-                status = statuses[view_key]
-                duration = (
-                    (jobs_ended_at.get(view_key, dt.datetime.now()) - jobs_started_at[view_key])
-                    if view_key in jobs_started_at
-                    else None
-                )
-                # Round to the closest second
-                duration_str = f"{int(round(duration.total_seconds()))}s" if duration else ""
-                result = jobs[view_key].result() if status == SUCCESS else None
-                cost = result.cost if result else None
-                table.add_row(
-                    str(i) if status != RUNNING else "",
-                    str(self.views[view_key]),
-                    status,
-                    duration_str,
-                    "" if cost is None else f"${cost:,.5f}",
-                )
-
-            return table
-
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
-        jobs = {}
-        execution_order = []
-        jobs_started_at = {}
-        jobs_ended_at = {}
-        exceptions = {}
-        skipped = set()
+        executor: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
+        jobs: Dict[tuple, Any] = {}
+        execution_order: List[tuple] = []
+        jobs_started_at: Dict[tuple, dt.datetime] = {}
+        jobs_ended_at: Dict[tuple, dt.datetime] = {}
+        exceptions: Dict[tuple, Exception] = {}
+        skipped: Set[tuple] = set()
         cache_path = pathlib.Path(".cache.pkl")
-        cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
-        tic = time.time()
+        cache: Set[tuple] = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
 
         if cache:
             self.log(f"{len(cache):,d} views already done")
 
-        with rich.live.Live(display_progress(), vertical_overflow="ellipsis") as live:
+        with rich.live.Live(self._display_progress(jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show), vertical_overflow="ellipsis") as live:
+            views_to_materialize: List[SQLView] = []
+            for view_key in selected_view_keys:
+                view = self.views[view_key].with_context(
+                    table_reference_mapping=table_reference_mapping
+                )
+                if materialize_ctes and isinstance(view, SQLView):
+                    # Split the query into CTEs and main query
+                    ctes, main_query = self._split_query(view.query)
+                    # Analyze dependencies between CTEs and main query
+                    dependencies = self._analyze_cte_dependencies(ctes, main_query)
+                    # Create separate views for CTEs and main query
+                    views_to_materialize.extend(self._create_cte_views(view, ctes, main_query, dependencies))
+                else:
+                    views_to_materialize.append(view)
+
+            # Update the DAG with the new views
+            for view in views_to_materialize:
+                self.dag.add_node(view.key, view.dependent_view_keys)
+
             while self.dag.is_active():
                 for view_key in self.dag.get_ready():
                     # Check if the view_key can be skipped or not
@@ -409,9 +456,7 @@ class Runner:
                         continue
                     execution_order.append(view_key)
 
-                    # A view can only be computed if all its dependencies have been computed
-                    # succesfully
-
+                    # A view can only be computed if all its dependencies have been computed successfully
                     if any(
                         dep_key in skipped or dep_key in exceptions
                         for dep_key in self.views[view_key].dependent_view_keys
@@ -421,9 +466,8 @@ class Runner:
                         continue
 
                     # Submit a job, or print, or do nothing
-
                     if dry or view_key in cache:
-                        job = _do_nothing
+                        job = self._do_nothing
                     elif print_views:
                         job = functools.partial(
                             console.print,
@@ -432,22 +476,15 @@ class Runner:
                             ),
                         )
                     else:
-                        view = self.views[view_key].with_context(
-                            table_reference_mapping=table_reference_mapping
+                        view = next(v for v in views_to_materialize if v.key == view_key)
+                        job = functools.partial(
+                            self.client.materialize_view,
+                            view=view,
                         )
-                        if materialize_ctes and isinstance(view, SQLView):
-                            print(self._materialize_ctes_and_view)
-                            job = functools.partial(self._materialize_ctes_and_view, view=view)
-                        else:
-                            job = functools.partial(
-                                self.client.materialize_view,
-                                view=view,
-                            )
                     jobs[view_key] = executor.submit(job)
                     jobs_started_at[view_key] = dt.datetime.now()
 
-                # Check if any jobs are done. We notify the DAG by calling done when a job is done,
-                # which will unlock the next views.
+                # Check if any jobs are done
                 for view_key in jobs_started_at:
                     if view_key not in jobs_ended_at and jobs[view_key].done():
                         self.dag.done(view_key)
@@ -460,61 +497,62 @@ class Runner:
                                     f"Error in {self.views[view_key]}"
                                 ) from exception
 
-                live.update(display_progress())
+                live.update(self._display_progress(jobs, jobs_started_at, jobs_ended_at, exceptions, skipped, execution_order, show))
 
-        # Save the cache
-        all_done = not exceptions and not skipped
-        cache = (
-            set()
-            if all_done
-            else cache
-            | {
-                view_key
-                for view_key in execution_order
-                if view_key not in exceptions and view_key not in skipped
-            }
-        )
-        if cache:
-            cache_path.write_bytes(pickle.dumps(cache))
-        else:
-            cache_path.unlink(missing_ok=True)
 
-        # Summary statistics
-        if not self.verbose:
-            return
-        self.log(f"Took {round(time.time() - tic)}s")
-        summary = rich.table.Table()
-        summary.add_column("status")
-        summary.add_column("count")
-        if n := len(jobs_ended_at) - len(exceptions):
-            summary.add_row(SUCCESS, f"{n:,d}")
-        if n := len(exceptions):
-            summary.add_row(ERRORED, f"{n:,d}")
-        if n := len(skipped):
-            summary.add_row(SKIPPED, f"{n:,d}")
-        self.print(summary)
-
-        # Summary of errors
-        if exceptions:
-            for view_key, exception in exceptions.items():
-                self.print(str(self.views[view_key]), style="bold red")
-                self.print(exception)
-
-            if fail_fast:
-                raise Exception("Some views failed to build")
-
-        # In WAP mode, the tables gets created with a suffix to mimic a staging environment. We
-        # need to switch the tables to the production environment.
-        if self.client.wap_mode and not exceptions and not dry:
-            # In WAP mode, we want to guarantee the new tables are correct. Therefore, we run tests
-            # on them before switching.
-            self.test(
-                select_views=select,
-                freeze_unselected=freeze_unselected,
-                threads=threads,
-                fail_fast=True,
+            # Save the cache
+            all_done = not exceptions and not skipped
+            cache = (
+                set()
+                if all_done
+                else cache
+                | {
+                    view_key
+                    for view_key in execution_order
+                    if view_key not in exceptions and view_key not in skipped
+                }
             )
-            self.client.switch_for_wap_mode(selected_view_keys)
+            if cache:
+                cache_path.write_bytes(pickle.dumps(cache))
+            else:
+                cache_path.unlink(missing_ok=True)
+
+            # Summary statistics
+            if not self.verbose:
+                return
+            self.log(f"Took {round(time.time() - tic)}s")
+            summary = rich.table.Table()
+            summary.add_column("status")
+            summary.add_column("count")
+            if n := len(jobs_ended_at) - len(exceptions):
+                summary.add_row(SUCCESS, f"{n:,d}")
+            if n := len(exceptions):
+                summary.add_row(ERRORED, f"{n:,d}")
+            if n := len(skipped):
+                summary.add_row(SKIPPED, f"{n:,d}")
+            self.print(summary)
+
+            # Summary of errors
+            if exceptions:
+                for view_key, exception in exceptions.items():
+                    self.print(str(self.views[view_key]), style="bold red")
+                    self.print(exception)
+
+                if fail_fast:
+                    raise Exception("Some views failed to build")
+
+            # In WAP mode, the tables gets created with a suffix to mimic a staging environment. We
+            # need to switch the tables to the production environment.
+            if self.client.wap_mode and not exceptions and not dry:
+                # In WAP mode, we want to guarantee the new tables are correct. Therefore, we run tests
+                # on them before switching.
+                self.test(
+                    select_views=select,
+                    freeze_unselected=freeze_unselected,
+                    threads=threads,
+                    fail_fast=True,
+                )
+                self.client.switch_for_wap_mode(selected_view_keys)
 
     def test(self, select_views: list[str], freeze_unselected: bool, threads: int, fail_fast: bool):
         # Let's determine which views need to be run
@@ -725,3 +763,4 @@ class Runner:
             print_()
 
         return buffer.getvalue().rstrip()
+    
