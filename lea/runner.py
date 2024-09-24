@@ -462,7 +462,9 @@ class Runner:
 
         # List assertion tests
         assertion_tests = [
-            test.with_context(table_reference_mapping=table_reference_mapping) for view in self.regular_views.values() for test in view.yield_assertion_tests()
+            test.with_context(table_reference_mapping=table_reference_mapping)
+            for view in self.regular_views.values()
+            for test in view.yield_assertion_tests()
         ]
         self.log(f"Found {len(assertion_tests):,d} assertion tests")
 
@@ -473,7 +475,12 @@ class Runner:
             if
             (
                 # Run tests without any dependency whatsoever
-                not (test_dependencies := {tuple(part for part in view_key if part != 'lea_wap') for view_key in test.dependent_view_keys})
+                not (
+                    test_dependencies := {
+                        tuple(part for part in view_key if part != "lea_wap")
+                        for view_key in test.dependent_view_keys
+                    }
+                )
                 # Run tests which don't depend on any table in the views directory
                 or all(test_dep[0] not in self.dag.schemas for test_dep in test_dependencies)
                 # Run tests which have at least one dependency with the selected views
