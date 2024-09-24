@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pandas as pd
 import pytest
 
@@ -10,7 +12,8 @@ import lea
 def client():
     from lea.clients import duckdb
 
-    return duckdb.DuckDB(":memory:", username=None)
+    yield duckdb.DuckDB("test.ddb", username=None)
+    os.unlink("test.ddb")
 
 
 @pytest.mark.parametrize(
@@ -212,13 +215,13 @@ def client():
 )
 def test_duckdb_assertions(test_data, query, ok, client):
     view = lea.views.InMemorySQLView(
-        key=("tests", "test"),
+        key=("tests", "data"),
         query=query,
         client=client,
     )
 
     client.prepare([view])
-    client.materialize_view(view)
+    client._materialize_pandas_dataframe(test_data, "tests.data")
 
     for test in view.yield_assertion_tests():
         conflicts = client.read_sql(test.query)

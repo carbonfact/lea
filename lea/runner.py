@@ -504,7 +504,7 @@ class Runner:
                         raise RuntimeError(f"Test {test} failed")
 
     def make_docs(self, output_dir: str):
-        output_dir = pathlib.Path(output_dir)
+        output_dir_path = pathlib.Path(output_dir)
 
         # Now we can generate the docs for each schema and view therein
         readme_content = io.StringIO()
@@ -558,7 +558,7 @@ class Runner:
                 content.write(view_columns.fillna("").to_markdown(index=False) + "\n\n")
 
             # Write the schema README
-            schema_readme = output_dir / schema / "README.md"
+            schema_readme = output_dir_path / schema / "README.md"
             schema_readme.parent.mkdir(parents=True, exist_ok=True)
             schema_readme.write_text(content.getvalue())
             self.log(f"Wrote {schema_readme}", style="bold green")
@@ -578,7 +578,7 @@ class Runner:
         readme_content.write(f"```mermaid\n{mermaid}```\n\n")
 
         # Write the root README
-        readme = output_dir / "README.md"
+        readme = output_dir_path / "README.md"
         readme.parent.mkdir(parents=True, exist_ok=True)
         readme.write_text(readme_content.getvalue())
         self.log(f"Wrote {readme}", style="bold green")
@@ -618,7 +618,7 @@ class Runner:
         table_references = (
             removed_table_references | added_table_references | modified_table_references
         )
-        if select:
+        if select and selected_table_references:
             table_references &= selected_table_references
 
         if not table_references or (schema_diff.empty and size_diff.empty):

@@ -18,7 +18,9 @@ console = rich.console.Console()
 
 class DuckDB(Client):
     def __init__(self, path: str, username: str | None = None, wap_mode: bool = False):
-        import duckdb
+        self.path = path
+        self.username = username
+        self.wap_mode = wap_mode
 
         path_ = pathlib.Path(path)
         if path.startswith("md:"):
@@ -27,11 +29,13 @@ class DuckDB(Client):
             path_ = pathlib.Path(path)
             path_ = path_.parent / f"{path_.stem}_{username}{path_.suffix}"
         self.path_ = path_
-        self.username = username
-        self.wap_mode = wap_mode
-        self.con = (
-            duckdb.connect(":memory:")
-            if path == ":memory:"
+
+    def _make_con(self):
+        import duckdb
+
+        return (
+            duckdb.connect(self.path)
+            if self.path.startswith(":")  # e.g. ":memory:", ":memory:username", ":default:"
             else duckdb.connect(str(self.path_.absolute()))
         )
 
@@ -45,36 +49,40 @@ class DuckDB(Client):
 
     def prepare(self, views):
         schemas = set(view.schema for view in views)
-        for schema in schemas:
-            self.con.cursor().sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
-            console.log(f"Created schema {schema}")
+        with self._make_con() as con:
+            for schema in schemas:
+                con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+                console.log(f"Created schema {schema}")
 
     def teardown(self):
         os.remove(self.path)
 
     def materialize_sql_view(self, view):
         table_reference = self._view_key_to_table_reference(view.key, with_context=True)
-        self.con.cursor().sql(f"CREATE OR REPLACE TABLE {table_reference} AS ({view.query})")
+        with self._make_con() as con:
+            con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS ({view.query})")
+
+    def _materialize_pandas_dataframe(self, dataframe, table_reference):
+        with self._make_con() as con:
+            con.sql(f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe")
 
     def materialize_python_view(self, view):
         dataframe = self.read_python_view(view)  # noqa: F841
         table_reference = self._view_key_to_table_reference(view.key, with_context=True)
-        self.con.cursor().sql(
-            f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe"
-        )
+        self._materialize_pandas_dataframe(dataframe, table_reference)
 
     def materialize_json_view(self, view):
         dataframe = pd.read_json(view.path)  # noqa: F841
         table_reference = self._view_key_to_table_reference(view.key, with_context=True)
-        self.con.cursor().sql(
-            f"CREATE OR REPLACE TABLE {table_reference} AS SELECT * FROM dataframe"
-        )
+        self._materialize_pandas_dataframe(dataframe, table_reference)
 
     def delete_table_reference(self, table_reference):
-        self.con.cursor().sql(f"DROP TABLE IF EXISTS {table_reference}")
+        with self._make_con() as con:
+            con.sql(f"DROP TABLE IF EXISTS {table_reference}")
 
     def read_sql(self, query: str) -> pd.DataFrame:
-        return self.con.cursor().sql(query).df()
+        with self._make_con() as con:
+            return con.sql(query).df()
 
     def list_tables(self) -> pd.DataFrame:
         return self.read_sql(
@@ -99,7 +107,7 @@ class DuckDB(Client):
         )
 
     def _view_key_to_table_reference(
-        self, view_key: tuple[str], with_context: bool, with_project_id=False
+        self, view_key: tuple[str, ...], with_context: bool, with_project_id=False
     ) -> str:
         """
 
@@ -155,11 +163,12 @@ class DuckDB(Client):
             statements.append(
                 f"ALTER TABLE {table_reference.split('.', 1)[1]} RENAME TO {table_reference_without_wap.split('.', 2)[2]}"
             )
-        try:
-            # Concatenate all the statements into one string and execute them
-            sql = "\n".join(f"{statement};" for statement in statements)
-            self.con.cursor().execute(f"BEGIN TRANSACTION; {sql} COMMIT;")
-        except duckdb.ProgrammingError as e:
-            # Make sure to rollback if there's an error
-            self.con.cursor().execute("ROLLBACK")
-            raise e
+        with self._make_con() as con:
+            try:
+                # Concatenate all the statements into one string and execute them
+                sql = "\n".join(f"{statement};" for statement in statements)
+                con.execute(f"BEGIN TRANSACTION; {sql} COMMIT;")
+            except duckdb.ProgrammingError as e:
+                # Make sure to rollback if there's an error
+                con.execute("ROLLBACK")
+                raise e
