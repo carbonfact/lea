@@ -272,7 +272,7 @@ class Runner:
                 self.client.delete_table_reference(existing_view_keys[view_key])
             self.log(f"Removed {'.'.join(view_key)}")
 
-        def display_progress() -> rich.table.Table:
+        def display_progress() -> rich.table.Table | None:
             if not self.verbose:
                 return None
             table = rich.table.Table(box=None)
@@ -385,7 +385,8 @@ class Runner:
                                     f"Error in {self.views[view_key]}"
                                 ) from exception
 
-                live.update(display_progress())
+                if (progress := display_progress()) is not None:
+                    live.update(progress)
 
         # Save the cache
         all_done = not exceptions and not skipped
@@ -461,7 +462,7 @@ class Runner:
 
         # List assertion tests
         assertion_tests = [
-            test for view in self.regular_views.values() for test in view.yield_assertion_tests()
+            test.with_context(table_reference_mapping=table_reference_mapping) for view in self.regular_views.values() for test in view.yield_assertion_tests()
         ]
         self.log(f"Found {len(assertion_tests):,d} assertion tests")
 
@@ -472,7 +473,7 @@ class Runner:
             if
             (
                 # Run tests without any dependency whatsoever
-                not (test_dependencies := test.dependent_view_keys)
+                not (test_dependencies := {tuple(part for part in view_key if part != 'lea_wap') for view_key in test.dependent_view_keys})
                 # Run tests which don't depend on any table in the views directory
                 or all(test_dep[0] not in self.dag.schemas for test_dep in test_dependencies)
                 # Run tests which have at least one dependency with the selected views
