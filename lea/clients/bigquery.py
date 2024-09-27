@@ -87,7 +87,9 @@ class BigQuery(Client):
                 "createDisposition": "CREATE_IF_NEEDED",
                 "writeDisposition": "WRITE_TRUNCATE",
             },
-            "labels": labels if labels else {
+            "labels": labels
+            if labels
+            else {
                 "job_dataset": self.dataset_name,
                 "job_schema": schema,
                 "job_table": table_reference_without_schema.replace(
