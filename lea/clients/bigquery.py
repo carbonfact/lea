@@ -139,7 +139,10 @@ class BigQuery(Client):
         return pandas_gbq.read_gbq(
             query,
             credentials=self.client._credentials,
-            project_id=self.write_project_id,
+            project_id=self.compute_project_id,
+            # project_id: the project to execute the job in
+            # NB: there is no option to specify the write project, so we need to correctly specify
+            # the project in the query.
             location=self.location,
             progress_bar_type=None,
         )
@@ -151,7 +154,7 @@ class BigQuery(Client):
             FORMAT('%s.%s', '{self.dataset_name}', table_id) AS table_reference,
             row_count AS n_rows,
             size_bytes AS n_bytes
-        FROM {self.dataset_name}.__TABLES__
+        FROM `{self.write_project_id}.{self.dataset_name}`.__TABLES__
         """
         )
 
@@ -162,7 +165,7 @@ class BigQuery(Client):
             FORMAT('%s.%s', table_schema, table_name) AS table_reference,
             column_name AS column,
             data_type AS type
-        FROM {self.dataset_name}.INFORMATION_SCHEMA.COLUMNS
+        FROM `{self.write_project_id}.{self.dataset_name}`.INFORMATION_SCHEMA.COLUMNS
         """
         )
 
