@@ -11,6 +11,9 @@ def get_schema_diff(
     origin_columns = origin_client.list_columns()[["table_reference", "column"]]
     target_columns = target_client.list_columns()[["table_reference", "column"]]
 
+    if origin_columns.empty:
+        return pd.DataFrame(columns=["table_reference", "column", "diff_kind"])
+
     # HACK: remove the username
     origin_columns["table_reference"] = origin_columns["table_reference"].apply(
         lambda x: x.split(".", 1)[1]
