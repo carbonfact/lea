@@ -16,7 +16,7 @@ python = ">=3.10,<4"
 python-dotenv = "^1.0.0"
 requests = "^2.31.0"
 rich = "^13.5.3"
-sqlglot = "^22.2.0"
+sqlglot = ">=22.2,<26.0"
 tabulate = "^0.9.0"
 typer = "^0.12.3"
 rsa = "^4.7"
@@ -27,13 +27,13 @@ duckdb = "^1.0.0"
 [tool.poetry.group.bigquery.dependencies]
 db-dtypes = "^1.1.1"
 google-cloud-bigquery = "^3.11.4"
-pandas-gbq = "^0.19.2"
+pandas-gbq = ">=0.19.2,<0.24.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.21.2"
 pre-commit = "^3.5.0"
-pytest = "^7.4.2"
-ruff = "^0.1.0"
+pytest = ">=7.4.2,<9.0.0"
+ruff = ">=0.1,<0.7"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
