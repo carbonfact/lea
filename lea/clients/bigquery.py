@@ -73,7 +73,7 @@ class BigQuery(Client):
         self.client.delete_dataset(dataset, delete_contents=True, not_found_ok=True)
         console.log(f"Deleted dataset {dataset.dataset_id}")
 
-    def make_job_config(self, view, labels) -> dict:
+    def make_job_config(self, view, labels: dict) -> dict:
         table_reference = self._view_key_to_table_reference(view.key, with_context=True)
         project_id, schema, table_reference_without_schema = table_reference.split(".", 2)
         return {
