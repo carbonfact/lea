@@ -35,6 +35,15 @@ class BigQuery(Client):
         self.username = username
         self.wap_mode = wap_mode
 
+    def __repr__(self):
+        return (
+            "Running on BigQuery\n"
+            f"{self.dataset_name=}\n"
+            f"{self.location=}\n"
+            f"{self.write_project_id=}\n"
+            f"{self.compute_project_id=}"
+        ).replace("self.", "")
+
     @property
     def dataset_name(self):
         return f"{self._dataset_name}_{self.username}" if self.username else self._dataset_name

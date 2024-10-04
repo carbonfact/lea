@@ -36,6 +36,7 @@ ViewsDir = typer.Argument(default="views", callback=validate_views_dir)
 def prepare(views_dir: str = ViewsDir, production: bool = False, env: str = EnvPath):
     client = _make_client(production, wap_mode=False)
     runner = lea.Runner(views_dir=views_dir, client=client, verbose=True)
+    runner.log(repr(runner.client))
     runner.prepare()
 
 
@@ -71,6 +72,7 @@ def run(
 ):
     client = _make_client(production, wap_mode=wap)
     runner = lea.Runner(views_dir=views_dir, client=client, verbose=not silent and not print)
+    runner.log(repr(runner.client))
     runner.run(
         select=select,
         freeze_unselected=freeze_unselected,
@@ -95,6 +97,7 @@ def test(
 ):
     client = _make_client(production)
     runner = lea.Runner(views_dir=views_dir, client=client, verbose=True)
+    runner.log(repr(runner.client))
     runner.test(
         select_views=select_views,
         freeze_unselected=freeze_unselected,
