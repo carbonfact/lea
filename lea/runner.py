@@ -64,6 +64,11 @@ class RefreshJob:
     def error(self) -> BaseException | None:
         return self.future.exception()
 
+    @property
+    def cost(self) -> float | None:
+        if result := self.future.result():
+            return result.cost
+
 
 class Runner:
     def __init__(self, views_dir: pathlib.Path | str, client: lea.clients.Client, verbose=False):
@@ -389,7 +394,10 @@ class Runner:
                 if job.status == SUCCESS:
                     duration = job.finished_at - job.started_at
                     duration_str = f"{int(round(duration.total_seconds()))}s"
-                    console.log(f"{SUCCESS} {job.view} in {duration_str}")
+                    msg = f"{SUCCESS} {job.view} in {duration_str}"
+                    if job.cost:
+                        msg += f" for ${job.cost:,.5f}"
+                    console.log(msg)
 
         # Save the cache
         all_jobs_succeeded = all(job.status == SUCCESS for job in jobs.values())
