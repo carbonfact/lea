@@ -583,6 +583,9 @@ class Runner:
         # Let's determine which views need to be run
         selected_view_keys = self.select_view_keys(*(select or []))
 
+        if not selected_view_keys:
+            return "No schema or content change detected."
+
         # HACK
         if not isinstance(self.client, lea.clients.DuckDB):
             selected_table_references = {
