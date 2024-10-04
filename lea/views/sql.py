@@ -128,25 +128,13 @@ class SQLView(View):
     @functools.cached_property
     def dependent_view_keys(self):
         table_references = set()
-        try:
-            for scope in sqlglot.optimizer.scope.traverse_scope(self.ast):
-                for table in scope.tables:
-                    if (
-                        not isinstance(table.this, sqlglot.exp.Func)
-                        and sqlglot.exp.table_name(table) not in scope.cte_sources
-                    ):
-                        table_references.add(sqlglot.exp.table_name(table))
-        except sqlglot.errors.ParseError:
-            warnings.warn(
-                f"SQLGlot couldn't parse {repr(self)} with dialect {self.sqlglot_dialect}. Falling back to regex."
-            )
-            for match in re.finditer(
-                r"(JOIN|FROM)\s+(?P<schema>[a-z][a-z_\.]+[a-z])\.(?P<view>[a-z][a-z_]+[a-z])",
-                self.query,
-                re.IGNORECASE,
-            ):
-                table_reference = f"{match.group('schema')}.{match.group('view')}"
-                table_references.add(table_reference)
+        for scope in sqlglot.optimizer.scope.traverse_scope(self.ast):
+            for table in scope.tables:
+                if (
+                    not isinstance(table.this, sqlglot.exp.Func)
+                    and sqlglot.exp.table_name(table) not in scope.cte_sources
+                ):
+                    table_references.add(sqlglot.exp.table_name(table))
 
         return {
             self.client._table_reference_to_view_key(table_reference)

@@ -347,7 +347,7 @@ class Runner:
                 # We can't refresh a view if its dependencies had errors (or were skipped
                 # because their dependencies had errors)
                 if any(
-                    jobs[dep_key].status in {ERRORED, SKIPPED}
+                    dep_key in jobs and jobs[dep_key].status in {ERRORED, SKIPPED}
                     for dep_key in self.views[view_key].dependent_view_keys
                 ):
                     self.dag.done(view_key)
