@@ -319,6 +319,7 @@ class Runner:
         cache_path = pathlib.Path(".cache.pkl")
         cache = set() if fresh or not cache_path.exists() else pickle.loads(cache_path.read_bytes())
         stop = False
+        checkpoints = {}
         tic = time.time()
 
         if cache:
@@ -365,14 +366,18 @@ class Runner:
                 )
                 jobs[view_key] = job
                 console.log(f"{RUNNING} {job.view}")
+                checkpoints[view_key] = job.started_at
 
             # Check if any jobs are done
             unfinished_jobs = (job for job in jobs.values() if job.finished_at is None)
             for job in unfinished_jobs:
                 if job.status == RUNNING:
-                    if (duration := dt.datetime.now() - job.started_at) > dt.timedelta(seconds=10):
-                        duration_str = f"{round(duration.total_seconds(), 1)}s"
+                    now = dt.datetime.now()
+                    if now - checkpoints[job.view.key] > dt.timedelta(seconds=15):
+                        duration = now - job.started_at
+                        duration_str = f"{int(round(duration.total_seconds()))}s"
                         console.log(f"{RUNNING} {job.view} after {duration_str}")
+                        checkpoints[job.view.key] = now
                     continue
                 job.finished_at = dt.datetime.now()
                 self.dag.done(job.view.key)
@@ -383,7 +388,7 @@ class Runner:
                         break
                 if job.status == SUCCESS:
                     duration = job.finished_at - job.started_at
-                    duration_str = f"{round(duration.total_seconds(), 1)}s"
+                    duration_str = f"{int(round(duration.total_seconds()))}s"
                     console.log(f"{SUCCESS} {job.view} in {duration_str}")
 
         # Save the cache
