@@ -6,7 +6,6 @@ import functools
 import itertools
 import os
 import re
-import warnings
 
 import jinja2
 import rich.syntax
