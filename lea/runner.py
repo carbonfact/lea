@@ -48,12 +48,12 @@ class RefreshJob:
     started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
     finished_at: dt.datetime | None = None
     skipped: bool = False
-    cancelled: bool = False
+    stopped: bool = False
 
     @property
     def status(self):
-        if self.cancelled:
-            return CANCELLED
+        if self.stopped:
+            return STOPPED
         if self.skipped:
             return SKIPPED
         if self.future.done():
@@ -275,19 +275,10 @@ class Runner:
         if dry:
             func = _do_nothing
         elif print_views:
-            func = functools.partial(
-                console.print,
-                view
-            )
+            func = functools.partial(console.print, view)
         else:
-            func = functools.partial(
-                self.client.materialize_view,
-                view=view
-            )
-        return RefreshJob(
-            future=executor.submit(func),
-            view=view
-        )
+            func = functools.partial(self.client.materialize_view, view=view)
+        return RefreshJob(future=executor.submit(func), view=view)
 
     def run(
         self,
@@ -334,19 +325,17 @@ class Runner:
             self.log(f"{len(cache):,d} views already done")
 
         while self.dag.is_active():
-
             if stop:
                 for job in jobs.values():
                     if job.status == RUNNING:
                         job.future.cancel()
-                        job.cancelled = True
+                        job.stopped = True
                         job.finished_at = dt.datetime.now()
                         console.log(f"{STOPPED} {job.view}")
                 break
 
             # Start new jobs
             for view_key in self.dag.get_ready():
-
                 if view_key in jobs and jobs[view_key].finished_at is not None:
                     continue
 
@@ -393,7 +382,7 @@ class Runner:
                         stop = True
                         break
                 if job.status == SUCCESS:
-                    duration = (job.finished_at - job.started_at)
+                    duration = job.finished_at - job.started_at
                     duration_str = f"{round(duration.total_seconds(), 1)}s"
                     console.log(f"{SUCCESS} {job.view} in {duration_str}")
 
@@ -402,12 +391,7 @@ class Runner:
         cache = (
             set()
             if all_jobs_succeeded
-            else cache
-            | {
-                view_key
-                for view_key, job in jobs.items()
-                if job.status == SUCCESS
-            }
+            else cache | {view_key for view_key, job in jobs.items() if job.status == SUCCESS}
         )
         if cache:
             cache_path.write_bytes(pickle.dumps(cache))

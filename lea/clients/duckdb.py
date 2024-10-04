@@ -31,11 +31,7 @@ class DuckDB(Client):
         self.path_ = path_
 
     def __repr__(self):
-        return (
-            "Running on DuckDB\n"
-            f"{self.path=}\n"
-            f"{self.username=}"
-        ).replace("self.", "")
+        return ("Running on DuckDB\n" f"{self.path=}\n" f"{self.username=}").replace("self.", "")
 
     def _make_con(self):
         import duckdb
