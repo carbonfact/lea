@@ -62,12 +62,15 @@ class RefreshJob:
 
     @property
     def error(self) -> BaseException | None:
-        return self.future.exception()
+        if self.future.done() and self.future.exception():
+            return self.future.exception()
+        return None
 
     @property
     def cost(self) -> float | None:
         if result := self.future.result():
             return result.cost
+        return None
 
 
 class Runner:
