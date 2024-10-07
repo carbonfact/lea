@@ -20,7 +20,7 @@ import rich.table
 
 import lea
 
-console = rich.console.Console(force_interactive=True)
+console = rich.console.Console(force_terminal=True)
 
 RUNNING = "[white]RUNNING"
 SUCCESS = "[green]SUCCESS"
