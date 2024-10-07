@@ -112,7 +112,7 @@ class BigQuery(Client):
         }
 
     def materialize_sql_view(self, view) -> QueryResult:
-        job_config = self.make_job_config(view)
+        job_config = self.make_job_config(view, labels={})
         job = self.client.create_job(job_config)
         job.result()
         cost_per_tb = 5
