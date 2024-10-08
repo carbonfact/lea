@@ -492,6 +492,7 @@ class Runner:
         )
 
         # Run tests concurrently
+        at_least_one_error = False
         with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
             jobs = {executor.submit(self.client.read_sql, test.query): test for test in tests}
             for job in concurrent.futures.as_completed(jobs):
@@ -507,8 +508,14 @@ class Runner:
                 else:
                     self.log(f"FAILURE {test}", style="bold red")
                     self.log(conflicts.head())
+                    at_least_one_error = True
                     if fail_fast:
-                        return sys.exit(1)
+                        for job in jobs:
+                            job.cancel()
+                        break
+
+        if at_least_one_error:
+            return sys.exit(1)
 
     def make_docs(self, output_dir: str):
         output_dir_path = pathlib.Path(output_dir)

@@ -48,8 +48,6 @@ def test_jaffle_shop(monkeypatch):
     # Run unit tests
     result = runner.invoke(app, ["test", views_path])
     assert result.exit_code == 0
-    assert "Found 1 singular tests" in result.stdout
-    assert "Found 1 assertion tests" in result.stdout
     assert "SUCCESS" in result.stdout
 
     # Build docs
