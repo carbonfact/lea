@@ -150,10 +150,7 @@ class BigQuery(Client):
         return pandas_gbq.read_gbq(
             query,
             credentials=self.client._credentials,
-            project_id=self.compute_project_id,
-            # project_id: the project to execute the job in
-            # NB: there is no option to specify the write project, so we need to correctly specify
-            # the project in the query.
+            project_id=self.write_project_id,
             location=self.location,
             progress_bar_type=None,
         )

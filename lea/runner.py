@@ -425,7 +425,7 @@ class Runner:
             if job.error:
                 at_least_one_error = True
                 self.print(str(job.view), style="bold red")
-                self.print(job.error)
+                self.print(job.error, style="red")
         if at_least_one_error:
             return sys.exit(1)
 
@@ -500,19 +500,23 @@ class Runner:
                 try:
                     conflicts = job.result()
                 except Exception as e:
-                    print(f"Error in {test}")
-                    print(e)
-                    raise RuntimeError(f"Test {test} failed")
+                    self.print(f"Error in {test}", style="bold red")
+                    self.print(e, style="red")
+                    at_least_one_error = True
+                if fail_fast and at_least_one_error:
+                    for job in jobs:
+                        job.cancel()
+                    break
                 if conflicts.empty:
                     self.log(f"SUCCESS {test}", style="bold green")
                 else:
                     self.log(f"FAILURE {test}", style="bold red")
                     self.log(conflicts.head())
                     at_least_one_error = True
-                    if fail_fast:
-                        for job in jobs:
-                            job.cancel()
-                        break
+                if fail_fast and at_least_one_error:
+                    for job in jobs:
+                        job.cancel()
+                    break
 
         if at_least_one_error:
             return sys.exit(1)
