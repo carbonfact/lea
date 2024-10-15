@@ -7,7 +7,11 @@ import typer
 
 import lea
 
-app = typer.Typer()
+app = typer.Typer(
+    # We set this to False to avoid showing locals in the traceback, which can be a security risk
+    # if the code is running in production.
+    pretty_exceptions_show_locals=False
+)
 
 
 def validate_env_path(env_path: str | None):
