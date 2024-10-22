@@ -27,13 +27,13 @@ duckdb = "^1.0.0"
 [tool.poetry.group.bigquery.dependencies]
 db-dtypes = "^1.1.1"
 google-cloud-bigquery = "^3.11.4"
-pandas-gbq = ">=0.19.2,<0.24.0"
+pandas-gbq = ">=0.19.2,<0.25.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.21.2"
 pre-commit = ">=3.5,<5.0"
 pytest = ">=7.4.2,<9.0.0"
-ruff = ">=0.1,<0.7"
+ruff = ">=0.1,<0.8"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
