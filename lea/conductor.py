@@ -8,9 +8,8 @@ import rich.logging
 import sys
 from typing import Iterator
 
-import pandas as pd
-
 from lea.scripts import Script
+from lea.table_ref import TableRef
 from lea.clients import Client, JobResult
 
 
@@ -35,6 +34,7 @@ class JobStatus(enum.Enum):
 @dataclasses.dataclass
 class Job:
     script: Script
+    write_table_ref: TableRef | None
     future: concurrent.futures.Future
     started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
     ended_at: dt.datetime | None = None
@@ -62,27 +62,68 @@ class Session:
     ended_at: dt.datetime | None = None
 
     def run(self, script: Script, client: Client, write_dataset: str, is_dry_run: bool) -> Job:
+        write_table_ref = None
         if script.is_test:
             func = functools.partial(client.query_script, script=script, is_dry_run=is_dry_run)
         else:
-            func = functools.partial(client.materialize_script, script=script.replace_dataset(write_dataset), is_dry_run=is_dry_run)
+            write_table_ref = script.table_ref.replace_dataset(write_dataset).add_suffix("audit")
+            func = functools.partial(
+                client.materialize_script,
+                script=dataclasses.replace(script, table_ref=write_table_ref),
+                is_dry_run=is_dry_run
+            )
 
-        job = Job(script=script, future=self.executor.submit(func))
+        job = Job(script=script, write_table_ref=write_table_ref, future=self.executor.submit(func))
         self.jobs.append(job)
-        log.info(f"{job.status} {script.table_ref}")
+        log.info(f"{job.status} {write_table_ref or script.table_ref}")
         return job
 
-    def shutdown(self):
-        for job in self.jobs:
-            if job.status == JobStatus.RUNNING:
-                job.future.cancel()
-                job.status = JobStatus.STOPPED
-                job.ended_at = dt.datetime.now()
-                logging.info(f"{job.status} {job.script.table_ref}")
+    def promote(self, script: Script, client: Client, write_dataset: str) -> Job:
+        to_table_ref = script.table_ref.replace_dataset(write_dataset)
+        func = functools.partial(
+            client.clone_table,
+            from_table_ref=script.table_ref.replace_dataset(write_dataset).add_suffix("audit"),
+            to_table_ref=to_table_ref
+        )
+        job = Job(script=script, write_table_ref=to_table_ref, future=self.executor.submit(func))
+        self.jobs.append(job)
+        log.info(f"{job.status} {to_table_ref}")
+        return job
+
+    def check_finished_jobs(self) -> Iterator[Job]:
+
+        for job in self.jobs_running:
+            if not job.is_done:
+                continue
+
+            job.ended_at = dt.datetime.now()
+            table_ref = job.write_table_ref or job.script.table_ref
+
+            # Case 1: the job raised an exception
+            if job.exception:
+                job.status = JobStatus.ERRORED
+                log.error(f"{job.status} {table_ref}\n{job.exception}")
+
+            # Case 2: the job succeeded, but it's a test and there are negative cases
+            elif job.script.is_test and not (dataframe := job.result.output_dataframe).empty:
+                job.status = JobStatus.ERRORED
+                log.error(f"{job.status} {table_ref}\n{dataframe.head()}")
+
+            # Case 3: the job succeeded!
+            else:
+                job.status = JobStatus.SUCCESS
+                log.info(f"{job.status} {table_ref} for ${job.result.billed_dollars:.2f}")
+
+            yield job
+
 
     @property
-    def jobs_in_progress(self) -> Iterator[Job]:
+    def jobs_running(self) -> Iterator[Job]:
         return (job for job in self.jobs if job.status == JobStatus.RUNNING)
+
+    @property
+    def any_job_is_running(self) -> bool:
+        return any(job.status == JobStatus.RUNNING for job in self.jobs)
 
     @property
     def all_jobs_are_success(self) -> bool:
@@ -104,7 +145,8 @@ def main():
         dataset_dir=pathlib.Path("kaya"),
         sql_dialect=BigQueryDialect()
     )
-    query = ['core.material_taxonomy', 'core.accounts']
+    #query = ['core.material_taxonomy', 'core.accounts']
+    query = ['core.accounts']
 
     client = BigQueryClient(
         credentials=None,
@@ -124,23 +166,42 @@ def main():
 
         # Start available jobs
         for script in dag.iter_scripts(*query):
-            session.run(script=script, client=client, write_dataset=write_dataset, is_dry_run=dry)
+            session.run(
+                script=script,
+                client=client,
+                write_dataset=write_dataset,
+                is_dry_run=dry
+            )
 
         # Check running jobs and update their status
-        for job in session.jobs_in_progress:
-            if not job.is_done:
-                continue
-            job.ended_at = dt.datetime.now()
+        for job in session.check_finished_jobs():
+            # We have to tell the DAG that a script has finished running in order to unlock the
+            # next scripts.
             dag.done(job.script.table_ref)
-            if job.exception:
-                job.status = JobStatus.ERRORED
-                log.error(f"{job.status} {job.script.table_ref}\n{job.exception}")
-            elif job.script.is_test and not (dataframe := job.result.output_dataframe).empty:
-                job.status = JobStatus.ERRORED
-                log.error(f"{job.status} {job.script.table_ref}\n{dataframe.head()}")
-            else:
-                job.status = JobStatus.SUCCESS
-                log.info(f"{job.status} {job.script.table_ref} for ${job.result.billed_dollars:.2f}")
+
+    # At this point, the scripts have been materialized into side-tables which we call "audit"
+    # tables. We can now take care of promoting the audit tables to production.
+    if session.all_jobs_are_success and not dry:
+        log.info("Promoting tables")
+
+        # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
+        # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
+        # best we can do for now. There's a very small chance that at least one promotion job will
+        # fail.
+        # https://hiflylabs.com/blog/2022/11/22/dbt-deployment-best-practices
+        # https://calogica.com/sql/bigquery/dbt/2020/05/24/dbt-bigquery-blue-green-wap.html
+        # https://calogica.com/assets/wap_dbt_bigquery.pdf
+        for script in [job.script for job in session.jobs if not script.is_test]:
+            session.promote(
+                script=script,
+                client=client,
+                write_dataset=write_dataset
+            )
+
+        # Wait for all promotion jobs to finish
+        while session.any_job_is_running:
+            for job in session.check_finished_jobs():
+                pass
 
     # Handle with what happens when the session is over
     if session.all_jobs_are_success:

@@ -162,12 +162,6 @@ class SQLScript:
             code=code
         )
 
-    def replace_dataset(self, dataset: str) -> SQLScript:
-        return dataclasses.replace(
-            self,
-            table_ref=self.table_ref.replace_dataset(dataset)
-        )
-
 
 
 @dataclasses.dataclass

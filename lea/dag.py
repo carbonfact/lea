@@ -15,6 +15,33 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         self.scripts = {script.table_ref: script for script in scripts}
         self.dataset_dir = dataset_dir
 
+        # If a test depends on a script, we want said test to become a dependency of the scripts
+        # that depend on the script. This is opinionated, but it makes sense in the context of
+        # data pipelines.
+        # for script in scripts:
+        #     dependent_tests = [
+        #         child
+        #         for child in scripts
+        #         if script.table_ref in child.dependencies
+        #         and child.is_test
+        #     ]
+        #     if not dependent_tests:
+        #         continue
+        #     dependent_scripts = [
+        #         child
+        #         for child in scripts
+        #         if script.table_ref in child.dependencies
+        #         and not child.is_test
+        #     ]
+        #     for dependent_script in dependent_scripts:
+        #         for dependent_test in dependent_tests:
+        #             if (
+        #                 str(dependent_test.table_ref) == 'kaya.tests.skus_for_each_account' and
+        #                 str(dependent_script.table_ref) == 'kaya.collect.data_quality_issues'
+        #             ):
+        #                 print(script.table_ref)
+        #             dependency_graph[dependent_script.table_ref].add(dependent_test.table_ref)
+
     @classmethod
     def from_directory(cls, dataset_dir: pathlib.Path, sql_dialect: SQLDialect):
         scripts = read_scripts(dataset_dir=dataset_dir, sql_dialect=sql_dialect)
@@ -30,27 +57,6 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             script.table_ref: script.dependencies
             for script in scripts
         }
-
-        # If a test depends on a script, we want said test to become a dependency of the scripts
-        # that depend on the script. This is opinionated, but it makes sense in the context of
-        # data pipelines.
-        # for script in scripts:
-        #     tests = [
-        #         test
-        #         for test in scripts
-        #         if test.is_test and script.table_ref in test.dependencies
-        #     ]
-        #     if not tests:
-        #         continue
-        #     dependent_scripts = [
-        #         dependent_script
-        #         for dependent_script in scripts
-        #         if script.table_ref in dependent_script.dependencies
-        #         and not dependent_script.is_test
-        #     ]
-        #     for dependent_script in dependent_scripts:
-        #         for test in tests:
-        #             dependency_graph[dependent_script.table_ref].add(test.table_ref)
 
         return cls(dependency_graph=dependency_graph, scripts=scripts, dataset_dir=dataset_dir)
 

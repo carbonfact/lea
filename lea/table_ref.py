@@ -26,3 +26,6 @@ class TableRef:
 
     def replace_dataset(self, dataset: str) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
+
+    def add_suffix(self, suffix: str) -> TableRef:
+        return dataclasses.replace(self, name=f"{self.name}__{suffix}")

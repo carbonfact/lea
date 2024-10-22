@@ -82,6 +82,19 @@ class BigQueryClient:
             billed_dollars=self.estimate_cost_in_dollars(bytes_billed)
         )
 
+    def clone_table(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef):
+        clone_code = f"""
+        CREATE OR REPLACE TABLE
+        {BigQueryDialect.format_table_ref(to_table_ref)}
+        CLONE {BigQueryDialect.format_table_ref(from_table_ref)}
+        """
+        job_config = self.make_job_config()
+        job = self.client.query(clone_code, job_config=job_config)
+        job.result()
+        return JobResult(
+            billed_dollars=self.estimate_cost_in_dollars(job.total_bytes_billed),
+        )
+
     def make_job_config(self, **kwargs) -> bigquery.QueryJobConfig:
         return bigquery.QueryJobConfig(
             priority=bigquery.QueryPriority.INTERACTIVE,
