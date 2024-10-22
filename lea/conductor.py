@@ -5,12 +5,13 @@ import functools
 import enum
 import logging
 import rich.logging
+import sys
 from typing import Iterator
 
 import pandas as pd
 
 from lea.scripts import Script
-from lea.clients import Client
+from lea.clients import Client, JobResult
 
 
 log = logging.getLogger(__name__)
@@ -39,23 +40,16 @@ class Job:
     ended_at: dt.datetime | None = None
     status: JobStatus = JobStatus.RUNNING
 
+    @property
     def is_done(self) -> bool:
         return self.future.done()
 
     @property
     def exception(self) -> BaseException | None:
-        if self.future.done() and (exception := self.future.exception()):
-            return exception
-        return None
+        return self.future.exception()
 
     @property
-    def billed_dollars(self) -> float | None:
-        if result := self.future.result():
-            return result.billed_dollars
-        return None
-
-    @property
-    def dataframe(self) -> pd.DataFrame:
+    def result(self) -> JobResult:
         return self.future.result()
 
 
@@ -96,10 +90,11 @@ class Session:
 
     @property
     def total_billed_dollars(self) -> float:
-        return sum(job.billed_dollars for job in self.jobs if job.billed_dollars)
+        return sum(job.result.billed_dollars for job in self.jobs if job.is_done)
 
 
-if __name__ == "__main__":
+def main():
+
     import pathlib
     from lea.dialects import BigQueryDialect
     from lea.dag import DAGOfScripts
@@ -109,6 +104,8 @@ if __name__ == "__main__":
         dataset_dir=pathlib.Path("kaya"),
         sql_dialect=BigQueryDialect()
     )
+    query = ['core.material_taxonomy', 'core.accounts']
+
     client = BigQueryClient(
         credentials=None,
         location="EU",
@@ -116,8 +113,8 @@ if __name__ == "__main__":
         compute_project_id="carbonfact-gsheet",
     )
     write_dataset = "kaya_max"
-    query = ['tests/']
-    dry = True
+    client.create_dataset(write_dataset)
+    dry = False
 
     session = Session()
 
@@ -125,27 +122,34 @@ if __name__ == "__main__":
     dag.prepare()
     while dag.is_active():
 
-        # Start jobs
+        # Start available jobs
         for script in dag.iter_scripts(*query):
             session.run(script=script, client=client, write_dataset=write_dataset, is_dry_run=dry)
 
-        # Check jobs
+        # Check running jobs and update their status
         for job in session.jobs_in_progress:
-            if job.is_done():
-                job.ended_at = dt.datetime.now()
-                dag.done(job.script.table_ref)
-                if job.exception:
-                    job.status = JobStatus.ERRORED
-                    log.error(f"{job.status} {job.script.table_ref}\n{job.exception}")
-                elif job.script.is_test and not (dataframe := job.dataframe).empty:
-                    job.status = JobStatus.ERRORED
-                    log.error(f"{job.status} {job.script.table_ref}\n{dataframe}")
-                else:
-                    job.status = JobStatus.SUCCESS
-                    log.info(f"{job.status} {job.script.table_ref} for ${job.billed_dollars:.2f}")
+            if not job.is_done:
+                continue
+            job.ended_at = dt.datetime.now()
+            dag.done(job.script.table_ref)
+            if job.exception:
+                job.status = JobStatus.ERRORED
+                log.error(f"{job.status} {job.script.table_ref}\n{job.exception}")
+            elif job.script.is_test and not (dataframe := job.result.output_dataframe).empty:
+                job.status = JobStatus.ERRORED
+                log.error(f"{job.status} {job.script.table_ref}\n{dataframe.head()}")
+            else:
+                job.status = JobStatus.SUCCESS
+                log.info(f"{job.status} {job.script.table_ref} for ${job.result.billed_dollars:.2f}")
 
+    # Handle with what happens when the session is over
     if session.all_jobs_are_success:
         session.ended_at = dt.datetime.now()
-        log.info(f"Finished in {session.ended_at - session.started_at} for ${session.total_billed_dollars:.2f}")
+        duration_str = str(session.ended_at - session.started_at).split('.')[0]
+        log.info(f"Finished in {duration_str} for ${session.total_billed_dollars:.2f}")
+    else:
+        return sys.exit(1)
 
-    # TODO: graceful shutdown
+
+if __name__ == "__main__":
+    main()

@@ -90,14 +90,3 @@ class View(abc.ABC):
     @abc.abstractmethod
     def with_context(self, table_reference_mapping: dict[str, str]) -> View:
         ...
-
-
-@dataclasses.dataclass
-class Field:
-    name: str
-    tags: set[str]
-    description: str
-
-    @property
-    def is_unique(self):
-        return "#UNIQUE" in self.tags

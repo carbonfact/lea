@@ -19,12 +19,38 @@ class DAGOfScripts(graphlib.TopologicalSorter):
     def from_directory(cls, dataset_dir: pathlib.Path, sql_dialect: SQLDialect):
         scripts = read_scripts(dataset_dir=dataset_dir, sql_dialect=sql_dialect)
 
+        # Fields in the script's code may contain tags. These tags induce assertion tests, which
+        # are also scripts. We need to include these assertion tests in the dependency graph.
+        for script in scripts:
+            scripts.extend(script.assertion_tests)
+
         # TODO: the following is quite slow. This is because parsing dependencies from each script
         # is slow. There are several optimizations that could be done.
         dependency_graph = {
             script.table_ref: script.dependencies
             for script in scripts
         }
+
+        # If a test depends on a script, we want said test to become a dependency of the scripts
+        # that depend on the script. This is opinionated, but it makes sense in the context of
+        # data pipelines.
+        # for script in scripts:
+        #     tests = [
+        #         test
+        #         for test in scripts
+        #         if test.is_test and script.table_ref in test.dependencies
+        #     ]
+        #     if not tests:
+        #         continue
+        #     dependent_scripts = [
+        #         dependent_script
+        #         for dependent_script in scripts
+        #         if script.table_ref in dependent_script.dependencies
+        #         and not dependent_script.is_test
+        #     ]
+        #     for dependent_script in dependent_scripts:
+        #         for test in tests:
+        #             dependency_graph[dependent_script.table_ref].add(test.table_ref)
 
         return cls(dependency_graph=dependency_graph, scripts=scripts, dataset_dir=dataset_dir)
 
@@ -38,6 +64,10 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             include_ancestors: bool = False,
             include_descendants: bool = False,
         ):
+
+            if query == "*":
+                yield from self.scripts.keys()
+                return
 
             if query.endswith("+"):
                 yield from _select(
@@ -72,7 +102,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             if include_ancestors:
                 yield from self.iter_ancestors(table_ref)
             if include_descendants:
-                yield from self.get_descendants(table_ref)
+                yield from self.iter_descendants(table_ref)
 
         all_selected_table_refs = set()
         for query in queries:
@@ -90,11 +120,11 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             yield child
             yield from self.iter_ancestors(child)
 
-    def get_descendants(self, table_ref: TableRef):
+    def iter_descendants(self, table_ref: TableRef):
         for potential_child in self.dependency_graph:
             if table_ref in self.dependency_graph[potential_child]:
                 yield potential_child
-                yield from self.get_descendants(potential_child)
+                yield from self.iter_descendants(potential_child)
 
     def iter_scripts(self, *queries: str) -> Iterator[Script]:
         selected_table_refs = self.select(*queries)
