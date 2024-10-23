@@ -12,7 +12,8 @@ import pandas as pd
 @dataclasses.dataclass
 class JobResult:
     billed_dollars: float
-    output_dataframe: pd.DataFrame = None
+    output_dataframe: pd.DataFrame | None = None
+    n_rows_in_destination: int | None = None
 
 
 class BigQueryClient:
@@ -62,9 +63,12 @@ class BigQueryClient:
         )
         job = self.client.query(sql_script.code, job_config=job_config)
         job.result()
+
+        n_rows_in_destination = self.client.get_table(job_config.destination).num_rows
         bytes_billed = job.total_bytes_processed if is_dry_run else job.total_bytes_billed
         return JobResult(
             billed_dollars=self.estimate_cost_in_dollars(bytes_billed),
+            n_rows_in_destination=n_rows_in_destination
         )
 
     def query_script(self, script: scripts.Script, is_dry_run: bool) -> JobResult:
@@ -85,12 +89,18 @@ class BigQueryClient:
     def clone_table(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef):
         clone_code = f"""
         CREATE OR REPLACE TABLE
-        {BigQueryDialect.format_table_ref(to_table_ref)}
-        CLONE {BigQueryDialect.format_table_ref(from_table_ref)}
+        {self.write_project_id}.{BigQueryDialect.format_table_ref(to_table_ref)}
+        CLONE {self.write_project_id}.{BigQueryDialect.format_table_ref(from_table_ref)}
         """
         job_config = self.make_job_config()
         job = self.client.query(clone_code, job_config=job_config)
         job.result()
+
+        if not job.errors:
+            delete_code = f"DROP TABLE {BigQueryDialect.format_table_ref(from_table_ref)}"
+            job = self.client.query(delete_code, job_config=job_config)
+            job.result()
+
         return JobResult(
             billed_dollars=self.estimate_cost_in_dollars(job.total_bytes_billed),
         )

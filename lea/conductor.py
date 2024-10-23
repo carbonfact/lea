@@ -112,7 +112,11 @@ class Session:
             # Case 3: the job succeeded!
             else:
                 job.status = JobStatus.SUCCESS
-                log.info(f"{job.status} {table_ref} for ${job.result.billed_dollars:.2f}")
+                msg = f"{job.status} {table_ref}"
+                msg += f", billed ${job.result.billed_dollars:.2f}"
+                if job.result.n_rows_in_destination:
+                    msg += f", {job.result.n_rows_in_destination:,d} rows in table"
+                log.info(msg)
 
             yield job
 
