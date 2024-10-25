@@ -61,10 +61,16 @@ class Session:
     started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
     ended_at: dt.datetime | None = None
 
-    def run(self, script: Script, client: Client, write_dataset: str, is_dry_run: bool) -> Job:
+    def run(self, script: Script, client: Client, write_dataset: str, is_dry_run: bool):
         write_table_ref = None
+        # If the script is a test, we don't materialize it, we just query it. A test fails if it
+        # returns any rows.
         if script.is_test:
             func = functools.partial(client.query_script, script=script, is_dry_run=is_dry_run)
+        # If the script is not a test, it's a regular table, so we materialize it. Instead of
+        # directly materializing it to the destination table, we materialize it to a side-table
+        # which we call an "audit" table. Once all the scripts have run successfully, we will
+        # promote the audit tables to the destination tables. This is the WAP pattern.
         else:
             write_table_ref = script.table_ref.replace_dataset(write_dataset).add_suffix("audit")
             func = functools.partial(
@@ -76,9 +82,8 @@ class Session:
         job = Job(script=script, write_table_ref=write_table_ref, future=self.executor.submit(func))
         self.jobs.append(job)
         log.info(f"{job.status} {write_table_ref or script.table_ref}")
-        return job
 
-    def promote(self, script: Script, client: Client, write_dataset: str) -> Job:
+    def promote(self, script: Script, client: Client, write_dataset: str):
         to_table_ref = script.table_ref.replace_dataset(write_dataset)
         func = functools.partial(
             client.clone_table,
@@ -88,7 +93,6 @@ class Session:
         job = Job(script=script, write_table_ref=to_table_ref, future=self.executor.submit(func))
         self.jobs.append(job)
         log.info(f"{job.status} {to_table_ref}")
-        return job
 
     def check_finished_jobs(self) -> Iterator[Job]:
 
@@ -114,7 +118,7 @@ class Session:
                 job.status = JobStatus.SUCCESS
                 msg = f"{job.status} {table_ref}"
                 msg += f", billed ${job.result.billed_dollars:.2f}"
-                if job.result.n_rows_in_destination:
+                if job.result.n_rows_in_destination is not None:
                     msg += f", {job.result.n_rows_in_destination:,d} rows in table"
                 log.info(msg)
 
@@ -149,8 +153,13 @@ def main():
         dataset_dir=pathlib.Path("kaya"),
         sql_dialect=BigQueryDialect()
     )
-    #query = ['core.material_taxonomy', 'core.accounts']
-    query = ['core.accounts']
+    query = ['core.material_taxonomy', 'core.accounts']
+    #query = ['core.accounts']
+    selected_table_refs = dag.select(*query)
+
+    if not selected_table_refs:
+        log.error("Nothing found for queries: " + ", ".join(query))
+        return sys.exit(1)
 
     client = BigQueryClient(
         credentials=None,
@@ -162,6 +171,22 @@ def main():
     client.create_dataset(write_dataset)
     dry = False
 
+    # ---
+
+    # TODO: replace this with a proper way to edit the dependencies
+
+
+    # script = dag[list(selected_table_refs)[0]]
+    # for field in script.fields:
+    #     print(field, field.tags)
+
+    script = dag[TableRef("kaya", ("core",), "accounts")]
+    script = script.make_incremental(field_name="ticker", field_values_subset={"ON", "CAR"})
+    #print(script.code)
+    dag[script.table_ref] = script
+
+    # ---
+
     session = Session()
 
     # Loop over table references in topological order
@@ -169,7 +194,7 @@ def main():
     while dag.is_active():
 
         # Start available jobs
-        for script in dag.iter_scripts(*query):
+        for script in dag.iter_scripts(selected_table_refs):
             session.run(
                 script=script,
                 client=client,

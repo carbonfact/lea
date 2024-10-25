@@ -5,6 +5,7 @@ import jinja2
 import sqlglot
 
 from .table_ref import TableRef
+from .field import FieldTag
 
 
 class SQLDialect:
@@ -20,13 +21,13 @@ class SQLDialect:
 
     def make_column_test_unique(self, table_ref: TableRef, field_name: str) -> str:
         table_ref_str = self.format_table_ref(table_ref)
-        return self.load_assertion_test_template("#UNIQUE").render(
+        return load_assertion_test_template(FieldTag.UNIQUE).render(
             table=table_ref_str, column=field_name
         )
 
     def make_column_test_unique_by(self, table_ref: TableRef, field_name: str, by: str) -> str:
         table_ref_str = self.format_table_ref(table_ref)
-        return self.load_assertion_test_template("#UNIQUE_BY").render(
+        return load_assertion_test_template(FieldTag.UNIQUE_BY).render(
             table=table_ref_str,
             column=field_name,
             by=by,
@@ -34,24 +35,36 @@ class SQLDialect:
 
     def make_column_test_no_nulls(self, table_ref: TableRef, field_name: str) -> str:
         table_ref_str = self.format_table_ref(table_ref)
-        return self.load_assertion_test_template("#NO_NULLS").render(
+        return load_assertion_test_template(FieldTag.NO_NULLS).render(
             table=table_ref_str, column=field_name
         )
 
     def make_column_test_set(self, table_ref: TableRef, field_name: str, elements: set[str]) -> str:
         table_ref_str = self.format_table_ref(table_ref)
-        return self.load_assertion_test_template("#SET").render(
+        return load_assertion_test_template(FieldTag.SET).render(
             table=table_ref_str,
             column=field_name,
             elements=elements,
         )
 
-    def load_assertion_test_template(self, tag: str) -> jinja2.Template:
-        return jinja2.Template(
-            (
-                pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('#')}.sql.jinja"
-            ).read_text()
-        )
+    def make_incremental(self, code: str, field_name: str, field_values_subset: set[str], dependencies: set[TableRef]) -> str:
+        field_values_subset_str = ", ".join(f"'{value}'" for value in field_values_subset)
+        for dependency in dependencies:
+            dependency_str = self.format_table_ref(dependency)
+            code = code.replace(
+                dependency_str,
+                f"(SELECT * FROM {dependency_str} WHERE {field_name} IN ({field_values_subset_str}))"
+            )
+        code = f"SELECT * FROM ({code}) WHERE {field_name} IN ({field_values_subset_str})"
+        return code
+
+
+def load_assertion_test_template(tag: str) -> jinja2.Template:
+    return jinja2.Template(
+        (
+            pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('#')}.sql.jinja"
+        ).read_text()
+    )
 
 
 class BigQueryDialect(SQLDialect):

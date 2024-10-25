@@ -1,5 +1,8 @@
+import copy
+import functools
 import graphlib
 import pathlib
+import typing
 from collections.abc import Iterator
 
 from .dialects import SQLDialect
@@ -10,14 +13,16 @@ from .scripts import read_scripts, Script
 class DAGOfScripts(graphlib.TopologicalSorter):
 
     def __init__(self, dependency_graph: dict[TableRef, set[TableRef]], scripts: list[Script], dataset_dir: pathlib.Path):
-        graphlib.TopologicalSorter.__init__(self, dependency_graph)
-        self.dependency_graph = dependency_graph
-        self.scripts = {script.table_ref: script for script in scripts}
-        self.dataset_dir = dataset_dir
 
         # If a test depends on a script, we want said test to become a dependency of the scripts
         # that depend on the script. This is opinionated, but it makes sense in the context of
         # data pipelines.
+
+        # augmented_dependency_graph = copy.deepcopy(dependency_graph)
+
+        # def get_ancestors(table_ref: TableRef) -> set[TableRef]:
+        #     return set(iter_ancestors(augmented_dependency_graph, table_ref))
+
         # for script in scripts:
         #     dependent_tests = [
         #         child
@@ -35,12 +40,13 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         #     ]
         #     for dependent_script in dependent_scripts:
         #         for dependent_test in dependent_tests:
-        #             if (
-        #                 str(dependent_test.table_ref) == 'kaya.tests.skus_for_each_account' and
-        #                 str(dependent_script.table_ref) == 'kaya.collect.data_quality_issues'
-        #             ):
-        #                 print(script.table_ref)
-        #             dependency_graph[dependent_script.table_ref].add(dependent_test.table_ref)
+        #             if dependent_script.table_ref not in get_ancestors(dependent_test.table_ref):
+        #                 augmented_dependency_graph[dependent_script.table_ref].add(dependent_test.table_ref)
+
+        graphlib.TopologicalSorter.__init__(self, dependency_graph)
+        self.dependency_graph = dependency_graph
+        self.scripts = {script.table_ref: script for script in scripts}
+        self.dataset_dir = dataset_dir
 
     @classmethod
     def from_directory(cls, dataset_dir: pathlib.Path, sql_dialect: SQLDialect):
@@ -62,6 +68,9 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
     def __getitem__(self, table_ref: TableRef) -> Script:
         return self.scripts[table_ref]
+
+    def __setitem__(self, table_ref: TableRef, script: Script):
+        self.scripts[table_ref] = script
 
     def select(self, *queries: str) -> set[TableRef]:
 
@@ -106,9 +115,9 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             table_ref = TableRef(dataset=self.dataset_dir.name, schema=tuple(schema), name=name)
             yield table_ref
             if include_ancestors:
-                yield from self.iter_ancestors(table_ref)
+                yield from iter_ancestors(self.dependency_graph, node=table_ref)
             if include_descendants:
-                yield from self.iter_descendants(table_ref)
+                yield from iter_descendants(self.dependency_graph, node=table_ref)
 
         all_selected_table_refs = set()
         for query in queries:
@@ -121,26 +130,27 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             if table_ref in self.scripts
         }
 
-    def iter_ancestors(self, table_ref: TableRef):
-        for child in self.dependency_graph.get(table_ref, []):
-            yield child
-            yield from self.iter_ancestors(child)
-
-    def iter_descendants(self, table_ref: TableRef):
-        for potential_child in self.dependency_graph:
-            if table_ref in self.dependency_graph[potential_child]:
-                yield potential_child
-                yield from self.iter_descendants(potential_child)
-
-    def iter_scripts(self, *queries: str) -> Iterator[Script]:
-        selected_table_refs = self.select(*queries)
-        if not selected_table_refs:
-            raise ValueError("Nothing found for queries: " + ", ".join(queries))
+    def iter_scripts(self, table_refs: set[TableRef]) -> Iterator[Script]:
 
         for table_ref in self.get_ready():
 
-            if table_ref not in self.scripts or table_ref not in selected_table_refs:
+            if table_ref not in self.scripts or table_ref not in table_refs:
                 self.done(table_ref)
                 continue
 
             yield self.scripts[table_ref]
+
+
+
+
+def iter_ancestors(dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable):
+    for child in dependency_graph.get(node, []):
+        yield child
+        yield from iter_ancestors(dependency_graph, child)
+
+
+def iter_descendants(dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable):
+    for potential_child in dependency_graph:
+        if node in dependency_graph[potential_child]:
+            yield potential_child
+            yield from iter_descendants(dependency_graph, potential_child)

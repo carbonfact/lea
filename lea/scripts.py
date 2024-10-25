@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import collections
 import dataclasses
 import functools
 import pathlib
@@ -12,7 +11,9 @@ import sqlglot
 import sqlglot.optimizer
 
 from .table_ref import TableRef
+from .field import Field, FieldTag
 from .dialects import SQLDialect
+from .comment import extract_comments
 
 
 
@@ -108,33 +109,33 @@ class SQLScript:
             return TableRef(
                 dataset=self.table_ref.dataset,
                 schema=("tests",),
-                name=f"{'__'.join(self.table_ref.schema)}__{self.table_ref.name}__{field.name}#{tag}",
+                name=f"{'__'.join(self.table_ref.schema)}__{self.table_ref.name}__{field.name}#{tag.lower()}",
             )
 
         def make_assertion_test(table_ref, field, tag):
-            if tag == "#NO_NULLS":
+            if tag == FieldTag.NO_NULLS:
                 return SQLScript(
-                    table_ref=make_table_ref(field, "no_nulls"),
+                    table_ref=make_table_ref(field, FieldTag.NO_NULLS),
                     code=self.sql_dialect.make_column_test_no_nulls(table_ref, field.name),
                     sql_dialect=self.sql_dialect,
                 )
-            elif tag == "#UNIQUE":
+            elif tag == FieldTag.UNIQUE:
                 return SQLScript(
-                    table_ref=make_table_ref(field, "unique"),
+                    table_ref=make_table_ref(field, FieldTag.UNIQUE),
                     code=self.sql_dialect.make_column_test_unique(table_ref, field.name),
                     sql_dialect=self.sql_dialect,
                 )
-            elif unique_by := re.fullmatch("#UNIQUE_BY" + r"\((?P<by>.+)\)", tag):
+            elif unique_by := re.fullmatch(FieldTag.UNIQUE_BY + r"\((?P<by>.+)\)", tag):
                 by = unique_by.group("by")
                 return SQLScript(
-                    table_ref=make_table_ref(field, f"unique_by_{by}"),
+                    table_ref=make_table_ref(field, FieldTag.UNIQUE_BY),
                     code=self.sql_dialect.make_column_test_unique_by(table_ref, field.name, by),
                     sql_dialect=self.sql_dialect,
                 )
-            elif set_ := re.fullmatch("#SET" + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", tag):
+            elif set_ := re.fullmatch(FieldTag.SET + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", tag):
                 elements = {element.strip() for element in set_.group("elements").split(",")}
                 return SQLScript(
-                    table_ref=make_table_ref(field, "set"),
+                    table_ref=make_table_ref(field, FieldTag.SET),
                     code=self.sql_dialect.make_column_test_set(table_ref, field.name, elements),
                     sql_dialect=self.sql_dialect,
                 )
@@ -145,6 +146,7 @@ class SQLScript:
             make_assertion_test(self.table_ref, field, tag)
             for field in self.fields
             for tag in field.tags
+            if tag not in {FieldTag.INCREMENTAL}
         ]
 
     # Mmm not sure about the following properties
@@ -162,108 +164,17 @@ class SQLScript:
             code=code
         )
 
-
-
-@dataclasses.dataclass
-class Field:
-    name: str
-    tags: set[str]
-    description: str
-
-    @property
-    def is_unique(self):
-        return "#UNIQUE" in self.tags
-
-
-@dataclasses.dataclass
-class Comment:
-    line: int
-    text: str
-
-
-class CommentBlock(collections.UserList):
-    def __init__(self, comments: list[Comment]):
-        super().__init__(sorted(comments, key=lambda c: c.line))
-
-    @property
-    def first_line(self):
-        return self[0].line
-
-    @property
-    def last_line(self):
-        return self[-1].line
-
-
-def extract_comments(code: str, expected_field_names: list[str], sql_dialect: SQLDialect) -> dict[str, CommentBlock]:
-
-    dialect = sqlglot.Dialect.get_or_raise(sql_dialect.sqlglot_dialect.value)
-    tokens = dialect.tokenizer_class().tokenize(code)
-
-    # Extract comments, which are lines that start with --
-    comments = [
-        Comment(line=line, text=comment.replace("--", "").strip())
-        for line, comment in enumerate(code.splitlines(), start=1)
-        if comment.strip().startswith("--")
-    ]
-
-    # Pack comments into CommentBlock objects
-    comment_blocks = merge_adjacent_comments(comments)
-
-    # We assume the tokens are stored. Therefore, by looping over them and building a dictionary,
-    # each key will be unique and the last value will be the last variable in the line.
-    var_tokens = [
-        token for token in tokens if token.token_type.value == "VAR" and token.text in expected_field_names
-    ]
-
-    def is_var_line(line):
-        line_tokens = [t for t in tokens if t.line == line and t.token_type.value != "COMMA"]
-        return line_tokens[-1].token_type.value == "VAR"
-
-    last_var_per_line = {
-        token.line: token.text for token in var_tokens if is_var_line(token.line)
-    }
-
-    # Now assign each comment block to a variable
-    var_comments = {}
-    for comment_block in comment_blocks:
-        adjacent_var = next(
-            (
-                var
-                for line, var in last_var_per_line.items()
-                if comment_block.last_line == line - 1
-            ),
-            None,
+    def make_incremental(self, field_name: str, field_values_subset: set[str]) -> SQLScript:
+        return dataclasses.replace(
+            self,
+            code=self.sql_dialect.make_incremental(
+                code=self.code,
+                field_name=field_name,
+                field_values_subset=field_values_subset,
+                # TODO: don't use dependencies that don't have the chosen field
+                dependencies=self.dependencies,
+            )
         )
-        if adjacent_var:
-            var_comments[adjacent_var] = comment_block
-
-    return var_comments
-
-
-def merge_adjacent_comments(comments: list[Comment]) -> list[CommentBlock]:
-    if not comments:
-        return []
-
-    # Sort comments by their line number
-    comments.sort(key=lambda c: c.line)
-
-    merged_blocks = []
-    current_block = [comments[0]]
-
-    # Iterate through comments and group adjacent ones
-    for i in range(1, len(comments)):
-        if comments[i].line == comments[i - 1].line + 1:  # Check if adjacent
-            current_block.append(comments[i])
-        else:
-            # Create a CommentBlock for the current group
-            merged_blocks.append(CommentBlock(current_block))
-            # Start a new block
-            current_block = [comments[i]]
-
-    # Add the last block
-    merged_blocks.append(CommentBlock(current_block))
-
-    return merged_blocks
 
 
 Script = SQLScript
