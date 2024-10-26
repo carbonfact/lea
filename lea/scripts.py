@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import dataclasses
 import functools
 import pathlib
@@ -149,32 +150,54 @@ class SQLScript:
             if tag not in {FieldTag.INCREMENTAL}
         ]
 
-    # Mmm not sure about the following properties
+    def replace_table_ref(self, table_ref: TableRef) -> SQLScript:
+        return dataclasses.replace(self, table_ref=table_ref)
 
-    def edit_dependencies_dataset(self, dependencies_to_edit: set[TableRef], new_dataset: str) -> SQLScript:
+    def edit_dependencies(self, dependencies_to_edit: set[TableRef], edit_func: Callable[[TableRef], TableRef]) -> SQLScript:
+        """
+
+        It's often necessary to edit the dependencies of a script. For example, we might want
+        to change the dataset of a dependency. Or we might want to append a suffix a table name
+        when we're doing a write/audit/publish operation.
+
+        """
+        code = self.code
         # TODO: could be done faster with Aho–Corasick algorithm
         # Maybe try out https://github.com/vi3k6i5/flashtext
-        code = self.code
-        for dependency in self.dependencies:
-            if dependencies_to_edit & {dependency.replace_dataset(None), dependency}:
-                dependency_str = self.sql_dialect.table_ref_to_str(dependency)
-                code = re.sub(rf"\b{dependency_str}\b", dependency.replace_dataset(new_dataset), code)
-        return dataclasses.replace(
-            self,
-            code=code
-        )
+        for dependency_to_edit in self.dependencies & dependencies_to_edit:
+            dependency_to_edit_str = self.sql_dialect.format_table_ref(dependency_to_edit)
+            new_dependency = edit_func(dependency_to_edit)
+            new_dependency_str = self.sql_dialect.format_table_ref(new_dependency)
+            code = re.sub(rf"\b{dependency_to_edit_str}\b", new_dependency_str, code)
+        return dataclasses.replace(self, code=code)
 
-    def make_incremental(self, field_name: str, field_values_subset: set[str]) -> SQLScript:
-        return dataclasses.replace(
-            self,
-            code=self.sql_dialect.make_incremental(
-                code=self.code,
-                field_name=field_name,
-                field_values_subset=field_values_subset,
-                # TODO: don't use dependencies that don't have the chosen field
-                dependencies=self.dependencies,
-            )
+    def make_incremental(
+        self,
+        field_name: str,
+        field_values: set[str],
+        dependencies_to_edit: set[TableRef],
+    ) -> SQLScript:
+        """
+
+        Some scripts have the ability to be run incrementally. This is useful when we want to
+        run a script only for a subset of the data. For example, we might want to run a script
+        only for a specific customer. This function modifies the script to only run for the
+        specified subset.
+
+        The way this works is to replace each dependency with a subquery that filters the data
+        based on the field name and the field values subset. Furthermore, the script is modified
+        to filter the data based on the field name and the field values subset. The latter
+        guarantees that the output will only contain the specified subset. The former guarantees
+        the script isn't processing unnecessary data.
+
+        """
+        code_with_incremental_logic = self.sql_dialect.make_incremental(
+            code=self.code,
+            field_name=field_name,
+            field_values=field_values,
+            dependencies=dependencies_to_edit & self.dependencies,
         )
+        return dataclasses.replace(self, code=code_with_incremental_logic)
 
 
 Script = SQLScript

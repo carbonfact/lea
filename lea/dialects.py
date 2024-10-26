@@ -47,15 +47,15 @@ class SQLDialect:
             elements=elements,
         )
 
-    def make_incremental(self, code: str, field_name: str, field_values_subset: set[str], dependencies: set[TableRef]) -> str:
-        field_values_subset_str = ", ".join(f"'{value}'" for value in field_values_subset)
+    def make_incremental(self, code: str, field_name: str, field_values: set[str], dependencies: set[TableRef]) -> str:
+        field_values_str = ", ".join(f"'{value}'" for value in field_values)
         for dependency in dependencies:
             dependency_str = self.format_table_ref(dependency)
             code = code.replace(
                 dependency_str,
-                f"(SELECT * FROM {dependency_str} WHERE {field_name} IN ({field_values_subset_str}))"
+                f"(SELECT * FROM {dependency_str} WHERE {field_name} IN ({field_values_str}))"
             )
-        code = f"SELECT * FROM ({code}) WHERE {field_name} IN ({field_values_subset_str})"
+        code = f"SELECT * FROM ({code}) WHERE {field_name} IN ({field_values_str})"
         return code
 
 

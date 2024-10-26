@@ -13,36 +13,6 @@ from .scripts import read_scripts, Script
 class DAGOfScripts(graphlib.TopologicalSorter):
 
     def __init__(self, dependency_graph: dict[TableRef, set[TableRef]], scripts: list[Script], dataset_dir: pathlib.Path):
-
-        # If a test depends on a script, we want said test to become a dependency of the scripts
-        # that depend on the script. This is opinionated, but it makes sense in the context of
-        # data pipelines.
-
-        # augmented_dependency_graph = copy.deepcopy(dependency_graph)
-
-        # def get_ancestors(table_ref: TableRef) -> set[TableRef]:
-        #     return set(iter_ancestors(augmented_dependency_graph, table_ref))
-
-        # for script in scripts:
-        #     dependent_tests = [
-        #         child
-        #         for child in scripts
-        #         if script.table_ref in child.dependencies
-        #         and child.is_test
-        #     ]
-        #     if not dependent_tests:
-        #         continue
-        #     dependent_scripts = [
-        #         child
-        #         for child in scripts
-        #         if script.table_ref in child.dependencies
-        #         and not child.is_test
-        #     ]
-        #     for dependent_script in dependent_scripts:
-        #         for dependent_test in dependent_tests:
-        #             if dependent_script.table_ref not in get_ancestors(dependent_test.table_ref):
-        #                 augmented_dependency_graph[dependent_script.table_ref].add(dependent_test.table_ref)
-
         graphlib.TopologicalSorter.__init__(self, dependency_graph)
         self.dependency_graph = dependency_graph
         self.scripts = {script.table_ref: script for script in scripts}
@@ -65,12 +35,6 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         }
 
         return cls(dependency_graph=dependency_graph, scripts=scripts, dataset_dir=dataset_dir)
-
-    def __getitem__(self, table_ref: TableRef) -> Script:
-        return self.scripts[table_ref]
-
-    def __setitem__(self, table_ref: TableRef, script: Script):
-        self.scripts[table_ref] = script
 
     def select(self, *queries: str) -> set[TableRef]:
 
@@ -131,16 +95,28 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         }
 
     def iter_scripts(self, table_refs: set[TableRef]) -> Iterator[Script]:
+        """
+
+        This method does not have the responsibility of calling .prepare() and .done() when a
+        script terminates. This is the responsibility of the caller.
+
+        """
 
         for table_ref in self.get_ready():
 
-            if table_ref not in self.scripts or table_ref not in table_refs:
+            if (
+                # The DAG contains all the scripts as well as all the dependencies of each script.
+                # Not all of these dependencies are scripts. We need to filter out the non-script
+                # dependencies.
+                table_ref not in self.scripts
+                # We also need to filter out the scripts that are not part of the selected table
+                # refs.
+                or table_ref not in table_refs
+            ):
                 self.done(table_ref)
                 continue
 
             yield self.scripts[table_ref]
-
-
 
 
 def iter_ancestors(dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable):
