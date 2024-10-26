@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import re
 
 
 @dataclasses.dataclass(eq=True, frozen=True)
@@ -27,8 +28,8 @@ class TableRef:
     def replace_dataset(self, dataset: str) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
 
-    def add_wap_suffix(self) -> TableRef:
+    def add_audit_suffix(self) -> TableRef:
         return dataclasses.replace(self, name=f"{self.name}__audit")
 
-    def remove_wap_suffix(self) -> TableRef:
-        return dataclasses.replace(self, name=self.name.rsplit("__", 1)[0])
+    def remove_audit_suffix(self) -> TableRef:
+        return dataclasses.replace(self, name=re.sub(r"__audit$", "", self.name))

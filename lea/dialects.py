@@ -47,9 +47,9 @@ class SQLDialect:
             elements=elements,
         )
 
-    def make_incremental(self, code: str, field_name: str, field_values: set[str], dependencies: set[TableRef]) -> str:
+    def make_incremental(self, code: str, field_name: str, field_values: set[str], dependencies_to_filter: set[TableRef]) -> str:
         field_values_str = ", ".join(f"'{value}'" for value in field_values)
-        for dependency in dependencies:
+        for dependency in dependencies_to_filter:
             dependency_str = self.format_table_ref(dependency)
             code = code.replace(
                 dependency_str,
