@@ -1,3 +1,4 @@
+import concurrent.futures
 import dataclasses
 import datetime as dt
 import enum
@@ -5,6 +6,7 @@ import logging
 import re
 import rich.logging
 import sys
+import threading
 from typing import Iterator
 
 from lea.scripts import Script
@@ -39,6 +41,9 @@ class ScriptJob:
     ended_at: dt.datetime | None = None
     status: ScriptJobStatus = ScriptJobStatus.RUNNING
 
+    def __hash__(self):
+        return hash(self.script.table_ref)
+
 
 @dataclasses.dataclass
 class Session:
@@ -46,8 +51,15 @@ class Session:
     jobs: list[ScriptJob] = dataclasses.field(default_factory=list)
     started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
     ended_at: dt.datetime | None = None
+    executor: concurrent.futures.ThreadPoolExecutor = dataclasses.field(
+        default_factory=lambda: concurrent.futures.ThreadPoolExecutor(max_workers=None)
+    )
+    start_script_futures: dict = dataclasses.field(default_factory=dict)
+    monitor_script_job_futures: dict = dataclasses.field(default_factory=dict)
+    promote_futures: dict = dataclasses.field(default_factory=dict)
+    stop_event: threading.Event = dataclasses.field(default_factory=threading.Event)
 
-    def run(self, script: Script):
+    def start_script(self, script: Script):
         # If the script is a test, we don't materialize it, we just query it. A test fails if it
         # returns any rows.
         if script.is_test:
@@ -65,28 +77,11 @@ class Session:
         self.jobs.append(job)
         log.info(f"{job.status} {script.table_ref}")
 
-    def promote(self, script: Script, incremental_field_name: str | None = None):
-        from_table_ref = script.table_ref
-        script = script.replace_table_ref(from_table_ref.remove_audit_suffix())
+        future = self.executor.submit(self.monitor_script_job, job)
+        self.monitor_script_job_futures[job] = future
 
-        if incremental_field_name is not None:
-            database_job = self.database_client.delete_and_insert(
-                from_table_ref=from_table_ref,
-                to_table_ref=script.table_ref,
-                on=incremental_field_name
-            )
-        else:
-            database_job = self.database_client.clone_table(
-                from_table_ref=from_table_ref,
-                to_table_ref=script.table_ref
-            )
-        job = ScriptJob(script=script, database_job=database_job)
-        self.jobs.append(job)
-        log.info(f"{job.status} {script.table_ref}")
-
-    def check_jobs_running(self) -> Iterator[ScriptJob]:
-
-        for job in (job for job in self.jobs if job.status == ScriptJobStatus.RUNNING):
+    def monitor_script_job(self, job: ScriptJob):
+        while not self.stop_event.is_set():
             if not job.database_job.is_done:
                 continue
 
@@ -112,7 +107,28 @@ class Session:
                     msg += f", table now has {n_rows:,d} rows"
                 log.info(msg)
 
-            yield job
+            return job
+
+    def promote(self, script: Script, incremental_field_name: str | None = None):
+        from_table_ref = script.table_ref
+        script = script.replace_table_ref(from_table_ref.remove_audit_suffix())
+
+        if incremental_field_name is not None:
+            database_job = self.database_client.delete_and_insert(
+                from_table_ref=from_table_ref,
+                to_table_ref=script.table_ref,
+                on=incremental_field_name
+            )
+        else:
+            database_job = self.database_client.clone_table(
+                from_table_ref=from_table_ref,
+                to_table_ref=script.table_ref
+            )
+        job = ScriptJob(script=script, database_job=database_job)
+        self.jobs.append(job)
+        log.info(f"{job.status} {script.table_ref}")
+
+        self.monitor_script_job(job)
 
     def end(self):
         log.info("Ending session")
@@ -323,14 +339,16 @@ def main():
             # dependencies, add incremental logic, and set the write context.
             script = script_manager.add_context(script)
 
-            session.run(script=script)
+            future = session.executor.submit(session.start_script, script)
+            session.start_script_futures[script.table_ref] = future
 
-        # Check running jobs and update their status
-        for job in session.check_jobs_running():
-            # We have to tell the DAG that a script has finished running in order to unlock the
-            # next scripts.
-            table_ref = script_manager.remove_write_context(job.script.table_ref)
-            dag.done(table_ref)
+        # Check for scripts that have finished
+        for job, future in list(session.monitor_script_job_futures.items()):
+            if future.done():
+                table_ref = script_manager.remove_write_context(job.script.table_ref)
+                dag.done(table_ref)
+                del session.monitor_script_job_futures[job]
+
 
     # At this point, the scripts have been materialized into side-tables which we call "audit"
     # tables. We can now take care of promoting the audit tables to production.
@@ -348,7 +366,8 @@ def main():
         # generator expression, the loop would be infinite because jobs are being added to
         # session.jobs when session.promote is called.
         for script in [job.script for job in session.jobs if not job.script.is_test]:
-            session.promote(
+            future = session.executor.submit(
+                session.promote,
                 script=script,
                 incremental_field_name=(
                     script_manager.incremental_field_name
@@ -356,22 +375,22 @@ def main():
                     else None
                 )
             )
+            session.promote_futures[script.table_ref] = future
 
         # Wait for all promotion jobs to finish
-        while session.any_job_is_running:
-            for job in session.check_jobs_running():
-                pass
+        for future in concurrent.futures.as_completed(session.promote_futures.values()):
+            ...
 
     # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
     session.end()
     duration_str = str(session.ended_at - session.started_at).split('.')[0]
     log.info(f"Finished, took {duration_str}, billed ${session.total_billed_dollars:.2f}")
 
-    # for job in session.jobs:
-    #     print(job.script.table_ref)
-    #     print('-' * 80)
-    #     print(job.database_job.query_job.query)
-    #     print('=' * 80)
+    # # for job in session.jobs:
+    # #     print(job.script.table_ref)
+    # #     print('-' * 80)
+    # #     print(job.database_job.query_job.query)
+    # #     print('=' * 80)
 
     if session.any_job_has_errored:
         return sys.exit(1)
