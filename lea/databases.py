@@ -194,6 +194,17 @@ class BigQueryClient:
             destination=bigquery.TableReference.from_string(f"{self.write_project_id}.{to_table_ref_str}")
         )
 
+    def delete_table(self, table_ref: scripts.TableRef) -> BigQueryJob:
+        table_ref_str = BigQueryDialect.format_table_ref(table_ref)
+        delete_code = f"""
+        DROP TABLE IF EXISTS {self.write_project_id}.{table_ref_str}
+        """
+        job_config = self.make_job_config()
+        return BigQueryJob(
+            client=self,
+            query_job=self.client.query(delete_code, job_config=job_config)
+        )
+
     def make_job_config(self, **kwargs) -> bigquery.QueryJobConfig:
         return bigquery.QueryJobConfig(
             priority=bigquery.QueryPriority.INTERACTIVE,

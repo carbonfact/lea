@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
-import re
 
 
 @dataclasses.dataclass(eq=True, frozen=True)

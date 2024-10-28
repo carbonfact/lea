@@ -213,9 +213,11 @@ class Session:
         retries = 0
 
         while not self.stop_event.is_set():
+
             if not job.database_job.is_done:
                 delay = min(max_delay, base_delay * (2 ** retries))
                 retries += 1
+                log.info(f"{job.status} {job.script.table_ref}, waiting {delay}s")
                 time.sleep(delay)
                 continue
 
@@ -335,6 +337,8 @@ def main():
     #query = ['core.accounts', 'tests.customers_have_arr', 'core.dates', 'core.carbonverses']
     query = ['core.accounts', 'core.accounts_dup', 'tests.customers_have_arr', 'core.dates']
     #query = ['core.accounts']
+    query = ['core.carbonverses_history']
+    query = ['*']
 
     dry_run = False
     early_end = True
@@ -397,7 +401,7 @@ def main():
     # At this point, the scripts have been materialized into side-tables which we call "audit"
     # tables. We can now take care of promoting the audit tables to production.
     if not session.any_job_has_errored and not dry_run:
-        log.info("Promoting tables")
+        log.info("Promoting audit tables")
 
         # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
         # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
