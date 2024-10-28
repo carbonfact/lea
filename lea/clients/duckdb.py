@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import pathlib
 
 import duckdb
@@ -21,26 +20,31 @@ class DuckDB(Client):
         self.path = path
         self.username = username
         self.wap_mode = wap_mode
+        self.database = self._get_database_name(path, username)
 
-        path_ = pathlib.Path(path)
-        if path.startswith("md:"):
-            path_ = pathlib.Path(f"{path}_{username}" if username is not None else path)
-        elif username is not None:
-            path_ = pathlib.Path(path)
+        path_ = pathlib.Path(self.path)
+        if self.username:
             path_ = path_.parent / f"{path_.stem}_{username}{path_.suffix}"
         self.path_ = path_
+
+    def _get_database_name(self, path: str, username: str | None) -> str:
+        # remove prefixes/suffixes regardless of path type
+        # we can't use Path with md as it always expects the name of the database you want to create/query/drop...
+        if self.is_motherduck:
+            base = path.removeprefix("md:")
+        else:
+            base = pathlib.Path(path.strip(":")).stem
+            for suffix in (".db", ".duckdb", ".ddb"):
+                base = base.removesuffix(suffix)
+
+        return f"{base}_{username}" if username else base
 
     def __repr__(self):
         return ("Running on DuckDB\n" f"{self.path=}\n" f"{self.username=}").replace("self.", "")
 
     def _make_con(self):
-        import duckdb
-
-        return (
-            duckdb.connect(self.path)
-            if self.path.startswith(":")  # e.g. ":memory:", ":memory:username", ":default:"
-            else duckdb.connect(str(self.path_.absolute()))
-        )
+        # instantitiate motherduck connections without connecting to a specific database to allow lea to switch between prod & dev db
+        return duckdb.connect("md:" if self.is_motherduck else str(self.path_))
 
     @property
     def sqlglot_dialect(self):
@@ -53,12 +57,24 @@ class DuckDB(Client):
     def prepare(self, views):
         schemas = set(view.schema for view in views)
         with self._make_con() as con:
+            # this creates the md database that lea will write to (can be prod or dev db depending on --production flag)
+            if self.is_motherduck:
+                con.sql(f"CREATE DATABASE IF NOT EXISTS {self.database}")
+                console.log(f"Created database {self.database}")
+
             for schema in schemas:
-                con.sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+                con.sql(f"CREATE SCHEMA IF NOT EXISTS {self.database}.{schema}")
                 console.log(f"Created schema {schema}")
 
     def teardown(self):
-        os.remove(self.path)
+        if self.is_motherduck:
+            with self._make_con() as con:
+                # md expects a database name so not paths
+                con.sql(f"DROP DATABASE IF EXISTS {self.database}")
+        else:
+            pathlib.Path(self.path_).unlink(missing_ok=True)
+
+        console.log(f"Deleted database {self.database}")
 
     def materialize_sql_view(self, view):
         table_reference = self._view_key_to_table_reference(view.key, with_context=True)
@@ -89,28 +105,32 @@ class DuckDB(Client):
 
     def list_tables(self) -> pd.DataFrame:
         return self.read_sql(
+            # we need to specify the database because md returns ALL tables from ALL databases by default
             f"""
         SELECT
-            '{self.path_.stem}' || '.' || schema_name || '.' || table_name AS table_reference,
+            '{self.database}' || '.' || schema_name || '.' || table_name AS table_reference,
             estimated_size AS n_rows,  -- TODO: Figure out how to get the exact number
             estimated_size AS n_bytes  -- TODO: Figure out how to get this
         FROM duckdb_tables()
+        WHERE database_name = '{self.database}'
         """
         )
 
     def list_columns(self) -> pd.DataFrame:
+        # we need to specify the database because md returns ALL tables from ALL databases by default
         return self.read_sql(
             f"""
         SELECT
-            '{self.path_.stem}' || '.' || table_schema || '.' || table_name AS table_reference,
+            '{self.database}' || '.' || table_schema || '.' || table_name AS table_reference,
             column_name AS column,
             data_type AS type
         FROM information_schema.columns
+        WHERE table_catalog = '{self.database}'
         """
         )
 
     def _view_key_to_table_reference(
-        self, view_key: tuple[str, ...], with_context: bool, with_project_id=False
+        self, view_key: tuple[str, ...], with_context: bool = True, with_project_id=False
     ) -> str:
         """
 
@@ -127,8 +147,8 @@ class DuckDB(Client):
         schema, *leftover = view_key
         table_reference = f"{schema}.{lea._SEP.join(leftover)}"
         if with_context:
-            if self.username:
-                table_reference = f"{self.path_.stem}.{table_reference}"
+            # if self.username:
+            table_reference = f"{self.database}.{table_reference}"
             if self.wap_mode:
                 table_reference = f"{table_reference}{lea._SEP}{lea._WAP_MODE_SUFFIX}"
         return table_reference
@@ -146,7 +166,7 @@ class DuckDB(Client):
 
         """
         database, leftover = table_reference.split(".", 1)
-        if database == self.path_.stem:
+        if database == self.database:
             schema, leftover = leftover.split(".", 1)
         else:
             schema = database
@@ -164,7 +184,7 @@ class DuckDB(Client):
             )
             statements.append(f"DROP TABLE IF EXISTS {table_reference_without_wap}")
             statements.append(
-                f"ALTER TABLE {table_reference.split('.', 1)[1]} RENAME TO {table_reference_without_wap.split('.', 2)[2]}"
+                f"ALTER TABLE {table_reference} RENAME TO {table_reference_without_wap.split('.', 2)[2]}"
             )
         with self._make_con() as con:
             try:
