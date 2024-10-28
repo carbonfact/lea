@@ -71,6 +71,14 @@ class BigQueryJob:
             return None
         return self.client.client.get_table(self.destination).num_rows
 
+    @property
+    def n_bytes_in_destination(self) -> int | None:
+        if self.client.dry_run:
+            return None
+        if self.destination is None:
+            return None
+        return self.client.client.get_table(self.destination).num_bytes
+
     def stop(self):
         self.client.client.cancel_job(self.query_job.job_id)
 

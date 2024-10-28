@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from collections.abc import Callable
 import concurrent.futures
 import dataclasses
 import datetime as dt
@@ -6,8 +9,8 @@ import logging
 import re
 import rich.logging
 import sys
+import time
 import threading
-from typing import Iterator
 
 from lea.scripts import Script
 from lea.databases import DatabaseClient, DatabaseJob
@@ -45,19 +48,137 @@ class ScriptJob:
         return hash(self.script.table_ref)
 
 
-@dataclasses.dataclass
+def format_bytes(size: float) -> str:
+    # Define the size units in ascending order
+    power = 1024
+    n = 0
+    units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+
+    # Convert bytes to the highest possible unit
+    while size >= power and n < len(units) - 1:
+        size /= power
+        n += 1
+
+    # Format the result with two decimal places
+    return f"{size:.2f}{units[n]}"
+
+
 class Session:
-    database_client: DatabaseClient
-    jobs: list[ScriptJob] = dataclasses.field(default_factory=list)
-    started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
-    ended_at: dt.datetime | None = None
-    executor: concurrent.futures.ThreadPoolExecutor = dataclasses.field(
-        default_factory=lambda: concurrent.futures.ThreadPoolExecutor(max_workers=None)
-    )
-    start_script_futures: dict = dataclasses.field(default_factory=dict)
-    monitor_script_job_futures: dict = dataclasses.field(default_factory=dict)
-    promote_futures: dict = dataclasses.field(default_factory=dict)
-    stop_event: threading.Event = dataclasses.field(default_factory=threading.Event)
+
+    def __init__(
+        self,
+        database_client: DatabaseClient,
+        base_dataset: str,
+        write_dataset: str,
+        scripts: dict[TableRef, Script],
+        selected_table_refs: set[TableRef],
+        incremental_field_name=None,
+        incremental_field_values=None
+    ):
+        self.database_client = database_client
+        self.base_dataset = base_dataset
+        self.write_dataset = write_dataset
+        self.scripts = scripts
+        self.selected_table_refs = selected_table_refs
+
+        self.incremental_field_name = incremental_field_name
+        self.incremental_field_values = incremental_field_values
+        self.jobs: list[ScriptJob] = []
+        self.started_at = dt.datetime.now()
+        self.ended_at: dt.datetime | None = None
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=None)
+        self.start_script_futures: dict = {}
+        self.monitor_script_job_futures: dict = {}
+        self.promote_futures: dict = {}
+        self.stop_event = threading.Event()
+
+        if self.incremental_field_name is not None:
+            self.filterable_table_refs = (
+                {
+                    table_ref
+                    for table_ref in scripts
+                    if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
+                } | {
+                    self.add_write_context_to_table_ref(table_ref)
+                    for table_ref in selected_table_refs
+                    if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
+                }
+            )
+            self.incremental_table_refs = {
+                table_ref
+                for table_ref in selected_table_refs
+                if any(field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags for field in scripts[table_ref].fields)
+            } | {
+                self.add_write_context_to_table_ref(table_ref)
+                for table_ref in scripts
+                if any(field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags for field in scripts[table_ref].fields)
+            }
+        else:
+            self.filterable_table_refs = set()
+            self.incremental_table_refs = set()
+
+    def add_write_context_to_table_ref(self, table_ref: TableRef) -> TableRef:
+        return dataclasses.replace(
+            table_ref,
+            dataset=self.write_dataset,
+            name=f"{table_ref.name}___audit"
+        )
+
+    def remove_write_context(self, table_ref: TableRef) -> TableRef:
+        return self.remove_audit_suffix(dataclasses.replace(
+            table_ref,
+            dataset=self.base_dataset
+        ))
+
+    def remove_audit_suffix(self, table_ref: TableRef) -> TableRef:
+        return dataclasses.replace(
+            table_ref,
+            name=re.sub(r"___audit$", "", table_ref.name)
+        )
+
+    def add_context(self, script: Script) -> Script:
+        script = replace_script_dependencies(
+            script=script,
+            table_refs_to_replace=self.selected_table_refs,
+            replace_func=self.add_write_context_to_table_ref
+        )
+        # If a script is marked as incremental, it implies that it can be run incrementally. This
+        # means that we have to filter the script's dependencies, as well as filter the output.
+        # This logic is implemented by the script's SQL dialect.
+        if script.table_ref in self.incremental_table_refs:
+            script = dataclasses.replace(
+                script,
+                code=script.sql_dialect.add_dependency_filters(
+                    code=script.code,
+                    incremental_field_name=self.incremental_field_name,
+                    incremental_field_values=self.incremental_field_values,
+                    # One caveat is the dependencies which are not incremental do not have to be
+                    # filtered. Indeed, they are already filtered by the fact that they are
+                    # incremental.
+                    dependencies_to_filter=self.filterable_table_refs - self.incremental_table_refs
+                )
+            )
+        # If the script is not incremental, we're not out of the woods! All scripts are
+        # materialized into side-tables which we call "audit" tables. This is the WAP pattern.
+        # Therefore, if a script is not incremental, but it depends on an incremental script, we
+        # have to modify the script to use both the incremental and non-incremental versions of
+        # the dependency. This is handled by the script's SQL dialect.
+        elif self.incremental_table_refs:
+            script = dataclasses.replace(
+                script,
+                code=script.sql_dialect.handle_incremental_dependencies(
+                    code=script.code,
+                    incremental_field_name=self.incremental_field_name,
+                    incremental_field_values=self.incremental_field_values,
+                    incremental_dependencies={
+                        self.remove_write_context(table_ref): table_ref
+                        for table_ref in self.incremental_table_refs
+                    }
+                )
+            )
+
+        script = script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
+        return script
 
     def start_script(self, script: Script):
         # If the script is a test, we don't materialize it, we just query it. A test fails if it
@@ -79,51 +200,76 @@ class Session:
 
         future = self.executor.submit(self.monitor_script_job, job)
         self.monitor_script_job_futures[job] = future
+        del self.start_script_futures[script.table_ref]
 
     def monitor_script_job(self, job: ScriptJob):
+
+        # We're going to do expontential backoff. This is because we don't want to overload
+        # whatever API is used to check whether a database job is over or not. We're going to
+        # check every second, then every two seconds, then every four seconds, etc. until we
+        # reach a maximum delay of 10 seconds.
+        base_delay = 1
+        max_delay = 10
+        retries = 0
+
         while not self.stop_event.is_set():
             if not job.database_job.is_done:
+                delay = min(max_delay, base_delay * (2 ** retries))
+                retries += 1
+                time.sleep(delay)
                 continue
 
-            job.ended_at = dt.datetime.now()
+            try:
+                job.ended_at = dt.datetime.now()
 
-            # Case 1: the job raised an exception
-            if (exception := job.database_job.exception) is not None:
+                # Case 1: the job raised an exception
+                if (exception := job.database_job.exception) is not None:
+                    job.status = ScriptJobStatus.ERRORED
+                    log.error(f"{job.status} {job.script.table_ref}\n{exception}")
+
+                # Case 2: the job succeeded, but it's a test and there are negative cases
+                elif job.script.is_test and not (dataframe := job.database_job.result).empty:
+                    job.status = ScriptJobStatus.ERRORED
+                    log.error(f"{job.status} {job.script.table_ref}\n{dataframe.head()}")
+
+                # Case 3: the job succeeded!
+                else:
+                    job.status = ScriptJobStatus.SUCCESS
+                    msg = f"{job.status} {job.script.table_ref}"
+                    duration_str = str(job.ended_at - job.started_at).split('.')[0]
+                    msg += f", took {duration_str}, billed ${job.database_job.billed_dollars:.2f}"
+                    if not job.script.is_test:
+                        if (n_rows := job.database_job.n_rows_in_destination) is not None:
+                            msg += f", contains {n_rows:,d} rows"
+                        if (n_bytes := job.database_job.n_bytes_in_destination) is not None:
+                            msg += f", weighs {format_bytes(n_bytes)}"
+                    log.info(msg)
+
+            except Exception as e:
                 job.status = ScriptJobStatus.ERRORED
-                log.error(f"{job.status} {job.script.table_ref}\n{exception}")
-
-            # Case 2: the job succeeded, but it's a test and there are negative cases
-            elif job.script.is_test and not (dataframe := job.database_job.result).empty:
-                job.status = ScriptJobStatus.ERRORED
-                log.error(f"{job.status} {job.script.table_ref}\n{dataframe.head()}")
-
-            # Case 3: the job succeeded!
-            else:
-                job.status = ScriptJobStatus.SUCCESS
-                msg = f"{job.status} {job.script.table_ref}"
-                duration_str = str(job.ended_at - job.started_at).split('.')[0]
-                msg += f", took {duration_str}, billed ${job.database_job.billed_dollars:.2f}"
-                if not job.script.is_test and (n_rows := job.database_job.n_rows_in_destination) is not None:
-                    msg += f", table now has {n_rows:,d} rows"
-                log.info(msg)
+                log.error(f"{job.status} {job.script.table_ref}\n{e}")
 
             return job
 
-    def promote(self, script: Script, incremental_field_name: str | None = None):
+    def promote(self, script: Script):
         from_table_ref = script.table_ref
-        script = script.replace_table_ref(from_table_ref.remove_audit_suffix())
+        script = dataclasses.replace(
+            script,
+            table_ref=self.remove_write_context(script.table_ref)
+        )
 
-        if incremental_field_name is not None:
+        if self.incremental_field_name is not None and script.table_ref in self.incremental_table_refs:
             database_job = self.database_client.delete_and_insert(
                 from_table_ref=from_table_ref,
                 to_table_ref=script.table_ref,
-                on=incremental_field_name
+                on=self.incremental_field_name
             )
         else:
             database_job = self.database_client.clone_table(
                 from_table_ref=from_table_ref,
                 to_table_ref=script.table_ref
             )
+
         job = ScriptJob(script=script, database_job=database_job)
         self.jobs.append(job)
         log.info(f"{job.status} {script.table_ref}")
@@ -132,11 +278,13 @@ class Session:
 
     def end(self):
         log.info("Ending session")
+        self.stop_event.set()
         for job in self.jobs:
             if job.status == ScriptJobStatus.RUNNING:
                 log.info(f"Stopping {job.script.table_ref}")
                 job.database_job.stop()
                 job.status = ScriptJobStatus.STOPPED
+        self.executor.shutdown()
         self.ended_at = dt.datetime.now()
 
     @property
@@ -152,128 +300,25 @@ class Session:
         return sum(job.database_job.billed_dollars for job in self.jobs)
 
 
-class ScriptManager:
+def replace_script_dependencies(
+    script: Script,
+    table_refs_to_replace: set[TableRef],
+    replace_func: Callable[[TableRef], TableRef]
+) -> Script:
+    """
 
-    def __init__(
-        self,
-        scripts: dict[TableRef, Script],
-        selected_table_refs: set[TableRef],
-        base_dataset: str,
-        write_dataset: str,
-        incremental_field_name: str | None = None,
-        incremental_field_values: set[str] | None = None,
-    ):
-        self.scripts = scripts
-        self.selected_table_refs = selected_table_refs
-        self.base_dataset = base_dataset
-        self.write_dataset = write_dataset
-        self.incremental_field_name = incremental_field_name
-        self.incremental_field_values = incremental_field_values
+    It's often necessary to edit the dependencies of a script. For example, we might want
+    to change the dataset of a dependency. Or we might want to append a suffix a table name
+    when we're doing a write/audit/publish operation.
 
-        self.filterable_table_refs = (
-            {
-                table_ref
-                for table_ref in scripts
-                if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
-            } | {
-                self.add_write_context_to_table_ref(table_ref)
-                for table_ref in selected_table_refs
-                if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
-            }
-            if incremental_field_name
-            else set()
-        )
-        self.incremental_table_refs = {
-            table_ref
-            for table_ref in selected_table_refs
-            if any(field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags for field in scripts[table_ref].fields)
-        } | {
-            self.add_write_context_to_table_ref(table_ref)
-            for table_ref in scripts
-            if any(field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags for field in scripts[table_ref].fields)
-        }
-
-    def add_context(self, script: Script) -> Script:
-        script = self.edit_dependencies(script)
-        script = self.add_incremental_context(script)
-        script = script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
-        return script
-
-    def add_write_context_to_table_ref(self, table_ref: TableRef) -> TableRef:
-        table_ref = table_ref.add_audit_suffix()
-        return dataclasses.replace(
-            table_ref,
-            dataset=self.write_dataset
-        )
-
-    def remove_write_context(self, table_ref: TableRef) -> TableRef:
-        table_ref = table_ref.remove_audit_suffix()
-        return dataclasses.replace(
-            table_ref,
-            dataset=self.base_dataset,
-            name=re.sub(r"__audit$", "", table_ref.name)
-        )
-
-    def edit_dependencies(self, script: Script) -> Script:
-        """
-
-        It's often necessary to edit the dependencies of a script. For example, we might want
-        to change the dataset of a dependency. Or we might want to append a suffix a table name
-        when we're doing a write/audit/publish operation.
-
-        """
-        code = script.code
-        # TODO: could be done faster with Aho–Corasick algorithm
-        # Maybe try out https://github.com/vi3k6i5/flashtext
-        for dependency_to_edit in script.dependencies & self.selected_table_refs:
-            dependency_to_edit_str = script.sql_dialect.format_table_ref(dependency_to_edit)
-            new_dependency = self.add_write_context_to_table_ref(dependency_to_edit)
-            new_dependency_str = script.sql_dialect.format_table_ref(new_dependency)
-            code = re.sub(rf"\b{dependency_to_edit_str}\b", new_dependency_str, code)
-        return dataclasses.replace(script, code=code)
-
-    def add_incremental_context(self, script: Script) -> Script:
-        """
-
-        Some scripts have the ability to be run incrementally. This is useful when we want to
-        run a script only for a subset of the data. For example, we might want to run a script
-        only for a specific customer. This function modifies the script to only run for the
-        specified subset.
-
-        The way this works is to replace each dependency with a subquery that filters the data
-        based on the field name and the field values subset. Furthermore, the script is modified
-        to filter the data based on the field name and the field values subset. The latter
-        guarantees that the output will only contain the specified subset. The former guarantees
-        the script isn't processing unnecessary data.
-
-        """
-        if script.table_ref in self.incremental_table_refs:
-            code_with_incremental_logic = script.sql_dialect.make_incremental(
-                code=script.code,
-                field_name=self.incremental_field_name,
-                field_values=self.incremental_field_values,
-                dependencies_to_filter=self.filterable_table_refs - self.incremental_table_refs
-            )
-            script = dataclasses.replace(script, code=code_with_incremental_logic)
-
-        else:
-            code = script.code
-            for dependency in self.incremental_table_refs:
-                dependency_str = script.sql_dialect.format_table_ref(dependency)
-                code = code.replace(
-                    dependency_str,
-                    f"""
-                    (
-                        SELECT * FROM {dependency_str}
-                        UNION ALL
-                        SELECT * FROM {script.sql_dialect.format_table_ref(dependency.remove_audit_suffix())}
-                        WHERE {self.incremental_field_name} NOT IN ({", ".join(f"'{value}'" for value in self.incremental_field_values)})
-                    )
-                    """
-                )
-            script = dataclasses.replace(script, code=code)
-
-        return script
+    """
+    code = script.code
+    for dependency_to_edit in script.dependencies & table_refs_to_replace:
+        dependency_to_edit_str = script.sql_dialect.format_table_ref(dependency_to_edit)
+        new_dependency = replace_func(dependency_to_edit)
+        new_dependency_str = script.sql_dialect.format_table_ref(new_dependency)
+        code = re.sub(rf"\b{dependency_to_edit_str}\b", new_dependency_str, code)
+    return dataclasses.replace(script, code=code)
 
 
 def main():
@@ -311,16 +356,16 @@ def main():
     write_dataset = f"{dataset}_{username}"
     database_client.create_dataset(write_dataset)
 
-    script_manager = ScriptManager(
+    session = Session(
+        database_client=database_client,
+        base_dataset=dataset,
+        write_dataset=write_dataset,
         scripts=dag.scripts,
         selected_table_refs=selected_table_refs,
-        write_dataset=write_dataset,
-        base_dataset=dataset,
-        incremental_field_name="account_slug",
-        incremental_field_values={"demo-account"}
+        incremental_field_name='account_slug',
+        incremental_field_values=['demo-account']
     )
 
-    session = Session(database_client=database_client)
 
     # Loop over table references in topological order
     dag.prepare()
@@ -337,7 +382,7 @@ def main():
 
             # Before executing a script, we need to contextualize it. We have to edit its
             # dependencies, add incremental logic, and set the write context.
-            script = script_manager.add_context(script)
+            script = session.add_context(script)
 
             future = session.executor.submit(session.start_script, script)
             session.start_script_futures[script.table_ref] = future
@@ -345,10 +390,9 @@ def main():
         # Check for scripts that have finished
         for job, future in list(session.monitor_script_job_futures.items()):
             if future.done():
-                table_ref = script_manager.remove_write_context(job.script.table_ref)
+                table_ref = session.remove_write_context(job.script.table_ref)
                 dag.done(table_ref)
                 del session.monitor_script_job_futures[job]
-
 
     # At this point, the scripts have been materialized into side-tables which we call "audit"
     # tables. We can now take care of promoting the audit tables to production.
@@ -366,15 +410,7 @@ def main():
         # generator expression, the loop would be infinite because jobs are being added to
         # session.jobs when session.promote is called.
         for script in [job.script for job in session.jobs if not job.script.is_test]:
-            future = session.executor.submit(
-                session.promote,
-                script=script,
-                incremental_field_name=(
-                    script_manager.incremental_field_name
-                    if script.table_ref in script_manager.incremental_table_refs
-                    else None
-                )
-            )
+            future = session.executor.submit(session.promote, script)
             session.promote_futures[script.table_ref] = future
 
         # Wait for all promotion jobs to finish

@@ -47,15 +47,43 @@ class SQLDialect:
             elements=elements,
         )
 
-    def make_incremental(self, code: str, field_name: str, field_values: set[str], dependencies_to_filter: set[TableRef]) -> str:
-        field_values_str = ", ".join(f"'{value}'" for value in field_values)
+    def add_dependency_filters(self, code: str, incremental_field_name: str, incremental_field_values: set[str], dependencies_to_filter: set[TableRef]) -> str:
+        incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
         for dependency in dependencies_to_filter:
             dependency_str = self.format_table_ref(dependency)
             code = code.replace(
                 dependency_str,
-                f"(SELECT * FROM {dependency_str} WHERE {field_name} IN ({field_values_str}))"
+                f"(SELECT * FROM {dependency_str} WHERE {incremental_field_name} IN ({incremental_field_values_str}))"
             )
-        code = f"SELECT * FROM ({code}) WHERE {field_name} IN ({field_values_str})"
+        return f"""
+        SELECT * FROM (
+        {code}
+        )
+        WHERE {incremental_field_name} IN ({incremental_field_values_str})
+        """
+
+    def handle_incremental_dependencies(
+        self,
+        code: str,
+        incremental_field_name: str,
+        incremental_field_values: set[str],
+        incremental_dependencies: dict[TableRef, TableRef]
+    ) -> str:
+        incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
+        for dependency_without_wap_suffix, dependency_with_wap_suffix in incremental_dependencies.items():
+            dependency_without_wap_suffix_str = self.format_table_ref(dependency_without_wap_suffix)
+            dependency_with_wap_suffix_str = self.format_table_ref(dependency_with_wap_suffix)
+            code = code.replace(
+                dependency_without_wap_suffix_str,
+                f"""
+                (
+                    SELECT * FROM {dependency_with_wap_suffix_str}
+                    UNION ALL
+                    SELECT * FROM {dependency_without_wap_suffix_str}
+                    WHERE {incremental_field_name} NOT IN ({incremental_field_values_str})
+                )
+                """
+            )
         return code
 
 
