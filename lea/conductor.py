@@ -353,7 +353,7 @@ def main():
     query = ['*']
     #query = ['measure.energy_sources', 'platform.report.energy_breakdown']
 
-    dry_run = False
+    dry_run = True
     early_end = True
     selected_table_refs = dag.select(*query)
 
