@@ -5,7 +5,7 @@ name = "lea-cli"
 packages = [
   {include = "lea", from = "."},
 ]
-version = "0.5.0"
+version = "0.6.0"
 
 [tool.poetry.dependencies]
 Jinja2 = "^3.1.2"

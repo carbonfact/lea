@@ -98,6 +98,7 @@ class Session:
                     table_ref
                     for table_ref in scripts
                     if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
+                # TODO: this is overkill
                 } | {
                     self.add_write_context_to_table_ref(table_ref)
                     for table_ref in selected_table_refs
@@ -108,6 +109,7 @@ class Session:
                 table_ref
                 for table_ref in selected_table_refs
                 if any(field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags for field in scripts[table_ref].fields)
+                # TODO: this is overkill
             } | {
                 self.add_write_context_to_table_ref(table_ref)
                 for table_ref in scripts
@@ -139,6 +141,7 @@ class Session:
     def add_context(self, script: Script) -> Script:
         script = replace_script_dependencies(
             script=script,
+            # TODO: what if we want to replace every dependency?
             table_refs_to_replace=self.selected_table_refs,
             replace_func=self.add_write_context_to_table_ref
         )
@@ -171,7 +174,7 @@ class Session:
                     incremental_field_name=self.incremental_field_name,
                     incremental_field_values=self.incremental_field_values,
                     incremental_dependencies={
-                        self.remove_write_context(table_ref): table_ref
+                        self.remove_audit_suffix(table_ref): table_ref
                         for table_ref in self.incremental_table_refs
                     }
                 )
@@ -200,7 +203,6 @@ class Session:
 
         future = self.executor.submit(self.monitor_script_job, job)
         self.monitor_script_job_futures[job] = future
-        del self.start_script_futures[script.table_ref]
 
     def monitor_script_job(self, job: ScriptJob):
 
@@ -257,7 +259,7 @@ class Session:
         from_table_ref = script.table_ref
         script = dataclasses.replace(
             script,
-            table_ref=self.remove_write_context(script.table_ref)
+            table_ref=self.remove_audit_suffix(script.table_ref)
         )
 
         if self.incremental_field_name is not None and script.table_ref in self.incremental_table_refs:
@@ -316,10 +318,20 @@ def replace_script_dependencies(
     """
     code = script.code
     for dependency_to_edit in script.dependencies & table_refs_to_replace:
+
         dependency_to_edit_str = script.sql_dialect.format_table_ref(dependency_to_edit)
         new_dependency = replace_func(dependency_to_edit)
         new_dependency_str = script.sql_dialect.format_table_ref(new_dependency)
         code = re.sub(rf"\b{dependency_to_edit_str}\b", new_dependency_str, code)
+
+        # We also have to handle the case where the table is references to access a field.
+        # TODO: refactor this with the above
+        dependency_to_edit_without_dataset = dataclasses.replace(dependency_to_edit, dataset='')
+        dependency_to_edit_without_dataset_str = script.sql_dialect.format_table_ref(dependency_to_edit_without_dataset)
+        new_dependency_without_dataset = dataclasses.replace(new_dependency, dataset='')
+        new_dependency_without_dataset_str = script.sql_dialect.format_table_ref(new_dependency_without_dataset)
+        code = re.sub(rf"\b{dependency_to_edit_without_dataset_str}\b", new_dependency_without_dataset_str, code)
+
     return dataclasses.replace(script, code=code)
 
 
@@ -337,8 +349,9 @@ def main():
     #query = ['core.accounts', 'tests.customers_have_arr', 'core.dates', 'core.carbonverses']
     query = ['core.accounts', 'core.accounts_dup', 'tests.customers_have_arr', 'core.dates']
     #query = ['core.accounts']
-    query = ['core.carbonverses_history']
+    #query = ['core.carbonverses_history']
     query = ['*']
+    #query = ['measure.energy_sources', 'platform.report.energy_breakdown']
 
     dry_run = False
     early_end = True
@@ -370,6 +383,8 @@ def main():
         incremental_field_values=['demo-account']
     )
 
+    for incremental_table_ref in session.incremental_table_refs:
+        log.info(f"Will run {incremental_table_ref} incrementally")
 
     # Loop over table references in topological order
     dag.prepare()
@@ -397,6 +412,7 @@ def main():
                 table_ref = session.remove_write_context(job.script.table_ref)
                 dag.done(table_ref)
                 del session.monitor_script_job_futures[job]
+                del session.start_script_futures[job.script.table_ref]
 
     # At this point, the scripts have been materialized into side-tables which we call "audit"
     # tables. We can now take care of promoting the audit tables to production.
