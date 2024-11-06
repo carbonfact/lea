@@ -3,8 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 import concurrent.futures
 import dataclasses
+import os
+import pathlib
 import datetime as dt
 import enum
+import getpass
+import json
 import logging
 import re
 import rich.logging
@@ -12,6 +16,9 @@ import sys
 import time
 import threading
 
+from lea.dag import DAGOfScripts
+from lea.databases import BigQueryClient
+from lea.dialects import BigQueryDialect
 from lea.scripts import Script
 from lea.databases import DatabaseClient, DatabaseJob
 from lea.field import FieldTag
@@ -335,121 +342,175 @@ def replace_script_dependencies(
     return dataclasses.replace(script, code=code)
 
 
+class Conductor:
+
+    def __init__(
+        self,
+        dataset_name: str,
+        scripts_dir: str
+    ):
+        self.dataset_name = dataset_name
+        self.scripts_dir = pathlib.Path(scripts_dir)
+        self.dag = DAGOfScripts.from_directory(
+            scripts_dir=self.scripts_dir,
+            sql_dialect=BigQueryDialect()
+        )
+
+    def make_client(self, dry_run: bool = False):
+
+        warehouse = os.environ["LEA_WAREHOUSE"]
+
+        if warehouse.lower() == "bigquery":
+            # Do imports here to avoid loading them all the time
+            from google.oauth2 import service_account
+
+            scopes_str = os.environ.get("LEA_BQ_SCOPES", "https://www.googleapis.com/auth/bigquery")
+            scopes = scopes_str.split(",")
+            scopes = [scope.strip() for scope in scopes]
+
+            credentials = (
+                service_account.Credentials.from_service_account_info(
+                    json.loads(bq_service_account_info_str, strict=False), scopes=scopes
+                )
+                if (bq_service_account_info_str := os.environ.get("LEA_BQ_SERVICE_ACCOUNT")) is not None
+                else None
+            )
+
+            return BigQueryClient(
+                credentials=credentials,
+                location=os.environ["LEA_BQ_LOCATION"],
+                write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
+                compute_project_id=os.environ.get("LEA_BQ_COMPUTE_PROJECT_ID", credentials.project_id if credentials is not None else None),
+                dry_run=dry_run
+            )
+
+        raise ValueError(f"Unsupported warehouse {warehouse!r}")
+
+    def name_user_dataset(self) -> str:
+        username = os.environ.get("LEA_USERNAME", getpass.getuser())
+        return f"{self.dataset_name}_{username}"
+
+    def run(
+        self,
+        *query: str,
+        production: bool = False,
+        dry_run: bool = False,
+        early_end: bool = False,
+        incremental_field_name: str | None = None,
+        incremental_field_values: list[str] | None = None
+    ):
+
+        # We need a database client to run scripts
+        database_client = self.make_client(dry_run=dry_run)
+
+        # We need to select the scripts we want to run. We do this by querying the DAG.
+        selected_table_refs = self.dag.select(*query)
+        if not selected_table_refs:
+            log.error("Nothing found for queries: " + ", ".join(query))
+            return sys.exit(1)
+
+        # We need a dataset to materialize the scripts. If we're in production mode, we use the
+        # base dataset. If we're in user mode, we use a dataset named after the user.
+        write_dataset = self.dataset_name if production else self.name_user_dataset()
+        database_client.create_dataset(write_dataset)
+
+        session = Session(
+            database_client=database_client,
+            base_dataset=self.dataset_name,
+            write_dataset=write_dataset,
+            scripts=self.dag.scripts,
+            selected_table_refs=selected_table_refs,
+            incremental_field_name=incremental_field_name,
+            incremental_field_values=incremental_field_values
+        )
+
+        # Loop over table references in topological order
+        self.dag.prepare()
+        while self.dag.is_active():
+
+            # If we're in early end mode, we need to check if any script errored, in which case we
+            # have to stop everything.
+            if early_end and session.any_job_has_errored:
+                log.error("Early ending because a job errored")
+                break
+
+            # Start available jobs
+            for script in self.dag.iter_scripts(selected_table_refs):
+
+                # Before executing a script, we need to contextualize it. We have to edit its
+                # dependencies, add incremental logic, and set the write context.
+                script = session.add_context(script)
+
+                future = session.executor.submit(session.start_script, script)
+                session.start_script_futures[script.table_ref] = future
+
+            # Check for scripts that have finished
+            for job, future in list(session.monitor_script_job_futures.items()):
+                if future.done():
+                    table_ref = session.remove_write_context(job.script.table_ref)
+                    self.dag.done(table_ref)
+                    del session.monitor_script_job_futures[job]
+                    del session.start_script_futures[job.script.table_ref]
+
+        # At this point, the scripts have been materialized into side-tables which we call "audit"
+        # tables. We can now take care of promoting the audit tables to production.
+        if not session.any_job_has_errored and not dry_run:
+            log.info("Promoting audit tables")
+
+            # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
+            # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
+            # best we can do for now. There's a very small chance that at least one promotion job will
+            # fail.
+            # https://hiflylabs.com/blog/2022/11/22/dbt-deployment-best-practices
+            # https://calogica.com/sql/bigquery/dbt/2020/05/24/dbt-bigquery-blue-green-wap.html
+            # https://calogica.com/assets/wap_dbt_bigquery.pdf
+            # Note: it's important for the following loop to be a list comprehension. If we used a
+            # generator expression, the loop would be infinite because jobs are being added to
+            # session.jobs when session.promote is called.
+            for script in [job.script for job in session.jobs if not job.script.is_test]:
+                future = session.executor.submit(session.promote, script)
+                session.promote_futures[script.table_ref] = future
+
+            # Wait for all promotion jobs to finish
+            for future in concurrent.futures.as_completed(session.promote_futures.values()):
+                ...
+
+        # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
+        session.end()
+        duration_str = str(session.ended_at - session.started_at).split('.')[0]  # type: ignore[operator]
+        log.info(f"Finished, took {duration_str}, billed ${session.total_billed_dollars:.2f}")
+
+        # # for job in session.jobs:
+        # #     print(job.script.table_ref)
+        # #     print('-' * 80)
+        # #     print(job.database_job.query_job.query)
+        # #     print('=' * 80)
+
+        if session.any_job_has_errored:
+            return sys.exit(1)
+
 def main():
 
-    import pathlib
-    from lea.dialects import BigQueryDialect
-    from lea.dag import DAGOfScripts
-    from lea.databases import BigQueryClient
+    import dotenv
+    dotenv.load_dotenv(".env", verbose=True)
 
-    dag = DAGOfScripts.from_directory(
-        dataset_dir=pathlib.Path("kaya"),
-        sql_dialect=BigQueryDialect()
+    conductor = Conductor(
+        dataset_name="kaya",
+        scripts_dir="kaya"
     )
+
     #query = ['core.accounts', 'tests.customers_have_arr', 'core.dates', 'core.carbonverses']
     query = ['core.accounts', 'core.accounts_dup', 'tests.customers_have_arr', 'core.dates']
     #query = ['core.accounts']
     #query = ['core.carbonverses_history']
-    query = ['*']
+    #query = ['*']
     #query = ['measure.energy_sources', 'platform.report.energy_breakdown']
 
-    dry_run = True
-    early_end = True
-    selected_table_refs = dag.select(*query)
-
-    if not selected_table_refs:
-        log.error("Nothing found for queries: " + ", ".join(query))
-        return sys.exit(1)
-
-    database_client = BigQueryClient(
-        credentials=None,
-        location="EU",
-        write_project_id="carbonfact-gsheet",
-        compute_project_id="carbonfact-gsheet",
-        dry_run=dry_run
+    conductor.run(
+        *query,
+        dry_run=True,
+        early_end=True
     )
-    dataset = "kaya"
-    username = "max"
-    write_dataset = f"{dataset}_{username}"
-    database_client.create_dataset(write_dataset)
-
-    session = Session(
-        database_client=database_client,
-        base_dataset=dataset,
-        write_dataset=write_dataset,
-        scripts=dag.scripts,
-        selected_table_refs=selected_table_refs,
-        incremental_field_name='account_slug',
-        incremental_field_values=['demo-account']
-    )
-
-    for incremental_table_ref in session.incremental_table_refs:
-        log.info(f"Will run {incremental_table_ref} incrementally")
-
-    # Loop over table references in topological order
-    dag.prepare()
-    while dag.is_active():
-
-        # If we're in early end mode, we need to check if any script errored, in which case we
-        # have to stop everything.
-        if early_end and session.any_job_has_errored:
-            log.error("Early ending because a job errored")
-            break
-
-        # Start available jobs
-        for script in dag.iter_scripts(selected_table_refs):
-
-            # Before executing a script, we need to contextualize it. We have to edit its
-            # dependencies, add incremental logic, and set the write context.
-            script = session.add_context(script)
-
-            future = session.executor.submit(session.start_script, script)
-            session.start_script_futures[script.table_ref] = future
-
-        # Check for scripts that have finished
-        for job, future in list(session.monitor_script_job_futures.items()):
-            if future.done():
-                table_ref = session.remove_write_context(job.script.table_ref)
-                dag.done(table_ref)
-                del session.monitor_script_job_futures[job]
-                del session.start_script_futures[job.script.table_ref]
-
-    # At this point, the scripts have been materialized into side-tables which we call "audit"
-    # tables. We can now take care of promoting the audit tables to production.
-    if not session.any_job_has_errored and not dry_run:
-        log.info("Promoting audit tables")
-
-        # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
-        # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
-        # best we can do for now. There's a very small chance that at least one promotion job will
-        # fail.
-        # https://hiflylabs.com/blog/2022/11/22/dbt-deployment-best-practices
-        # https://calogica.com/sql/bigquery/dbt/2020/05/24/dbt-bigquery-blue-green-wap.html
-        # https://calogica.com/assets/wap_dbt_bigquery.pdf
-        # Note: it's important for the following loop to be a list comprehension. If we used a
-        # generator expression, the loop would be infinite because jobs are being added to
-        # session.jobs when session.promote is called.
-        for script in [job.script for job in session.jobs if not job.script.is_test]:
-            future = session.executor.submit(session.promote, script)
-            session.promote_futures[script.table_ref] = future
-
-        # Wait for all promotion jobs to finish
-        for future in concurrent.futures.as_completed(session.promote_futures.values()):
-            ...
-
-    # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
-    session.end()
-    duration_str = str(session.ended_at - session.started_at).split('.')[0]
-    log.info(f"Finished, took {duration_str}, billed ${session.total_billed_dollars:.2f}")
-
-    # # for job in session.jobs:
-    # #     print(job.script.table_ref)
-    # #     print('-' * 80)
-    # #     print(job.database_job.query_job.query)
-    # #     print('=' * 80)
-
-    if session.any_job_has_errored:
-        return sys.exit(1)
 
 
 if __name__ == "__main__":

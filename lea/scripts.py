@@ -25,20 +25,20 @@ class SQLScript:
     sql_dialect: SQLDialect
 
     @classmethod
-    def from_path(cls, dataset_dir: pathlib.Path, relative_path: pathlib.Path, sql_dialect: SQLDialect) -> SQLScript:
+    def from_path(cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, sql_dialect: SQLDialect) -> SQLScript:
 
         # Either the file is a Jinja template
         if relative_path.suffixes == [".sql", ".jinja"]:
-            loader = jinja2.FileSystemLoader(dataset_dir)
+            loader = jinja2.FileSystemLoader(scripts_dir)
             environment = jinja2.Environment(loader=loader)
             template = environment.get_template(str(relative_path))
             code = template.render(env=os.environ)
         # Or it's a regular SQL file
         else:
-            code = (dataset_dir / relative_path).read_text().rstrip().rstrip(";")
+            code = (scripts_dir / relative_path).read_text().rstrip().rstrip(";")
 
         return cls(
-            table_ref=TableRef.from_path(dataset_dir, relative_path),
+            table_ref=TableRef.from_path(scripts_dir, relative_path),
             code=code,
             sql_dialect=sql_dialect,
         )
@@ -157,7 +157,7 @@ class SQLScript:
 Script = SQLScript
 
 
-def read_scripts(dataset_dir: pathlib.Path, sql_dialect: SQLDialect) -> list[Script]:
+def read_scripts(scripts_dir: pathlib.Path, sql_dialect: SQLDialect) -> list[Script]:
 
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):
@@ -167,13 +167,13 @@ def read_scripts(dataset_dir: pathlib.Path, sql_dialect: SQLDialect) -> list[Scr
                 # dependencies between scripts. Therefore, we are not interested in the dataset of the
                 # dependencies. We know what the target dataset is called, so we can remove it from the
                 # dependencies.
-                return SQLScript.from_path(dataset_dir=dataset_dir, relative_path=path.relative_to(dataset_dir), sql_dialect=sql_dialect)
+                return SQLScript.from_path(scripts_dir=scripts_dir, relative_path=path.relative_to(scripts_dir), sql_dialect=sql_dialect)
             case _:
                 raise ValueError(f"Unsupported script type: {path}")
 
     return [
         read_script(path)
-        for path in dataset_dir.rglob("*")
+        for path in scripts_dir.rglob("*")
         if not path.is_dir()
         and tuple(path.suffixes) in {(".sql",), (".sql", ".jinja"), (".json",)}
         and not path.name.startswith("_")

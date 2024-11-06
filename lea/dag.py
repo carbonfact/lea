@@ -12,15 +12,15 @@ from .scripts import read_scripts, Script
 
 class DAGOfScripts(graphlib.TopologicalSorter):
 
-    def __init__(self, dependency_graph: dict[TableRef, set[TableRef]], scripts: list[Script], dataset_dir: pathlib.Path):
+    def __init__(self, dependency_graph: dict[TableRef, set[TableRef]], scripts: list[Script], scripts_dir: pathlib.Path):
         graphlib.TopologicalSorter.__init__(self, dependency_graph)
         self.dependency_graph = dependency_graph
         self.scripts = {script.table_ref: script for script in scripts}
-        self.dataset_dir = dataset_dir
+        self.scripts_dir = scripts_dir
 
     @classmethod
-    def from_directory(cls, dataset_dir: pathlib.Path, sql_dialect: SQLDialect):
-        scripts = read_scripts(dataset_dir=dataset_dir, sql_dialect=sql_dialect)
+    def from_directory(cls, scripts_dir: pathlib.Path, sql_dialect: SQLDialect):
+        scripts = read_scripts(scripts_dir=scripts_dir, sql_dialect=sql_dialect)
 
         # Fields in the script's code may contain tags. These tags induce assertion tests, which
         # are also scripts. We need to include these assertion tests in the dependency graph.
@@ -34,7 +34,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             for script in scripts
         }
 
-        return cls(dependency_graph=dependency_graph, scripts=scripts, dataset_dir=dataset_dir)
+        return cls(dependency_graph=dependency_graph, scripts=scripts, scripts_dir=scripts_dir)
 
     def select(self, *queries: str) -> set[TableRef]:
 
@@ -76,7 +76,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
                 return
 
             *schema, name = query.split(".")
-            table_ref = TableRef(dataset=self.dataset_dir.name, schema=tuple(schema), name=name)
+            table_ref = TableRef(dataset=self.scripts_dir.name, schema=tuple(schema), name=name)
             yield table_ref
             if include_ancestors:
                 yield from iter_ancestors(self.dependency_graph, node=table_ref)
