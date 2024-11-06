@@ -43,6 +43,9 @@ class ScriptJobStatus(enum.Enum):
         return self.value
 
 
+AUDIT_TABLE_SUFFIX = "___audit"
+
+
 @dataclasses.dataclass
 class ScriptJob:
     script: Script
@@ -67,7 +70,7 @@ def format_bytes(size: float) -> str:
         n += 1
 
     # Format the result with two decimal places
-    return f"{size:.2f}{units[n]}"
+    return f"{size:.0f}{units[n]}"
 
 
 class Session:
@@ -79,6 +82,7 @@ class Session:
         write_dataset: str,
         scripts: dict[TableRef, Script],
         selected_table_refs: set[TableRef],
+        defer_mode: bool = False,
         incremental_field_name=None,
         incremental_field_values=None
     ):
@@ -87,9 +91,10 @@ class Session:
         self.write_dataset = write_dataset
         self.scripts = scripts
         self.selected_table_refs = selected_table_refs
-
+        self.defer_mode = defer_mode
         self.incremental_field_name = incremental_field_name
         self.incremental_field_values = incremental_field_values
+
         self.jobs: list[ScriptJob] = []
         self.started_at = dt.datetime.now()
         self.ended_at: dt.datetime | None = None
@@ -127,29 +132,23 @@ class Session:
             self.incremental_table_refs = set()
 
     def add_write_context_to_table_ref(self, table_ref: TableRef) -> TableRef:
-        return dataclasses.replace(
-            table_ref,
-            dataset=self.write_dataset,
-            name=f"{table_ref.name}___audit"
-        )
+        table_ref = replace_table_ref_dataset(table_ref, self.write_dataset)
+        table_ref = add_table_ref_audit_suffix(table_ref)
+        return table_ref
 
     def remove_write_context(self, table_ref: TableRef) -> TableRef:
-        return self.remove_audit_suffix(dataclasses.replace(
-            table_ref,
-            dataset=self.base_dataset
-        ))
-
-    def remove_audit_suffix(self, table_ref: TableRef) -> TableRef:
-        return dataclasses.replace(
-            table_ref,
-            name=re.sub(r"___audit$", "", table_ref.name)
-        )
+        table_ref = replace_table_ref_dataset(table_ref, self.base_dataset)
+        table_ref = remove_table_audit_suffix(table_ref)
+        return table_ref
 
     def add_context(self, script: Script) -> Script:
         script = replace_script_dependencies(
             script=script,
-            # TODO: what if we want to replace every dependency?
-            table_refs_to_replace=self.selected_table_refs,
+            table_refs_to_replace=(
+                self.selected_table_refs
+                if self.defer_mode
+                else {script.table_ref for script in self.scripts.values() if not script.is_test}
+            ),
             replace_func=self.add_write_context_to_table_ref
         )
         # If a script is marked as incremental, it implies that it can be run incrementally. This
@@ -181,7 +180,7 @@ class Session:
                     incremental_field_name=self.incremental_field_name,
                     incremental_field_values=self.incremental_field_values,
                     incremental_dependencies={
-                        self.remove_audit_suffix(table_ref): table_ref
+                        remove_table_audit_suffix(table_ref): table_ref
                         for table_ref in self.incremental_table_refs
                     }
                 )
@@ -226,7 +225,6 @@ class Session:
             if not job.database_job.is_done:
                 delay = min(max_delay, base_delay * (2 ** retries))
                 retries += 1
-                log.info(f"{job.status} {job.script.table_ref}, waiting {delay}s")
                 time.sleep(delay)
                 continue
 
@@ -250,10 +248,9 @@ class Session:
                     duration_str = str(job.ended_at - job.started_at).split('.')[0]
                     msg += f", took {duration_str}, billed ${job.database_job.billed_dollars:.2f}"
                     if not job.script.is_test:
-                        if (n_rows := job.database_job.n_rows_in_destination) is not None:
-                            msg += f", contains {n_rows:,d} rows"
-                        if (n_bytes := job.database_job.n_bytes_in_destination) is not None:
-                            msg += f", weighs {format_bytes(n_bytes)}"
+                        if (stats := job.database_job.statistics) is not None:
+                            msg += f", contains {stats.n_rows:,d} rows"
+                            msg += f", weighs {format_bytes(stats.n_bytes)}"
                     log.info(msg)
 
             except Exception as e:
@@ -266,10 +263,10 @@ class Session:
         from_table_ref = script.table_ref
         script = dataclasses.replace(
             script,
-            table_ref=self.remove_audit_suffix(script.table_ref)
+            table_ref=remove_table_audit_suffix(script.table_ref)
         )
 
-        if self.incremental_field_name is not None and script.table_ref in self.incremental_table_refs:
+        if self.incremental_field_name is not None and from_table_ref in self.incremental_table_refs:
             database_job = self.database_client.delete_and_insert(
                 from_table_ref=from_table_ref,
                 to_table_ref=script.table_ref,
@@ -311,6 +308,25 @@ class Session:
         return sum(job.database_job.billed_dollars for job in self.jobs)
 
 
+
+
+def add_table_ref_audit_suffix(table_ref: TableRef) -> TableRef:
+    return dataclasses.replace(
+        table_ref,
+        name=f"{table_ref.name}{AUDIT_TABLE_SUFFIX}"
+    )
+
+def remove_table_audit_suffix(table_ref: TableRef) -> TableRef:
+    return dataclasses.replace(
+        table_ref,
+        name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", table_ref.name)
+    )
+
+
+def replace_table_ref_dataset(table_ref: TableRef, dataset: str) -> TableRef:
+    return dataclasses.replace(table_ref, dataset=dataset)
+
+
 def replace_script_dependencies(
     script: Script,
     table_refs_to_replace: set[TableRef],
@@ -331,7 +347,7 @@ def replace_script_dependencies(
         new_dependency_str = script.sql_dialect.format_table_ref(new_dependency)
         code = re.sub(rf"\b{dependency_to_edit_str}\b", new_dependency_str, code)
 
-        # We also have to handle the case where the table is references to access a field.
+        # We also have to handle the case where the table is referenced to access a field.
         # TODO: refactor this with the above
         dependency_to_edit_without_dataset = dataclasses.replace(dependency_to_edit, dataset='')
         dependency_to_edit_without_dataset_str = script.sql_dialect.format_table_ref(dependency_to_edit_without_dataset)
@@ -342,15 +358,39 @@ def replace_script_dependencies(
     return dataclasses.replace(script, code=code)
 
 
+def delete_audit_tables(
+    table_refs: set[TableRef],
+    database_client: DatabaseClient,
+    executor: concurrent.futures.ThreadPoolExecutor,
+    verbose: bool
+):
+    futures: dict[concurrent.futures.Future, TableRef] = {}
+    for table_ref in table_refs:
+        table_ref = add_table_ref_audit_suffix(table_ref)
+        future = executor.submit(database_client.delete_table, table_ref)
+        if verbose:
+            future.add_done_callback(lambda future: log.info(f"Deleted {futures[future]}"))
+        futures[future] = table_ref
+
+    for future in concurrent.futures.as_completed(futures):
+        ...
+
+
+
 class Conductor:
 
     def __init__(
         self,
-        dataset_name: str,
-        scripts_dir: str
+        scripts_dir: str,
+        dataset_name: str | None = None
     ):
-        self.dataset_name = dataset_name
         self.scripts_dir = pathlib.Path(scripts_dir)
+        if not self.scripts_dir.is_dir():
+            raise ValueError(f"Directory {self.scripts_dir} not found")
+        dataset_name = dataset_name or os.environ.get("LEA_BQ_SERVICE_ACCOUNT")
+        if dataset_name is None:
+            raise ValueError("Dataset name could not be inferred")
+        self.dataset_name = dataset_name
         self.dag = DAGOfScripts.from_directory(
             scripts_dir=self.scripts_dir,
             sql_dialect=BigQueryDialect()
@@ -390,12 +430,26 @@ class Conductor:
         username = os.environ.get("LEA_USERNAME", getpass.getuser())
         return f"{self.dataset_name}_{username}"
 
+    def list_materialized_audit_table_refs(self, database_client: DatabaseClient, dataset: str) -> set[TableRef]:
+        existing_tables = database_client.list_tables(dataset)
+        existing_audit_tables = {
+            table_ref: stats
+            for table_ref, stats in existing_tables.items()
+            if table_ref.name.endswith(AUDIT_TABLE_SUFFIX)
+        }
+        return {
+            remove_table_audit_suffix(table_ref)
+            for table_ref in existing_audit_tables
+        }
+
     def run(
         self,
         *query: str,
         production: bool = False,
         dry_run: bool = False,
-        early_end: bool = False,
+        keep_going: bool = False,
+        fresh: bool = False,
+        defer_mode: bool = False,
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None
     ):
@@ -414,12 +468,29 @@ class Conductor:
         write_dataset = self.dataset_name if production else self.name_user_dataset()
         database_client.create_dataset(write_dataset)
 
+        # When the scripts run, they are materialized into side-tables which we call "audit"
+        # tables. When a run stops because of an error, the audit tables are left behind. If we
+        # want to start fresh, we have to delete the audit tables. If not, the materialized tables
+        # can be skipped.
+        materialized_audit_table_refs = self.list_materialized_audit_table_refs(database_client, write_dataset)
+        if fresh:
+            log.info("Starting fresh, deleting audit tables")
+            delete_audit_tables(
+                table_refs=materialized_audit_table_refs,
+                database_client=database_client,
+                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                verbose=False
+            )
+        else:
+            selected_table_refs -= {replace_table_ref_dataset(materialized_audit_table_refs, self.dataset_name) for materialized_audit_table_refs in materialized_audit_table_refs}
+
         session = Session(
             database_client=database_client,
             base_dataset=self.dataset_name,
             write_dataset=write_dataset,
             scripts=self.dag.scripts,
             selected_table_refs=selected_table_refs,
+            defer_mode=defer_mode,
             incremental_field_name=incremental_field_name,
             incremental_field_values=incremental_field_values
         )
@@ -430,7 +501,7 @@ class Conductor:
 
             # If we're in early end mode, we need to check if any script errored, in which case we
             # have to stop everything.
-            if early_end and session.any_job_has_errored:
+            if keep_going and session.any_job_has_errored:
                 log.error("Early ending because a job errored")
                 break
 
@@ -473,45 +544,26 @@ class Conductor:
 
             # Wait for all promotion jobs to finish
             for future in concurrent.futures.as_completed(session.promote_futures.values()):
-                ...
+                if future.exception() is not None:
+                    log.error(f"Promotion failed: {future.exception()}")
+
+        if not session.any_job_has_errored:
+            log.info("All selected scripts materialized, deleting audit tables")
+            delete_audit_tables(
+                table_refs={
+                    replace_table_ref_dataset(table_ref, write_dataset)
+                    for table_ref in selected_table_refs
+                    if not self.dag.scripts[table_ref].is_test
+                } | (set() if fresh else materialized_audit_table_refs),
+                database_client=database_client,
+                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                verbose=False
+            )
 
         # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
         session.end()
         duration_str = str(session.ended_at - session.started_at).split('.')[0]  # type: ignore[operator]
         log.info(f"Finished, took {duration_str}, billed ${session.total_billed_dollars:.2f}")
 
-        # # for job in session.jobs:
-        # #     print(job.script.table_ref)
-        # #     print('-' * 80)
-        # #     print(job.database_job.query_job.query)
-        # #     print('=' * 80)
-
         if session.any_job_has_errored:
             return sys.exit(1)
-
-def main():
-
-    import dotenv
-    dotenv.load_dotenv(".env", verbose=True)
-
-    conductor = Conductor(
-        dataset_name="kaya",
-        scripts_dir="kaya"
-    )
-
-    #query = ['core.accounts', 'tests.customers_have_arr', 'core.dates', 'core.carbonverses']
-    query = ['core.accounts', 'core.accounts_dup', 'tests.customers_have_arr', 'core.dates']
-    #query = ['core.accounts']
-    #query = ['core.carbonverses_history']
-    #query = ['*']
-    #query = ['measure.energy_sources', 'platform.report.energy_breakdown']
-
-    conductor.run(
-        *query,
-        dry_run=True,
-        early_end=True
-    )
-
-
-if __name__ == "__main__":
-    main()

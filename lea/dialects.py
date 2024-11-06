@@ -1,11 +1,12 @@
 from __future__ import annotations
 import pathlib
+import re
 
 import jinja2
 import sqlglot
 
-from .table_ref import TableRef
-from .field import FieldTag
+from lea.field import FieldTag
+from lea.table_ref import TableRef
 
 
 class SQLDialect:
@@ -106,8 +107,20 @@ class BigQueryDialect(SQLDialect):
 
     @staticmethod
     def parse_table_ref(table_ref: str) -> TableRef:
+        """
+
+        >>> BigQueryDialect.parse_table_ref("my_dataset.my_schema__my_table")
+        TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table')
+
+        >>> BigQueryDialect.parse_table_ref("my_dataset.my_table")
+        TableRef(dataset='my_dataset', schema=(), name='my_table')
+
+        >>> BigQueryDialect.parse_table_ref("my_dataset.my_schema__my_table___audit")
+        TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table___audit')
+
+        """
         dataset, leftover = tuple(table_ref.rsplit(".", 1))
-        *schema, name = tuple(leftover.split("__"))
+        *schema, name = tuple(re.split(r'(?<!_)__(?!_)', leftover))
         return TableRef(dataset=dataset, schema=tuple(schema), name=name)
 
     @staticmethod

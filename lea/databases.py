@@ -64,20 +64,14 @@ class BigQueryJob:
         return self.client.estimate_cost_in_dollars(bytes_billed)
 
     @property
-    def n_rows_in_destination(self) -> int | None:
-        if self.client.dry_run:
+    def statistics(self) -> TableStats | None:
+        if self.client.dry_run or self.destination is None:
             return None
-        if self.destination is None:
-            return None
-        return self.client.client.get_table(self.destination).num_rows
-
-    @property
-    def n_bytes_in_destination(self) -> int | None:
-        if self.client.dry_run:
-            return None
-        if self.destination is None:
-            return None
-        return self.client.client.get_table(self.destination).num_bytes
+        table = self.client.client.get_table(self.destination)
+        return TableStats(
+            n_rows=table.num_rows,
+            n_bytes=table.num_bytes
+        )
 
     def stop(self):
         self.client.client.cancel_job(self.query_job.job_id)
@@ -89,6 +83,12 @@ class BigQueryJob:
     @property
     def exception(self) -> Exception:
         return self.query_job.exception()
+
+
+@dataclasses.dataclass
+class TableStats:
+    n_rows: int
+    n_bytes: int
 
 
 class BigQueryClient:
@@ -204,6 +204,20 @@ class BigQueryClient:
             client=self,
             query_job=self.client.query(delete_code, job_config=job_config)
         )
+
+    def list_tables(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
+        query = f"""
+        SELECT table_id, row_count, size_bytes
+        FROM `{self.write_project_id}.{dataset_name}.__TABLES__`
+        """
+        job = self.client.query(query)
+        return {
+            BigQueryDialect.parse_table_ref(f"{dataset_name}.{row['table_id']}"): TableStats(
+                n_rows=row["row_count"],
+                n_bytes=row["size_bytes"]
+            )
+            for row in job.result()
+        }
 
     def make_job_config(self, **kwargs) -> bigquery.QueryJobConfig:
         return bigquery.QueryJobConfig(
