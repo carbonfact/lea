@@ -285,7 +285,7 @@ class Session:
         self.monitor_script_job(job)
 
     def end(self):
-        log.info("Ending session")
+        log.info("😴 Ending session")
         self.stop_event.set()
         for job in self.jobs:
             if job.status == ScriptJobStatus.RUNNING:
@@ -474,7 +474,7 @@ class Conductor:
         # can be skipped.
         materialized_audit_table_refs = self.list_materialized_audit_table_refs(database_client, write_dataset)
         if fresh:
-            log.info("Starting fresh, deleting audit tables")
+            log.info("🧹 Starting fresh, deleting audit tables")
             delete_audit_tables(
                 table_refs=materialized_audit_table_refs,
                 database_client=database_client,
@@ -495,6 +495,47 @@ class Conductor:
             incremental_field_values=incremental_field_values
         )
 
+        try:
+            self.run_session(
+                session,
+                keep_going=keep_going,
+                dry_run=dry_run
+            )
+        except KeyboardInterrupt:
+            log.error("🛑 Keyboard interrupt")
+            session.end()
+            return sys.exit(1)
+
+        # If all the scripts succeeded, we can delete the audit tables.
+        if not session.any_job_has_errored:
+            log.info("🧹 All selected scripts materialized, deleting audit tables")
+            delete_audit_tables(
+                table_refs={
+                    replace_table_ref_dataset(table_ref, write_dataset)
+                    for table_ref in selected_table_refs
+                    if not self.dag.scripts[table_ref].is_test
+                } | (set() if fresh else materialized_audit_table_refs),
+                database_client=database_client,
+                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                verbose=False
+            )
+
+        # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
+        session.end()
+        duration_str = str(session.ended_at - session.started_at).split('.')[0]  # type: ignore[operator]
+        emoji = "🟢" if not session.any_job_has_errored else "🔴"
+        log.info(f"{emoji} Finished, took {duration_str}, billed ${session.total_billed_dollars:.2f}")
+
+        if session.any_job_has_errored:
+            return sys.exit(1)
+
+    def run_session(
+        self,
+        session: Session,
+        keep_going: bool,
+        dry_run: bool
+    ):
+
         # Loop over table references in topological order
         self.dag.prepare()
         while self.dag.is_active():
@@ -502,11 +543,11 @@ class Conductor:
             # If we're in early end mode, we need to check if any script errored, in which case we
             # have to stop everything.
             if keep_going and session.any_job_has_errored:
-                log.error("Early ending because a job errored")
+                log.error("✋ Early ending because a job errored")
                 break
 
             # Start available jobs
-            for script in self.dag.iter_scripts(selected_table_refs):
+            for script in self.dag.iter_scripts(session.selected_table_refs):
 
                 # Before executing a script, we need to contextualize it. We have to edit its
                 # dependencies, add incremental logic, and set the write context.
@@ -526,7 +567,7 @@ class Conductor:
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.
         if not session.any_job_has_errored and not dry_run:
-            log.info("Promoting audit tables")
+            log.info("🎖️ Promoting audit tables")
 
             # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
             # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
@@ -545,25 +586,4 @@ class Conductor:
             # Wait for all promotion jobs to finish
             for future in concurrent.futures.as_completed(session.promote_futures.values()):
                 if future.exception() is not None:
-                    log.error(f"Promotion failed: {future.exception()}")
-
-        if not session.any_job_has_errored:
-            log.info("All selected scripts materialized, deleting audit tables")
-            delete_audit_tables(
-                table_refs={
-                    replace_table_ref_dataset(table_ref, write_dataset)
-                    for table_ref in selected_table_refs
-                    if not self.dag.scripts[table_ref].is_test
-                } | (set() if fresh else materialized_audit_table_refs),
-                database_client=database_client,
-                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
-                verbose=False
-            )
-
-        # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
-        session.end()
-        duration_str = str(session.ended_at - session.started_at).split('.')[0]  # type: ignore[operator]
-        log.info(f"Finished, took {duration_str}, billed ${session.total_billed_dollars:.2f}")
-
-        if session.any_job_has_errored:
-            return sys.exit(1)
+                    log.error(f"Promotion failed\n{future.exception()}")

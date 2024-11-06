@@ -46,5 +46,6 @@ def run(select, dataset, scripts, incremental, dry, keep_going, fresh, defer):
 if __name__ == '__main__':
     cli()
 
-    # python lea/lea/cli.py run --select core.accounts+ --dataset kaya --scripts kaya
-    # python lea/lea/cli.py run --select core.accounts --dataset kaya --scripts kaya --fresh --incremental account_slug demo-account --incremental account_slug adore-me
+    # python lea/lea/cli.py run --select core.accounts+ --dataset kaya --scripts views
+    # python lea/lea/cli.py run --select core.accounts --dataset kaya --scripts views --fresh --incremental account_slug demo-account --incremental account_slug adore-me
+    # python lea/lea/cli.py run --select measure.metrics_cube --dataset kaya --scripts views --fresh --defer
