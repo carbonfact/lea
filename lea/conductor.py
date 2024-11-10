@@ -17,12 +17,12 @@ import time
 import threading
 
 from lea.dag import DAGOfScripts
-from lea.databases import BigQueryClient
+from lea import databases
 from lea.dialects import BigQueryDialect
 from lea.scripts import Script
 from lea.databases import DatabaseClient, DatabaseJob
 from lea.field import FieldTag
-from lea.table_ref import TableRef
+from lea.table_ref import TableRef, AUDIT_TABLE_SUFFIX
 
 
 log = logging.getLogger(__name__)
@@ -41,9 +41,6 @@ class ScriptJobStatus(enum.Enum):
 
     def __str__(self):
         return self.value
-
-
-AUDIT_TABLE_SUFFIX = "___audit"
 
 
 @dataclasses.dataclass
@@ -82,7 +79,6 @@ class Session:
         write_dataset: str,
         scripts: dict[TableRef, Script],
         selected_table_refs: set[TableRef],
-        defer_mode: bool = False,
         incremental_field_name=None,
         incremental_field_values=None
     ):
@@ -91,7 +87,6 @@ class Session:
         self.write_dataset = write_dataset
         self.scripts = scripts
         self.selected_table_refs = selected_table_refs
-        self.defer_mode = defer_mode
         self.incremental_field_name = incremental_field_name
         self.incremental_field_values = incremental_field_values
 
@@ -132,25 +127,28 @@ class Session:
             self.incremental_table_refs = set()
 
     def add_write_context_to_table_ref(self, table_ref: TableRef) -> TableRef:
-        table_ref = replace_table_ref_dataset(table_ref, self.write_dataset)
-        table_ref = add_table_ref_audit_suffix(table_ref)
+        table_ref = table_ref.replace_dataset(self.write_dataset)
+        table_ref = table_ref.add_audit_suffix()
         return table_ref
 
-    def remove_write_context(self, table_ref: TableRef) -> TableRef:
-        table_ref = replace_table_ref_dataset(table_ref, self.base_dataset)
-        table_ref = remove_table_audit_suffix(table_ref)
+    def remove_write_context_from_table_ref(self, table_ref: TableRef) -> TableRef:
+        table_ref = table_ref.replace_dataset(self.base_dataset)
+        table_ref = table_ref.remove_audit_suffix()
         return table_ref
 
-    def add_context(self, script: Script) -> Script:
+    def add_context_to_script(self, script: Script) -> Script:
+
+        def add_context_to_dependency(dependency: TableRef) -> TableRef:
+            dependency = dependency.replace_dataset(self.write_dataset)
+            if dependency not in self.selected_table_refs and dependency in self.scripts:
+                dependency = dependency.add_audit_suffix()
+            return dependency
+
         script = replace_script_dependencies(
             script=script,
-            table_refs_to_replace=(
-                self.selected_table_refs
-                if self.defer_mode
-                else {script.table_ref for script in self.scripts.values() if not script.is_test}
-            ),
-            replace_func=self.add_write_context_to_table_ref
+            replace_func=add_context_to_dependency
         )
+
         # If a script is marked as incremental, it implies that it can be run incrementally. This
         # means that we have to filter the script's dependencies, as well as filter the output.
         # This logic is implemented by the script's SQL dialect.
@@ -180,13 +178,16 @@ class Session:
                     incremental_field_name=self.incremental_field_name,
                     incremental_field_values=self.incremental_field_values,
                     incremental_dependencies={
-                        remove_table_audit_suffix(table_ref): table_ref
+                        table_ref.remove_audit_suffix(): table_ref
                         for table_ref in self.incremental_table_refs
                     }
                 )
             )
 
-        script = script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
+        if not script.is_test:
+            script = script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
+        else:
+            script = script.replace_table_ref(script.table_ref.replace_dataset(self.write_dataset))
         return script
 
     def start_script(self, script: Script):
@@ -205,7 +206,11 @@ class Session:
 
         job = ScriptJob(script=script, database_job=database_job)
         self.jobs.append(job)
-        log.info(f"{job.status} {script.table_ref}")
+
+        msg = f"{job.status} {script.table_ref}"
+        if script.table_ref in self.incremental_table_refs:
+            msg += " (incremental)"
+        log.info(msg)
 
         future = self.executor.submit(self.monitor_script_job, job)
         self.monitor_script_job_futures[job] = future
@@ -219,14 +224,21 @@ class Session:
         base_delay = 1
         max_delay = 10
         retries = 0
+        checked_at = dt.datetime.now()
 
         while not self.stop_event.is_set():
 
             if not job.database_job.is_done:
                 delay = min(max_delay, base_delay * (2 ** retries))
                 retries += 1
+                if (now := dt.datetime.now()) - checked_at >= dt.timedelta(seconds=10):
+                    duration_str = str(now - job.started_at).split('.')[0]
+                    log.info(f"{job.script.table_ref} still running after {duration_str}")
+                    checked_at = now
                 time.sleep(delay)
                 continue
+
+            print('done')
 
             try:
                 job.ended_at = dt.datetime.now()
@@ -263,7 +275,7 @@ class Session:
         from_table_ref = script.table_ref
         script = dataclasses.replace(
             script,
-            table_ref=remove_table_audit_suffix(script.table_ref)
+            table_ref=script.table_ref.remove_audit_suffix()
         )
 
         if self.incremental_field_name is not None and from_table_ref in self.incremental_table_refs:
@@ -308,28 +320,8 @@ class Session:
         return sum(job.database_job.billed_dollars for job in self.jobs)
 
 
-
-
-def add_table_ref_audit_suffix(table_ref: TableRef) -> TableRef:
-    return dataclasses.replace(
-        table_ref,
-        name=f"{table_ref.name}{AUDIT_TABLE_SUFFIX}"
-    )
-
-def remove_table_audit_suffix(table_ref: TableRef) -> TableRef:
-    return dataclasses.replace(
-        table_ref,
-        name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", table_ref.name)
-    )
-
-
-def replace_table_ref_dataset(table_ref: TableRef, dataset: str) -> TableRef:
-    return dataclasses.replace(table_ref, dataset=dataset)
-
-
 def replace_script_dependencies(
     script: Script,
-    table_refs_to_replace: set[TableRef],
     replace_func: Callable[[TableRef], TableRef]
 ) -> Script:
     """
@@ -340,7 +332,7 @@ def replace_script_dependencies(
 
     """
     code = script.code
-    for dependency_to_edit in script.dependencies & table_refs_to_replace:
+    for dependency_to_edit in script.dependencies:
 
         dependency_to_edit_str = script.sql_dialect.format_table_ref(dependency_to_edit)
         new_dependency = replace_func(dependency_to_edit)
@@ -366,14 +358,16 @@ def delete_audit_tables(
 ):
     futures: dict[concurrent.futures.Future, TableRef] = {}
     for table_ref in table_refs:
-        table_ref = add_table_ref_audit_suffix(table_ref)
+        table_ref = table_ref.add_audit_suffix()
         future = executor.submit(database_client.delete_table, table_ref)
-        if verbose:
-            future.add_done_callback(lambda future: log.info(f"Deleted {futures[future]}"))
         futures[future] = table_ref
 
     for future in concurrent.futures.as_completed(futures):
-        ...
+        if future.exception() is not None:
+            raise future.exception()
+            continue
+        if verbose:
+            log.info(f"Deleted {futures[future]}")
 
 
 
@@ -393,7 +387,8 @@ class Conductor:
         self.dataset_name = dataset_name
         self.dag = DAGOfScripts.from_directory(
             scripts_dir=self.scripts_dir,
-            sql_dialect=BigQueryDialect()
+            sql_dialect=BigQueryDialect(),
+            dataset_name=self.dataset_name
         )
 
     def make_client(self, dry_run: bool = False):
@@ -416,7 +411,7 @@ class Conductor:
                 else None
             )
 
-            return BigQueryClient(
+            return databases.BigQueryClient(
                 credentials=credentials,
                 location=os.environ["LEA_BQ_LOCATION"],
                 write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
@@ -438,7 +433,7 @@ class Conductor:
             if table_ref.name.endswith(AUDIT_TABLE_SUFFIX)
         }
         return {
-            remove_table_audit_suffix(table_ref)
+            table_ref.remove_audit_suffix()
             for table_ref in existing_audit_tables
         }
 
@@ -449,7 +444,6 @@ class Conductor:
         dry_run: bool = False,
         keep_going: bool = False,
         fresh: bool = False,
-        defer_mode: bool = False,
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None
     ):
@@ -460,7 +454,7 @@ class Conductor:
         # We need to select the scripts we want to run. We do this by querying the DAG.
         selected_table_refs = self.dag.select(*query)
         if not selected_table_refs:
-            log.error("Nothing found for queries: " + ", ".join(query))
+            log.error("Nothing found for query: " + ", ".join(query))
             return sys.exit(1)
 
         # We need a dataset to materialize the scripts. If we're in production mode, we use the
@@ -481,8 +475,9 @@ class Conductor:
                 executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
                 verbose=False
             )
-        else:
-            selected_table_refs -= {replace_table_ref_dataset(materialized_audit_table_refs, self.dataset_name) for materialized_audit_table_refs in materialized_audit_table_refs}
+        elif materialized_audit_table_refs:
+            log.info(f"⚡ Skipping {len(materialized_audit_table_refs):,d} already materialized tables")
+            selected_table_refs -= {materialized_audit_table_ref.replace_dataset(self.dataset_name) for materialized_audit_table_ref in materialized_audit_table_refs}
 
         session = Session(
             database_client=database_client,
@@ -490,7 +485,6 @@ class Conductor:
             write_dataset=write_dataset,
             scripts=self.dag.scripts,
             selected_table_refs=selected_table_refs,
-            defer_mode=defer_mode,
             incremental_field_name=incremental_field_name,
             incremental_field_values=incremental_field_values
         )
@@ -508,17 +502,19 @@ class Conductor:
 
         # If all the scripts succeeded, we can delete the audit tables.
         if not session.any_job_has_errored:
-            log.info("🧹 All selected scripts materialized, deleting audit tables")
-            delete_audit_tables(
-                table_refs={
-                    replace_table_ref_dataset(table_ref, write_dataset)
-                    for table_ref in selected_table_refs
-                    if not self.dag.scripts[table_ref].is_test
-                } | (set() if fresh else materialized_audit_table_refs),
-                database_client=database_client,
-                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
-                verbose=False
-            )
+            audit_tables ={
+                table_ref.replace_dataset(write_dataset)
+                for table_ref in selected_table_refs
+                if not self.dag.scripts[table_ref].is_test
+            } | (set() if fresh else materialized_audit_table_refs)
+            if audit_tables:
+                log.info("🧹 All selected scripts materialized, deleting audit tables")
+                delete_audit_tables(
+                    table_refs=audit_tables,
+                    database_client=database_client,
+                    executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                    verbose=False
+                )
 
         # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
         session.end()
@@ -551,7 +547,7 @@ class Conductor:
 
                 # Before executing a script, we need to contextualize it. We have to edit its
                 # dependencies, add incremental logic, and set the write context.
-                script = session.add_context(script)
+                script = session.add_context_to_script(script)
 
                 future = session.executor.submit(session.start_script, script)
                 session.start_script_futures[script.table_ref] = future
@@ -559,7 +555,7 @@ class Conductor:
             # Check for scripts that have finished
             for job, future in list(session.monitor_script_job_futures.items()):
                 if future.done():
-                    table_ref = session.remove_write_context(job.script.table_ref)
+                    table_ref = session.remove_write_context_from_table_ref(job.script.table_ref)
                     self.dag.done(table_ref)
                     del session.monitor_script_job_futures[job]
                     del session.start_script_futures[job.script.table_ref]
@@ -567,23 +563,25 @@ class Conductor:
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.
         if not session.any_job_has_errored and not dry_run:
-            log.info("🎖️ Promoting audit tables")
+            scripts_to_promote = [job.script for job in session.jobs if not job.script.is_test]
+            if scripts_to_promote:
+                log.info("🎖️ Promoting audit tables")
 
-            # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
-            # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
-            # best we can do for now. There's a very small chance that at least one promotion job will
-            # fail.
-            # https://hiflylabs.com/blog/2022/11/22/dbt-deployment-best-practices
-            # https://calogica.com/sql/bigquery/dbt/2020/05/24/dbt-bigquery-blue-green-wap.html
-            # https://calogica.com/assets/wap_dbt_bigquery.pdf
-            # Note: it's important for the following loop to be a list comprehension. If we used a
-            # generator expression, the loop would be infinite because jobs are being added to
-            # session.jobs when session.promote is called.
-            for script in [job.script for job in session.jobs if not job.script.is_test]:
-                future = session.executor.submit(session.promote, script)
-                session.promote_futures[script.table_ref] = future
+                # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
+                # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
+                # best we can do for now. There's a very small chance that at least one promotion job will
+                # fail.
+                # https://hiflylabs.com/blog/2022/11/22/dbt-deployment-best-practices
+                # https://calogica.com/sql/bigquery/dbt/2020/05/24/dbt-bigquery-blue-green-wap.html
+                # https://calogica.com/assets/wap_dbt_bigquery.pdf
+                # Note: it's important for the following loop to be a list comprehension. If we used a
+                # generator expression, the loop would be infinite because jobs are being added to
+                # session.jobs when session.promote is called.
+                for script in scripts_to_promote:
+                    future = session.executor.submit(session.promote, script)
+                    session.promote_futures[script.table_ref] = future
 
-            # Wait for all promotion jobs to finish
-            for future in concurrent.futures.as_completed(session.promote_futures.values()):
-                if future.exception() is not None:
-                    log.error(f"Promotion failed\n{future.exception()}")
+                # Wait for all promotion jobs to finish
+                for future in concurrent.futures.as_completed(session.promote_futures.values()):
+                    if future.exception() is not None:
+                        log.error(f"Promotion failed\n{future.exception()}")

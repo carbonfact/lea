@@ -4,6 +4,7 @@ import dataclasses
 import typing
 from lea import scripts
 from lea.dialects import BigQueryDialect
+from lea.table_ref import TableRef
 
 from google.cloud import bigquery
 import pandas as pd
@@ -43,6 +44,15 @@ class DatabaseClient(typing.Protocol):
         pass
 
     def clone_table(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef) -> DatabaseJob:
+        pass
+
+    def delete_and_insert(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str) -> DatabaseJob:
+        pass
+
+    def delete_table(self, table_ref: scripts.TableRef) -> DatabaseJob:
+        pass
+
+    def list_tables(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
         pass
 
 
@@ -135,6 +145,8 @@ class BigQueryClient:
         table_ref_str = BigQueryDialect.format_table_ref(sql_script.table_ref)
         destination = bigquery.TableReference.from_string(f"{self.write_project_id}.{table_ref_str}")
         job_config = self.make_job_config(
+            sql=sql_script.code,
+            table_ref=sql_script.table_ref,
             destination=destination,
             write_disposition="WRITE_TRUNCATE"
         )
@@ -150,7 +162,7 @@ class BigQueryClient:
         raise ValueError("Unsupported script type")
 
     def query_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
-        job_config = self.make_job_config(destination=None)
+        job_config = self.make_job_config(sql=sql_script.code, table_ref=None, destination=None)
         return BigQueryJob(
             client=self,
             query_job=self.client.query(sql_script.code, job_config=job_config)
@@ -164,7 +176,7 @@ class BigQueryClient:
         {destination}
         CLONE {self.write_project_id}.{BigQueryDialect.format_table_ref(from_table_ref)}
         """
-        job_config = self.make_job_config()
+        job_config = self.make_job_config(sql=clone_code, table_ref=to_table_ref)
         return BigQueryJob(
             client=self,
             query_job=self.client.query(clone_code, job_config=job_config),
@@ -187,7 +199,7 @@ class BigQueryClient:
 
         COMMIT TRANSACTION;
         """
-        job_config = self.make_job_config()
+        job_config = self.make_job_config(sql=delete_and_insert_code, table_ref=to_table_ref)
         return BigQueryJob(
             client=self,
             query_job=self.client.query(delete_and_insert_code,  job_config=job_config),
@@ -199,7 +211,7 @@ class BigQueryClient:
         delete_code = f"""
         DROP TABLE IF EXISTS {self.write_project_id}.{table_ref_str}
         """
-        job_config = self.make_job_config()
+        job_config = self.make_job_config(sql=delete_code, table_ref=table_ref)
         return BigQueryJob(
             client=self,
             query_job=self.client.query(delete_code, job_config=job_config)
@@ -219,7 +231,7 @@ class BigQueryClient:
             for row in job.result()
         }
 
-    def make_job_config(self, **kwargs) -> bigquery.QueryJobConfig:
+    def make_job_config(self, sql: str, table_ref: TableRef | None, **kwargs) -> bigquery.QueryJobConfig:
         return bigquery.QueryJobConfig(
             priority=bigquery.QueryPriority.INTERACTIVE,
             use_query_cache=False,

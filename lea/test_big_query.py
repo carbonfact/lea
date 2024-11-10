@@ -59,75 +59,7 @@ def test_simple_run(scripts):
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs=scripts.keys(),
-        defer_mode=False
-    )
-
-    assert_queries_are_equal(
-        session.add_context(scripts[TableRef("read", ("raw",), "users")]).code,
-        """
-        SELECT * FROM UNNEST([
-            STRUCT(1 AS id, 'Alice' AS name, 30 AS age),
-            STRUCT(2 AS id, 'Bob' AS name, 25 AS age),
-            STRUCT(3 AS id, 'Charlie' AS name, 35 AS age)
-        ])
-        """
-    )
-    assert_queries_are_equal(
-        session.add_context(scripts[TableRef("read", ("analytics",), "n_users")]).code,
-        """
-        SELECT COUNT(*)
-        FROM write.core__users___audit
-        """
-    )
-
-
-def test_defer_mode(scripts):
-    """
-
-    In defer mode, unselected table references are replaced with production data references.
-
-    """
-
-    session = Session(
-        database_client=None,
-        base_dataset="read",
-        write_dataset="write",
-        scripts=scripts,
-        selected_table_refs={TableRef("read", ("analytics",), "n_users")},
-        defer_mode=True
-    )
-
-    assert_queries_are_equal(
-        session.add_context(scripts[TableRef("read", ("raw",), "users")]).code,
-        """
-        SELECT * FROM UNNEST([
-            STRUCT(1 AS id, 'Alice' AS name, 30 AS age),
-            STRUCT(2 AS id, 'Bob' AS name, 25 AS age),
-            STRUCT(3 AS id, 'Charlie' AS name, 35 AS age)
-        ])
-        """
-    )
-    assert_queries_are_equal(
-        session.add_context(scripts[TableRef("read", ("analytics",), "n_users")]).code,
-        """
-        SELECT COUNT(*)
-        FROM read.core__users
-        """
-    )
-
-
-
-
-def test_defer_mode_select_all(scripts):
-
-    session = Session(
-        database_client=None,
-        base_dataset="read",
-        write_dataset="write",
-        scripts=scripts,
-        selected_table_refs=scripts.keys(),
-        defer_mode=True
+        selected_table_refs=scripts.keys()
     )
 
     assert_queries_are_equal(
@@ -157,7 +89,6 @@ def test_incremental_field(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs=scripts.keys(),
-        defer_mode=False,
         incremental_field_name="name",
         incremental_field_values={"Alice"}
     )

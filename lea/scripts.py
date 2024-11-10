@@ -157,7 +157,7 @@ class SQLScript:
 Script = SQLScript
 
 
-def read_scripts(scripts_dir: pathlib.Path, sql_dialect: SQLDialect) -> list[Script]:
+def read_scripts(scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str) -> list[Script]:
 
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):
@@ -171,8 +171,11 @@ def read_scripts(scripts_dir: pathlib.Path, sql_dialect: SQLDialect) -> list[Scr
             case _:
                 raise ValueError(f"Unsupported script type: {path}")
 
+    def set_dataset(script: Script) -> Script:
+        return script.replace_table_ref(script.table_ref.replace_dataset(dataset=dataset_name))
+
     return [
-        read_script(path)
+        set_dataset(read_script(path))
         for path in scripts_dir.rglob("*")
         if not path.is_dir()
         and tuple(path.suffixes) in {(".sql",), (".sql", ".jinja"), (".json",)}
