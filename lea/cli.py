@@ -1,4 +1,5 @@
 import collections
+import pathlib
 
 import click
 import dotenv
@@ -31,25 +32,24 @@ def handle_exceptions(func):
 @click.option('--fresh', is_flag=True, default=False, help='Whether to start from scratch.')
 def run(select, dataset, scripts, incremental, dry, keep_going, fresh):
 
+    if not pathlib.Path(scripts).is_dir():
+        raise click.ClickException(f"Directory {scripts} does not exist")
+
     # Handle incremental option
     incremental_field_values = collections.defaultdict(set)
     for field, value in incremental:
         incremental_field_values[field].add(value)
     if len(incremental_field_values) > 1:
-        raise click.ClickException("Specifying multiple incremental fields is not supported.")
+        raise click.ClickException("Specifying multiple incremental fields is not supported")
     incremental_field_name = next(iter(incremental_field_values), None)
     incremental_field_values = incremental_field_values[incremental_field_name]
 
-    try:
-        conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
-        conductor.run(
-            *select,
-            dry_run=dry,
-            keep_going=keep_going,
-            fresh=fresh,
-            incremental_field_name=incremental_field_name,
-            incremental_field_values=incremental_field_values,
-        )
-    except Exception as e:
-        click.secho(f"An error occurred: {e}", fg="red")
-        raise click.Abort()
+    conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
+    conductor.run(
+        *select,
+        dry_run=dry,
+        keep_going=keep_going,
+        fresh=fresh,
+        incremental_field_name=incremental_field_name,
+        incremental_field_values=incremental_field_values,
+    )

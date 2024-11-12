@@ -32,7 +32,7 @@ log.addHandler(log_handler)
 
 
 
-class ScriptJobStatus(enum.Enum):
+class JobStatus(enum.Enum):
     RUNNING = "RUNNING"
     SUCCESS = "SUCCESS"
     ERRORED = "ERRORED"
@@ -44,15 +44,16 @@ class ScriptJobStatus(enum.Enum):
 
 
 @dataclasses.dataclass
-class ScriptJob:
-    script: Script
+class Job:
+    table_ref: TableRef
+    is_test: bool
     database_job: DatabaseJob
     started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
     ended_at: dt.datetime | None = None
-    status: ScriptJobStatus = ScriptJobStatus.RUNNING
+    status: JobStatus = JobStatus.RUNNING
 
     def __hash__(self):
-        return hash(self.script.table_ref)
+        return hash(self.table_ref)
 
 
 def format_bytes(size: float) -> str:
@@ -79,6 +80,7 @@ class Session:
         write_dataset: str,
         scripts: dict[TableRef, Script],
         selected_table_refs: set[TableRef],
+        materialized_table_refs: set[TableRef],
         incremental_field_name=None,
         incremental_field_values=None
     ):
@@ -87,10 +89,11 @@ class Session:
         self.write_dataset = write_dataset
         self.scripts = scripts
         self.selected_table_refs = selected_table_refs
+        self.materialized_table_refs = materialized_table_refs
         self.incremental_field_name = incremental_field_name
         self.incremental_field_values = incremental_field_values
 
-        self.jobs: list[ScriptJob] = []
+        self.jobs: list[Job] = []
         self.started_at = dt.datetime.now()
         self.ended_at: dt.datetime | None = None
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=None)
@@ -126,6 +129,10 @@ class Session:
             self.filterable_table_refs = set()
             self.incremental_table_refs = set()
 
+    @property
+    def table_refs_to_run(self) -> set[TableRef]:
+        return self.selected_table_refs - self.materialized_table_refs
+
     def add_write_context_to_table_ref(self, table_ref: TableRef) -> TableRef:
         table_ref = table_ref.replace_dataset(self.write_dataset)
         table_ref = table_ref.add_audit_suffix()
@@ -137,17 +144,6 @@ class Session:
         return table_ref
 
     def add_context_to_script(self, script: Script) -> Script:
-
-        def add_context_to_dependency(dependency: TableRef) -> TableRef:
-            dependency = dependency.replace_dataset(self.write_dataset)
-            if dependency not in self.selected_table_refs and dependency in self.scripts:
-                dependency = dependency.add_audit_suffix()
-            return dependency
-
-        script = replace_script_dependencies(
-            script=script,
-            replace_func=add_context_to_dependency
-        )
 
         # If a script is marked as incremental, it implies that it can be run incrementally. This
         # means that we have to filter the script's dependencies, as well as filter the output.
@@ -184,6 +180,17 @@ class Session:
                 )
             )
 
+        def add_context_to_dependency(dependency: TableRef) -> TableRef:
+            dependency = dependency.replace_dataset(self.write_dataset)
+            if dependency not in self.selected_table_refs and dependency in self.scripts:
+                dependency = dependency.add_audit_suffix()
+            return dependency
+
+        script = replace_script_dependencies(
+            script=script,
+            replace_func=add_context_to_dependency
+        )
+
         if not script.is_test:
             script = script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
         else:
@@ -204,7 +211,7 @@ class Session:
                 script=script
             )
 
-        job = ScriptJob(script=script, database_job=database_job)
+        job = Job(table_ref=script.table_ref, is_test=script.is_test, database_job=database_job)
         self.jobs.append(job)
 
         msg = f"{job.status} {script.table_ref}"
@@ -212,9 +219,9 @@ class Session:
             msg += " (incremental)"
         log.info(msg)
 
-        self.monitor_script_job(job)
+        self.monitor_job(job)
 
-    def monitor_script_job(self, job: ScriptJob):
+    def monitor_job(self, job: Job):
 
         # We're going to do expontential backoff. This is because we don't want to overload
         # whatever API is used to check whether a database job is over or not. We're going to
@@ -232,7 +239,7 @@ class Session:
                 retries += 1
                 if (now := dt.datetime.now()) - checked_at >= dt.timedelta(seconds=10):
                     duration_str = str(now - job.started_at).split('.')[0]
-                    log.info(f"{job.script.table_ref} still running after {duration_str}")
+                    log.info(f"{job.table_ref} still running after {duration_str}")
                     checked_at = now
                 time.sleep(delay)
                 continue
@@ -242,71 +249,68 @@ class Session:
 
                 # Case 1: the job raised an exception
                 if (exception := job.database_job.exception) is not None:
-                    job.status = ScriptJobStatus.ERRORED
-                    log.error(f"{job.status} {job.script.table_ref}\n{exception}")
+                    job.status = JobStatus.ERRORED
+                    log.error(f"{job.status} {job.table_ref}\n{exception}")
 
                 # Case 2: the job succeeded, but it's a test and there are negative cases
-                elif job.script.is_test and not (dataframe := job.database_job.result).empty:
-                    job.status = ScriptJobStatus.ERRORED
-                    log.error(f"{job.status} {job.script.table_ref}\n{dataframe.head()}")
+                elif job.is_test and not (dataframe := job.database_job.result).empty:
+                    job.status = JobStatus.ERRORED
+                    log.error(f"{job.status} {job.table_ref}\n{dataframe.head()}")
 
                 # Case 3: the job succeeded!
                 else:
-                    job.status = ScriptJobStatus.SUCCESS
-                    msg = f"{job.status} {job.script.table_ref}"
+                    job.status = JobStatus.SUCCESS
+                    msg = f"{job.status} {job.table_ref}"
                     duration_str = str(job.ended_at - job.started_at).split('.')[0]
                     msg += f", took {duration_str}, billed ${job.database_job.billed_dollars:.2f}"
-                    if not job.script.is_test:
+                    if not job.is_test:
                         if (stats := job.database_job.statistics) is not None:
                             msg += f", contains {stats.n_rows:,d} rows"
                             msg += f", weighs {format_bytes(stats.n_bytes)}"
                     log.info(msg)
 
             except Exception as e:
-                job.status = ScriptJobStatus.ERRORED
-                log.error(f"{job.status} {job.script.table_ref}\n{e}")
+                job.status = JobStatus.ERRORED
+                log.error(f"{job.status} {job.table_ref}\n{e}")
 
             return
 
-    def promote_audit_table(self, script: Script):
-        from_table_ref = script.table_ref
-        script = dataclasses.replace(
-            script,
-            table_ref=script.table_ref.remove_audit_suffix()
-        )
+    def promote_audit_table(self, table_ref: TableRef):
+        from_table_ref = table_ref
+        to_table_ref = table_ref.remove_audit_suffix()
 
         if self.incremental_field_name is not None and from_table_ref in self.incremental_table_refs:
             database_job = self.database_client.delete_and_insert(
                 from_table_ref=from_table_ref,
-                to_table_ref=script.table_ref,
+                to_table_ref=to_table_ref,
                 on=self.incremental_field_name
             )
         else:
             database_job = self.database_client.clone_table(
                 from_table_ref=from_table_ref,
-                to_table_ref=script.table_ref
+                to_table_ref=to_table_ref
             )
 
-        job = ScriptJob(script=script, database_job=database_job)
+        job = Job(table_ref=to_table_ref, is_test=False, database_job=database_job)
         self.jobs.append(job)
-        log.info(f"{job.status} {script.table_ref}")
+        log.info(f"{job.status} {job.table_ref}")
 
-        self.monitor_script_job(job)
+        self.monitor_job(job)
 
     def end(self):
         log.info("😴 Ending session")
         self.stop_event.set()
         for job in self.jobs:
-            if job.status == ScriptJobStatus.RUNNING:
-                log.info(f"Stopping {job.script.table_ref}")
+            if job.status == JobStatus.RUNNING:
+                log.info(f"Stopping {job.table_ref}")
                 job.database_job.stop()
-                job.status = ScriptJobStatus.STOPPED
+                job.status = JobStatus.STOPPED
         self.executor.shutdown()
         self.ended_at = dt.datetime.now()
 
     @property
     def any_error_has_occurred(self) -> bool:
-        return any(job.status == ScriptJobStatus.ERRORED for job in self.jobs) or any(future.exception() is not None for future in self.run_script_futures_complete)
+        return any(job.status == JobStatus.ERRORED for job in self.jobs) or any(future.exception() is not None for future in self.run_script_futures_complete)
 
     @property
     def total_billed_dollars(self) -> float:
@@ -459,18 +463,16 @@ class Conductor:
         # tables. When a run stops because of an error, the audit tables are left behind. If we
         # want to start fresh, we have to delete the audit tables. If not, the materialized tables
         # can be skipped.
-        materialized_audit_table_refs = self.list_materialized_audit_table_refs(database_client, write_dataset)
-        if fresh and materialized_audit_table_refs:
+        materialized_table_refs = self.list_materialized_audit_table_refs(database_client, write_dataset)
+        if fresh and materialized_table_refs:
             log.info("🧹 Starting fresh, deleting audit tables")
             delete_audit_tables(
-                table_refs=materialized_audit_table_refs,
+                table_refs=materialized_table_refs,
                 database_client=database_client,
                 executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
                 verbose=True
             )
-        elif materialized_audit_table_refs:
-            log.info(f"⚡ Skipping {len(materialized_audit_table_refs):,d} already materialized tables")
-            selected_table_refs -= {materialized_audit_table_ref.replace_dataset(self.dataset_name) for materialized_audit_table_ref in materialized_audit_table_refs}
+            materialized_table_refs = set()
 
         session = Session(
             database_client=database_client,
@@ -478,6 +480,7 @@ class Conductor:
             write_dataset=write_dataset,
             scripts=self.dag.scripts,
             selected_table_refs=selected_table_refs,
+            materialized_table_refs=materialized_table_refs,
             incremental_field_name=incremental_field_name,
             incremental_field_values=incremental_field_values
         )
@@ -486,28 +489,12 @@ class Conductor:
             self.run_session(
                 session,
                 keep_going=keep_going,
-                dry_run=dry_run
+                dry_run=dry_run,
             )
         except KeyboardInterrupt:
             log.error("🛑 Keyboard interrupt")
             session.end()
             return sys.exit(1)
-
-        # If all the scripts succeeded, we can delete the audit tables.
-        if not session.any_error_has_occurred and not dry_run:
-            audit_tables ={
-                table_ref.replace_dataset(write_dataset)
-                for table_ref in selected_table_refs
-                if not self.dag.scripts[table_ref].is_test
-            } | (set() if fresh else materialized_audit_table_refs)
-            if audit_tables:
-                log.info("🧹 All selected scripts materialized, deleting audit tables")
-                delete_audit_tables(
-                    table_refs=audit_tables,
-                    database_client=database_client,
-                    executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
-                    verbose=True
-                )
 
         # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
         session.end()
@@ -536,7 +523,7 @@ class Conductor:
                 break
 
             # Start available jobs
-            for script in self.dag.iter_scripts(session.selected_table_refs):
+            for script in self.dag.iter_scripts(session.table_refs_to_run):
 
                 # Before executing a script, we need to contextualize it. We have to edit its
                 # dependencies, add incremental logic, and set the write context.
@@ -556,9 +543,12 @@ class Conductor:
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.
         if not session.any_error_has_occurred and not dry_run:
-            scripts_to_promote = [job.script for job in session.jobs if not job.script.is_test]
-            if scripts_to_promote:
-                log.info("🎖️ Promoting audit tables")
+            table_refs_to_promote = {
+                session.add_write_context_to_table_ref(table_ref)
+                for table_ref in session.table_refs_to_run | session.materialized_table_refs
+            }
+            if table_refs_to_promote:
+                log.info("🥇 Promoting audit tables")
 
                 # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
                 # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
@@ -570,11 +560,29 @@ class Conductor:
                 # Note: it's important for the following loop to be a list comprehension. If we used a
                 # generator expression, the loop would be infinite because jobs are being added to
                 # session.jobs when session.promote is called.
-                for script in scripts_to_promote:
-                    future = session.executor.submit(session.promote_audit_table, script)
+                for table_ref in table_refs_to_promote:
+                    future = session.executor.submit(session.promote_audit_table, table_ref)
                     session.promote_audit_tables_futures[future] = script
 
                 # Wait for all promotion jobs to finish
                 for future in concurrent.futures.as_completed(session.promote_audit_tables_futures):
                     if future.exception() is not None:
                         log.error(f"Promotion failed\n{future.exception()}")
+
+        # If all the scripts succeeded, we can delete the audit tables.
+        if not session.any_error_has_occurred and not dry_run:
+            audit_tables ={
+                table_ref.replace_dataset(session.write_dataset)
+                for table_ref in (
+                    {table_ref for table_ref in session.table_refs_to_run if not self.dag.scripts[table_ref].is_test} |
+                    session.materialized_table_refs
+                )
+            }
+            if audit_tables:
+                log.info("🧹 Deleting audit tables")
+                delete_audit_tables(
+                    table_refs=audit_tables,
+                    database_client=session.database_client,
+                    executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                    verbose=True
+                )
