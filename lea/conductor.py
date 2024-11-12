@@ -94,9 +94,9 @@ class Session:
         self.started_at = dt.datetime.now()
         self.ended_at: dt.datetime | None = None
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=None)
-        self.start_script_futures: dict = {}
-        self.monitor_script_job_futures: dict = {}
-        self.promote_futures: dict = {}
+        self.run_script_futures: dict = {}
+        self.run_script_futures_complete: dict = {}
+        self.promote_audit_tables_futures: dict = {}
         self.stop_event = threading.Event()
 
         if self.incremental_field_name is not None:
@@ -190,7 +190,7 @@ class Session:
             script = script.replace_table_ref(script.table_ref.replace_dataset(self.write_dataset))
         return script
 
-    def start_script(self, script: Script):
+    def run_script(self, script: Script):
         # If the script is a test, we don't materialize it, we just query it. A test fails if it
         # returns any rows.
         if script.is_test:
@@ -212,8 +212,7 @@ class Session:
             msg += " (incremental)"
         log.info(msg)
 
-        future = self.executor.submit(self.monitor_script_job, job)
-        self.monitor_script_job_futures[job] = future
+        self.monitor_script_job(job)
 
     def monitor_script_job(self, job: ScriptJob):
 
@@ -267,9 +266,9 @@ class Session:
                 job.status = ScriptJobStatus.ERRORED
                 log.error(f"{job.status} {job.script.table_ref}\n{e}")
 
-            return job
+            return
 
-    def promote(self, script: Script):
+    def promote_audit_table(self, script: Script):
         from_table_ref = script.table_ref
         script = dataclasses.replace(
             script,
@@ -306,12 +305,8 @@ class Session:
         self.ended_at = dt.datetime.now()
 
     @property
-    def any_job_is_running(self) -> bool:
-        return any(job.status == ScriptJobStatus.RUNNING for job in self.jobs)
-
-    @property
-    def any_job_has_errored(self) -> bool:
-        return any(job.status == ScriptJobStatus.ERRORED for job in self.jobs)
+    def any_error_has_occurred(self) -> bool:
+        return any(job.status == ScriptJobStatus.ERRORED for job in self.jobs) or any(future.exception() is not None for future in self.run_script_futures_complete)
 
     @property
     def total_billed_dollars(self) -> float:
@@ -362,7 +357,7 @@ def delete_audit_tables(
 
     for future in concurrent.futures.as_completed(futures):
         if future.exception() is not None:
-            raise future.exception()
+            log.error(future.exception())
             continue
         if verbose:
             log.info(f"Deleted {futures[future]}")
@@ -465,13 +460,13 @@ class Conductor:
         # want to start fresh, we have to delete the audit tables. If not, the materialized tables
         # can be skipped.
         materialized_audit_table_refs = self.list_materialized_audit_table_refs(database_client, write_dataset)
-        if fresh:
+        if fresh and materialized_audit_table_refs:
             log.info("🧹 Starting fresh, deleting audit tables")
             delete_audit_tables(
                 table_refs=materialized_audit_table_refs,
                 database_client=database_client,
                 executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
-                verbose=False
+                verbose=True
             )
         elif materialized_audit_table_refs:
             log.info(f"⚡ Skipping {len(materialized_audit_table_refs):,d} already materialized tables")
@@ -499,7 +494,7 @@ class Conductor:
             return sys.exit(1)
 
         # If all the scripts succeeded, we can delete the audit tables.
-        if not session.any_job_has_errored:
+        if not session.any_error_has_occurred and not dry_run:
             audit_tables ={
                 table_ref.replace_dataset(write_dataset)
                 for table_ref in selected_table_refs
@@ -511,16 +506,16 @@ class Conductor:
                     table_refs=audit_tables,
                     database_client=database_client,
                     executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
-                    verbose=False
+                    verbose=True
                 )
 
         # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
         session.end()
         duration_str = str(session.ended_at - session.started_at).split('.')[0]  # type: ignore[operator]
-        emoji = "🟢" if not session.any_job_has_errored else "🔴"
+        emoji = "🟢" if not session.any_error_has_occurred else "🔴"
         log.info(f"{emoji} Finished, took {duration_str}, billed ${session.total_billed_dollars:.2f}")
 
-        if session.any_job_has_errored:
+        if session.any_error_has_occurred:
             return sys.exit(1)
 
     def run_session(
@@ -536,8 +531,8 @@ class Conductor:
 
             # If we're in early end mode, we need to check if any script errored, in which case we
             # have to stop everything.
-            if keep_going and session.any_job_has_errored:
-                log.error("✋ Early ending because a job errored")
+            if session.any_error_has_occurred and not keep_going:
+                log.error("✋ Early ending because an error occurred")
                 break
 
             # Start available jobs
@@ -546,23 +541,21 @@ class Conductor:
                 # Before executing a script, we need to contextualize it. We have to edit its
                 # dependencies, add incremental logic, and set the write context.
                 script = session.add_context_to_script(script)
-
-                # TODO
-                #future = session.executor.submit(session.start_script, script)
-                #session.start_script_futures[script.table_ref] = future
-                session.start_script(script)
+                future = session.executor.submit(session.run_script, script)
+                session.run_script_futures[future] = script
 
             # Check for scripts that have finished
-            for job, future in list(session.monitor_script_job_futures.items()):
-                if future.done():
-                    table_ref = session.remove_write_context_from_table_ref(job.script.table_ref)
-                    self.dag.done(table_ref)
-                    del session.monitor_script_job_futures[job]
-                    #del session.start_script_futures[job.script.table_ref]
+            done, _ = concurrent.futures.wait(session.run_script_futures, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in done:
+                if future.exception():
+                    log.error(f"Failed running {script.table_ref}\n{future.exception()}")
+                table_ref = session.remove_write_context_from_table_ref(script.table_ref)
+                self.dag.done(table_ref)
+                session.run_script_futures_complete[future] = session.run_script_futures.pop(future)
 
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.
-        if not session.any_job_has_errored and not dry_run:
+        if not session.any_error_has_occurred and not dry_run:
             scripts_to_promote = [job.script for job in session.jobs if not job.script.is_test]
             if scripts_to_promote:
                 log.info("🎖️ Promoting audit tables")
@@ -578,10 +571,10 @@ class Conductor:
                 # generator expression, the loop would be infinite because jobs are being added to
                 # session.jobs when session.promote is called.
                 for script in scripts_to_promote:
-                    future = session.executor.submit(session.promote, script)
-                    session.promote_futures[script.table_ref] = future
+                    future = session.executor.submit(session.promote_audit_table, script)
+                    session.promote_audit_tables_futures[future] = script
 
                 # Wait for all promotion jobs to finish
-                for future in concurrent.futures.as_completed(session.promote_futures.values()):
+                for future in concurrent.futures.as_completed(session.promote_audit_tables_futures):
                     if future.exception() is not None:
                         log.error(f"Promotion failed\n{future.exception()}")

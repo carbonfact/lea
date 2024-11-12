@@ -39,7 +39,3 @@ def run(select, dataset, scripts, incremental, dry, keep_going, fresh):
         incremental_field_name=incremental_field_name,
         incremental_field_values=incremental_field_values,
     )
-
-
-if __name__ == '__main__':
-    app()

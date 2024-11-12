@@ -4,7 +4,6 @@ import dataclasses
 import typing
 from lea import scripts
 from lea.dialects import BigQueryDialect
-from lea.table_ref import TableRef
 
 from google.cloud import bigquery
 import pandas as pd
@@ -16,19 +15,23 @@ class DatabaseJob(typing.Protocol):
     def is_done(self) -> bool:
         pass
 
+    def stop(self):
+        pass
+
+    @property
+    def result(self) -> pd.DataFrame:
+        pass
+
+    @property
+    def exception(self) -> Exception:
+        pass
+
     @property
     def billed_dollars(self) -> float:
         pass
 
     @property
-    def n_rows_in_destination(self) -> int:
-        pass
-
-    def cancel(self):
-        pass
-
-    @property
-    def result(self) -> pd.DataFrame:
+    def statistics(self) -> TableStats | None:
         pass
 
 
