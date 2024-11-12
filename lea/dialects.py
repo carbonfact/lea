@@ -121,22 +121,29 @@ class BigQueryDialect(SQLDialect):
         """
 
         >>> BigQueryDialect.parse_table_ref("my_dataset.my_schema__my_table")
-        TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table')
+        TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table', project=None)
 
         >>> BigQueryDialect.parse_table_ref("my_dataset.my_table")
-        TableRef(dataset='my_dataset', schema=(), name='my_table')
+        TableRef(dataset='my_dataset', schema=(), name='my_table', project=None)
 
         >>> BigQueryDialect.parse_table_ref("my_dataset.my_schema__my_table___audit")
-        TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table___audit')
+        TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table___audit', project=None)
+
+        >>> BigQueryDialect.parse_table_ref("my_project.my_dataset.my_schema__my_table___audit")
+        TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table___audit', project='my_project')
 
         """
-        dataset, leftover = tuple(table_ref.rsplit(".", 1))
+        project, dataset, leftover = None, *tuple(table_ref.rsplit(".", 1))
+        if "." in dataset:
+            project, dataset = dataset.split(".")
         *schema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
-        return TableRef(dataset=dataset, schema=tuple(schema), name=name)
+        return TableRef(dataset=dataset, schema=tuple(schema), name=name, project=project)
 
     @staticmethod
     def format_table_ref(table_ref: TableRef) -> str:
         table_ref_str = ""
+        if table_ref.project:
+            table_ref_str += f"`{table_ref.project}`."
         if table_ref.dataset:
             table_ref_str += f"{table_ref.dataset}."
         table_ref_str += f"{'__'.join([*table_ref.schema, table_ref.name])}"

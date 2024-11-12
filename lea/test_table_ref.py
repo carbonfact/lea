@@ -32,15 +32,15 @@ def test_str(table_ref, expected):
         for table_ref, expected in [
             (
                 TableRef("my_dataset", ("my_schema",), "my_table"),
-                "TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table')",
+                "TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table', project=None)",
             ),
             (
                 TableRef("my_dataset", (), "my_table"),
-                "TableRef(dataset='my_dataset', schema=(), name='my_table')",
+                "TableRef(dataset='my_dataset', schema=(), name='my_table', project=None)",
             ),
             (
                 TableRef("my_dataset", ("my_schema", "my_subschema"), "my_table"),
-                "TableRef(dataset='my_dataset', schema=('my_schema', 'my_subschema'), name='my_table')",
+                "TableRef(dataset='my_dataset', schema=('my_schema', 'my_subschema'), name='my_table', project=None)",
             ),
         ]
     ],
@@ -50,6 +50,7 @@ def test_repr(table_ref, expected):
 
 
 def test_from_path():
-    path = pathlib.Path("my_dataset/my_schema/my_table")
-    table_ref = TableRef.from_path(path)
+    scripts_dir = pathlib.Path("my_dataset")
+    relative_path = pathlib.Path("my_schema/my_table.sql")
+    table_ref = TableRef.from_path(scripts_dir, relative_path)
     assert table_ref == TableRef("my_dataset", ("my_schema",), "my_table")

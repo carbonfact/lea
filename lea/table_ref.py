@@ -12,9 +12,10 @@ class TableRef:
     dataset: str
     schema: tuple[str, ...]
     name: str
+    project: str | None = None
 
     def __str__(self):
-        return ".".join([self.dataset, *self.schema, self.name])
+        return ".".join(filter(None, [self.project, self.dataset, *self.schema, self.name]))
 
     @classmethod
     def from_path(cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path) -> TableRef:
