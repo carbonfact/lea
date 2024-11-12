@@ -103,26 +103,14 @@ class Session:
         self.stop_event = threading.Event()
 
         if self.incremental_field_name is not None:
-            self.filterable_table_refs = (
-                {
-                    table_ref
-                    for table_ref in scripts
-                    if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
-                # TODO: this is overkill
-                } | {
-                    self.add_write_context_to_table_ref(table_ref)
-                    for table_ref in selected_table_refs
-                    if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
-                }
-            )
+            self.filterable_table_refs = {
+                table_ref
+                for table_ref in scripts
+                if any(field.name == incremental_field_name for field in scripts[table_ref].fields)
+            }
             self.incremental_table_refs = {
                 table_ref
-                for table_ref in selected_table_refs
-                if any(field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags for field in scripts[table_ref].fields)
-                # TODO: this is overkill
-            } | {
-                self.add_write_context_to_table_ref(table_ref)
-                for table_ref in scripts
+                for table_ref in selected_table_refs | materialized_table_refs
                 if any(field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags for field in scripts[table_ref].fields)
             }
         else:
@@ -161,27 +149,9 @@ class Session:
                     dependencies_to_filter=self.filterable_table_refs - self.incremental_table_refs
                 )
             )
-        # If the script is not incremental, we're not out of the woods! All scripts are
-        # materialized into side-tables which we call "audit" tables. This is the WAP pattern.
-        # Therefore, if a script is not incremental, but it depends on an incremental script, we
-        # have to modify the script to use both the incremental and non-incremental versions of
-        # the dependency. This is handled by the script's SQL dialect.
-        elif self.incremental_table_refs:
-            script = dataclasses.replace(
-                script,
-                code=script.sql_dialect.handle_incremental_dependencies(
-                    code=script.code,
-                    incremental_field_name=self.incremental_field_name,
-                    incremental_field_values=self.incremental_field_values,
-                    incremental_dependencies={
-                        table_ref.remove_audit_suffix(): table_ref
-                        for table_ref in self.incremental_table_refs
-                    }
-                )
-            )
 
         def add_context_to_dependency(dependency: TableRef) -> TableRef:
-            if dependency in self.selected_table_refs and dependency in self.scripts:
+            if dependency in self.selected_table_refs | self.materialized_table_refs and dependency in self.scripts:
                 dependency = dependency.add_audit_suffix()
             dependency = dependency.replace_dataset(self.write_dataset)
             return dependency
@@ -191,11 +161,28 @@ class Session:
             replace_func=add_context_to_dependency
         )
 
+        # If the script is not incremental, we're not out of the woods! All scripts are
+        # materialized into side-tables which we call "audit" tables. This is the WAP pattern.
+        # Therefore, if a script is not incremental, but it depends on an incremental script, we
+        # have to modify the script to use both the incremental and non-incremental versions of
+        # the dependency. This is handled by the script's SQL dialect.
+        if script.table_ref not in self.incremental_table_refs and self.incremental_table_refs:
+            script = dataclasses.replace(
+                script,
+                code=script.sql_dialect.handle_incremental_dependencies(
+                    code=script.code,
+                    incremental_field_name=self.incremental_field_name,
+                    incremental_field_values=self.incremental_field_values,
+                    incremental_dependencies={
+                        table_ref.replace_dataset(self.write_dataset): self.add_write_context_to_table_ref(table_ref)
+                        for table_ref in self.incremental_table_refs
+                    }
+                )
+            )
+
         if not script.is_test:
-            script = script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
-        else:
-            script = script.replace_table_ref(script.table_ref.replace_dataset(self.write_dataset))
-        return script
+            return script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
+        return script.replace_table_ref(script.table_ref.replace_dataset(self.write_dataset))
 
     def run_script(self, script: Script):
         # If the script is a test, we don't materialize it, we just query it. A test fails if it
