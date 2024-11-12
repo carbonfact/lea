@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import re
+
 import pytest
 
 from lea.conductor import Session
-from lea.scripts import TableRef, Script
 from lea.dialects import BigQueryDialect
+from lea.scripts import Script, TableRef
 
 
 @pytest.fixture
@@ -20,7 +23,7 @@ def scripts() -> dict[TableRef, Script]:
                     STRUCT(3 AS id, 'Charlie' AS name, 35 AS age)
                 ])
                 """,
-                sql_dialect=BigQueryDialect()
+                sql_dialect=BigQueryDialect(),
             ),
             Script(
                 table_ref=TableRef("read", ("core",), "users"),
@@ -32,7 +35,7 @@ def scripts() -> dict[TableRef, Script]:
                     age
                 FROM read.raw__users
                 """,
-                sql_dialect=BigQueryDialect()
+                sql_dialect=BigQueryDialect(),
             ),
             Script(
                 table_ref=TableRef("read", ("analytics",), "n_users"),
@@ -40,27 +43,26 @@ def scripts() -> dict[TableRef, Script]:
                 SELECT COUNT(*)
                 FROM read.core__users
                 """,
-                sql_dialect=BigQueryDialect()
-            )
+                sql_dialect=BigQueryDialect(),
+            ),
         ]
     }
 
 
 def assert_queries_are_equal(query1: str, query2: str):
-    normalized_query1 = re.sub(r'\s+', ' ', query1).strip()
-    normalized_query2 = re.sub(r'\s+', ' ', query2).strip()
+    normalized_query1 = re.sub(r"\s+", " ", query1).strip()
+    normalized_query2 = re.sub(r"\s+", " ", query2).strip()
     assert normalized_query1 == normalized_query2
 
 
 def test_simple_run(scripts):
-
     session = Session(
         database_client=None,
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
         selected_table_refs=scripts.keys(),
-        materialized_table_refs=set()
+        materialized_table_refs=set(),
     )
 
     assert_queries_are_equal(
@@ -71,19 +73,18 @@ def test_simple_run(scripts):
             STRUCT(2 AS id, 'Bob' AS name, 25 AS age),
             STRUCT(3 AS id, 'Charlie' AS name, 35 AS age)
         ])
-        """
+        """,
     )
     assert_queries_are_equal(
         session.add_context_to_script(scripts[TableRef("read", ("analytics",), "n_users")]).code,
         """
         SELECT COUNT(*)
         FROM write.core__users___audit
-        """
+        """,
     )
 
 
 def test_incremental_field(scripts):
-
     session = Session(
         database_client=None,
         base_dataset="read",
@@ -92,7 +93,7 @@ def test_incremental_field(scripts):
         selected_table_refs=scripts.keys(),
         materialized_table_refs=set(),
         incremental_field_name="name",
-        incremental_field_values={"Alice"}
+        incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
@@ -104,7 +105,7 @@ def test_incremental_field(scripts):
             FROM write.raw__users___audit
         )
         WHERE name IN ('Alice')
-        """
+        """,
     )
 
     assert_queries_are_equal(
@@ -121,23 +122,20 @@ def test_incremental_field(scripts):
             FROM write.core__users
             WHERE name NOT IN ('Alice')
         )
-        """
+        """,
     )
 
 
 def test_incremental_field_but_no_incremental_table_selected(scripts):
-
     session = Session(
         database_client=None,
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={
-            TableRef("read", ("analytics",), "n_users")
-        },
+        selected_table_refs={TableRef("read", ("analytics",), "n_users")},
         materialized_table_refs=set(),
         incremental_field_name="name",
-        incremental_field_values={"Alice"}
+        incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
@@ -149,23 +147,20 @@ def test_incremental_field_but_no_incremental_table_selected(scripts):
             name,
             age
         FROM write.raw__users
-        """
+        """,
     )
 
 
 def test_incremental_field_with_just_incremental_table_selected(scripts):
-
     session = Session(
         database_client=None,
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={
-            TableRef("read", ("core",), "users")
-        },
+        selected_table_refs={TableRef("read", ("core",), "users")},
         materialized_table_refs=set(),
         incremental_field_name="name",
-        incremental_field_values={"Alice"}
+        incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
@@ -177,25 +172,22 @@ def test_incremental_field_with_just_incremental_table_selected(scripts):
             FROM write.raw__users
         )
         WHERE name IN ('Alice')
-        """
+        """,
     )
 
 
-def test_incremental_field_with_just_incremental_table_selected_and_materialized_dependency(scripts):
-
+def test_incremental_field_with_just_incremental_table_selected_and_materialized_dependency(
+    scripts,
+):
     session = Session(
         database_client=None,
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={
-            TableRef("read", ("core",), "users")
-        },
-        materialized_table_refs={
-            TableRef("read", ("raw",), "users")
-        },
+        selected_table_refs={TableRef("read", ("core",), "users")},
+        materialized_table_refs={TableRef("read", ("raw",), "users")},
         incremental_field_name="name",
-        incremental_field_values={"Alice"}
+        incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
@@ -207,25 +199,22 @@ def test_incremental_field_with_just_incremental_table_selected_and_materialized
             FROM write.raw__users___audit
         )
         WHERE name IN ('Alice')
-        """
+        """,
     )
 
 
-def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_is_materialized(scripts):
-
+def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_is_materialized(
+    scripts,
+):
     session = Session(
         database_client=None,
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={
-            TableRef("read", ("analytics",), "n_users")
-        },
-        materialized_table_refs={
-            TableRef("read", ("core",), "users")
-        },
+        selected_table_refs={TableRef("read", ("analytics",), "n_users")},
+        materialized_table_refs={TableRef("read", ("core",), "users")},
         incremental_field_name="name",
-        incremental_field_values={"Alice"}
+        incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
@@ -243,5 +232,5 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
             FROM write.core__users
             WHERE name NOT IN ('Alice')
         )
-        """
+        """,
     )

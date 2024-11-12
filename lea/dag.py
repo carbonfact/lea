@@ -2,20 +2,25 @@ from __future__ import annotations
 
 import graphlib
 import pathlib
-import typing
 import re
+import typing
 from collections.abc import Iterator
 
 import git
 
 from .dialects import SQLDialect
+from .scripts import Script, read_scripts
 from .table_ref import TableRef
-from .scripts import read_scripts, Script
 
 
 class DAGOfScripts(graphlib.TopologicalSorter):
-
-    def __init__(self, dependency_graph: dict[TableRef, set[TableRef]], scripts: list[Script], scripts_dir: pathlib.Path, dataset_name: str):
+    def __init__(
+        self,
+        dependency_graph: dict[TableRef, set[TableRef]],
+        scripts: list[Script],
+        scripts_dir: pathlib.Path,
+        dataset_name: str,
+    ):
         graphlib.TopologicalSorter.__init__(self, dependency_graph)
         self.dependency_graph = dependency_graph
         self.scripts = {script.table_ref: script for script in scripts}
@@ -23,8 +28,12 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         self.dataset_name = dataset_name
 
     @classmethod
-    def from_directory(cls, scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str) -> DAGOfScripts:
-        scripts = read_scripts(scripts_dir=scripts_dir, sql_dialect=sql_dialect, dataset_name=dataset_name)
+    def from_directory(
+        cls, scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str
+    ) -> DAGOfScripts:
+        scripts = read_scripts(
+            scripts_dir=scripts_dir, sql_dialect=sql_dialect, dataset_name=dataset_name
+        )
 
         # Fields in the script's code may contain tags. These tags induce assertion tests, which
         # are also scripts. We need to include these assertion tests in the dependency graph.
@@ -33,21 +42,21 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
         # TODO: the following is quite slow. This is because parsing dependencies from each script
         # is slow. There are several optimizations that could be done.
-        dependency_graph = {
-            script.table_ref: script.dependencies
-            for script in scripts
-        }
+        dependency_graph = {script.table_ref: script.dependencies for script in scripts}
 
-        return cls(dependency_graph=dependency_graph, scripts=scripts, scripts_dir=scripts_dir, dataset_name=dataset_name)
+        return cls(
+            dependency_graph=dependency_graph,
+            scripts=scripts,
+            scripts_dir=scripts_dir,
+            dataset_name=dataset_name,
+        )
 
     def select(self, *queries: str) -> set[TableRef]:
-
         def _select(
             query: str,
             include_ancestors: bool = False,
             include_descendants: bool = False,
         ):
-
             if query == "*":
                 yield from self.scripts.keys()
                 return
@@ -109,7 +118,8 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             all_selected_table_refs.update(selected_table_refs)
 
         return {
-            table_ref for table_ref in all_selected_table_refs
+            table_ref
+            for table_ref in all_selected_table_refs
             # Some nodes in the graph are not part of the views, such as external dependencies
             if table_ref in self.scripts
         }
@@ -123,7 +133,6 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         """
 
         for table_ref in self.get_ready():
-
             if (
                 # The DAG contains all the scripts as well as all the dependencies of each script.
                 # Not all of these dependencies are scripts. We need to filter out the non-script
@@ -139,20 +148,24 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             yield self.scripts[table_ref]
 
 
-def iter_ancestors(dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable):
+def iter_ancestors(
+    dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable
+):
     for child in dependency_graph.get(node, []):
         yield child
         yield from iter_ancestors(dependency_graph, child)
 
 
-def iter_descendants(dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable):
+def iter_descendants(
+    dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable
+):
     for potential_child in dependency_graph:
         if node in dependency_graph[potential_child]:
             yield potential_child
             yield from iter_descendants(dependency_graph, potential_child)
 
-def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
 
+def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
     repo = git.Repo(".")  # TODO: is using "." always correct? Probably not.
     # Changes that have been committed
     staged_diffs = repo.index.diff(
@@ -167,11 +180,13 @@ def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
         # One thing to note is that we don't filter out deleted views. This is because
         # these views will get filtered out by dag.select anyway.
         diff_path = pathlib.Path(diff.a_path)
-        if (
-            diff_path.is_relative_to(scripts_dir)
-            and tuple(diff_path.suffixes) in {(".sql",), (".sql", ".jinja")}
-        ):
-            table_ref = TableRef.from_path(scripts_dir=scripts_dir, relative_path=diff_path.relative_to(scripts_dir))
+        if diff_path.is_relative_to(scripts_dir) and tuple(diff_path.suffixes) in {
+            (".sql",),
+            (".sql", ".jinja"),
+        }:
+            table_ref = TableRef.from_path(
+                scripts_dir=scripts_dir, relative_path=diff_path.relative_to(scripts_dir)
+            )
             table_refs.add(table_ref)
 
     return table_refs

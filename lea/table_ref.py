@@ -4,7 +4,6 @@ import dataclasses
 import pathlib
 import re
 
-
 AUDIT_TABLE_SUFFIX = "___audit"
 
 
@@ -25,20 +24,14 @@ class TableRef:
             dataset=scripts_dir.name,
             schema=tuple(schema),
             # Remove the ex
-            name=filename.split(".")[0]
+            name=filename.split(".")[0],
         )
 
     def replace_dataset(self, dataset: str) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
 
     def add_audit_suffix(self) -> TableRef:
-        return dataclasses.replace(
-            self,
-            name=f"{self.name}{AUDIT_TABLE_SUFFIX}"
-        )
+        return dataclasses.replace(self, name=f"{self.name}{AUDIT_TABLE_SUFFIX}")
 
     def remove_audit_suffix(self) -> TableRef:
-        return dataclasses.replace(
-            self,
-            name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", self.name)
-        )
+        return dataclasses.replace(self, name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", self.name))

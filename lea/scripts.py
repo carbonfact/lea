@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import pathlib
 import os
+import pathlib
 import re
 
 import jinja2
@@ -11,11 +11,10 @@ import rich.syntax
 import sqlglot
 import sqlglot.optimizer
 
-from .table_ref import TableRef
-from .field import Field, FieldTag
-from .dialects import SQLDialect
 from .comment import extract_comments
-
+from .dialects import SQLDialect
+from .field import Field, FieldTag
+from .table_ref import TableRef
 
 
 @dataclasses.dataclass(frozen=True)
@@ -25,8 +24,9 @@ class SQLScript:
     sql_dialect: SQLDialect
 
     @classmethod
-    def from_path(cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, sql_dialect: SQLDialect) -> SQLScript:
-
+    def from_path(
+        cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, sql_dialect: SQLDialect
+    ) -> SQLScript:
         # Either the file is a Jinja template
         if relative_path.suffixes == [".sql", ".jinja"]:
             loader = jinja2.FileSystemLoader(scripts_dir)
@@ -73,7 +73,9 @@ class SQLScript:
             field_names = self.ast.named_selects
         except sqlglot.errors.ParseError:
             field_names = []
-        field_comments = extract_comments(code=self.code, expected_field_names=field_names, sql_dialect=self.sql_dialect)
+        field_comments = extract_comments(
+            code=self.code, expected_field_names=field_names, sql_dialect=self.sql_dialect
+        )
         return [
             Field(
                 name=name,
@@ -161,8 +163,9 @@ class SQLScript:
 Script = SQLScript
 
 
-def read_scripts(scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str) -> list[Script]:
-
+def read_scripts(
+    scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str
+) -> list[Script]:
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):
             case (".sql",) | (".sql", ".jinja"):
@@ -171,7 +174,11 @@ def read_scripts(scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_nam
                 # dependencies between scripts. Therefore, we are not interested in the dataset of the
                 # dependencies. We know what the target dataset is called, so we can remove it from the
                 # dependencies.
-                return SQLScript.from_path(scripts_dir=scripts_dir, relative_path=path.relative_to(scripts_dir), sql_dialect=sql_dialect)
+                return SQLScript.from_path(
+                    scripts_dir=scripts_dir,
+                    relative_path=path.relative_to(scripts_dir),
+                    sql_dialect=sql_dialect,
+                )
             case _:
                 raise ValueError(f"Unsupported script type: {path}")
 

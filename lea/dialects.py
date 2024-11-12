@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import pathlib
 import re
 
@@ -49,14 +50,20 @@ class SQLDialect:
         )
 
     @classmethod
-    def add_dependency_filters(cls, code: str, incremental_field_name: str, incremental_field_values: set[str], dependencies_to_filter: set[TableRef]) -> str:
+    def add_dependency_filters(
+        cls,
+        code: str,
+        incremental_field_name: str,
+        incremental_field_values: set[str],
+        dependencies_to_filter: set[TableRef],
+    ) -> str:
         code = remove_comment_lines(code)
         incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
         for dependency in dependencies_to_filter:
             dependency_str = cls.format_table_ref(dependency)
             code = code.replace(
                 dependency_str,
-                f"(SELECT * FROM {dependency_str} WHERE {incremental_field_name} IN ({incremental_field_values_str}))"
+                f"(SELECT * FROM {dependency_str} WHERE {incremental_field_name} IN ({incremental_field_values_str}))",
             )
         return f"""
         SELECT * FROM (
@@ -71,11 +78,14 @@ class SQLDialect:
         code: str,
         incremental_field_name: str,
         incremental_field_values: set[str],
-        incremental_dependencies: dict[TableRef, TableRef]
+        incremental_dependencies: dict[TableRef, TableRef],
     ) -> str:
         code = remove_comment_lines(code)
         incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
-        for dependency_without_wap_suffix, dependency_with_wap_suffix in incremental_dependencies.items():
+        for (
+            dependency_without_wap_suffix,
+            dependency_with_wap_suffix,
+        ) in incremental_dependencies.items():
             dependency_without_wap_suffix_str = cls.format_table_ref(dependency_without_wap_suffix)
             dependency_with_wap_suffix_str = cls.format_table_ref(dependency_with_wap_suffix)
             code = code.replace(
@@ -88,7 +98,7 @@ class SQLDialect:
                     SELECT * FROM {dependency_without_wap_suffix_str}
                     WHERE {incremental_field_name} NOT IN ({incremental_field_values_str})
                 )
-                """
+                """,
             )
         return code
 
@@ -99,9 +109,7 @@ def remove_comment_lines(code: str) -> str:
 
 def load_assertion_test_template(tag: str) -> jinja2.Template:
     return jinja2.Template(
-        (
-            pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('#')}.sql.jinja"
-        ).read_text()
+        (pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('#')}.sql.jinja").read_text()
     )
 
 
@@ -123,7 +131,7 @@ class BigQueryDialect(SQLDialect):
 
         """
         dataset, leftover = tuple(table_ref.rsplit(".", 1))
-        *schema, name = tuple(re.split(r'(?<!_)__(?!_)', leftover))
+        *schema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
         return TableRef(dataset=dataset, schema=tuple(schema), name=name)
 
     @staticmethod

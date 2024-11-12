@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import dataclasses
 import typing
+
+import pandas as pd
+from google.cloud import bigquery
+
 from lea import scripts
 from lea.dialects import BigQueryDialect
 
-from google.cloud import bigquery
-import pandas as pd
-
 
 class DatabaseJob(typing.Protocol):
-
     @property
     def is_done(self) -> bool:
         pass
@@ -36,7 +36,6 @@ class DatabaseJob(typing.Protocol):
 
 
 class DatabaseClient(typing.Protocol):
-
     def create_dataset(self, dataset_name: str):
         pass
 
@@ -46,10 +45,14 @@ class DatabaseClient(typing.Protocol):
     def query_script(self, script: scripts.Script) -> DatabaseJob:
         pass
 
-    def clone_table(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef) -> DatabaseJob:
+    def clone_table(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
+    ) -> DatabaseJob:
         pass
 
-    def delete_and_insert(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str) -> DatabaseJob:
+    def delete_and_insert(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
+    ) -> DatabaseJob:
         pass
 
     def delete_table(self, table_ref: scripts.TableRef) -> DatabaseJob:
@@ -71,7 +74,11 @@ class BigQueryJob:
 
     @property
     def billed_dollars(self) -> float:
-        bytes_billed = self.query_job.total_bytes_processed if self.client.dry_run else self.query_job.total_bytes_billed
+        bytes_billed = (
+            self.query_job.total_bytes_processed
+            if self.client.dry_run
+            else self.query_job.total_bytes_billed
+        )
         if bytes_billed is None:
             return 0.0
         return self.client.estimate_cost_in_dollars(bytes_billed)
@@ -81,10 +88,7 @@ class BigQueryJob:
         if self.client.dry_run or self.destination is None:
             return None
         table = self.client.client.get_table(self.destination)
-        return TableStats(
-            n_rows=table.num_rows,
-            n_bytes=table.num_bytes
-        )
+        return TableStats(n_rows=table.num_rows, n_bytes=table.num_bytes)
 
     def stop(self):
         self.client.client.cancel_job(self.query_job.job_id)
@@ -111,7 +115,7 @@ class BigQueryClient:
         location: str,
         write_project_id: str,
         compute_project_id: str,
-        dry_run: bool
+        dry_run: bool,
     ):
         self.credentials = credentials
         self.write_project_id = write_project_id
@@ -146,16 +150,16 @@ class BigQueryClient:
 
     def materialize_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
         table_ref_str = BigQueryDialect.format_table_ref(sql_script.table_ref)
-        destination = bigquery.TableReference.from_string(f"{self.write_project_id}.{table_ref_str}")
+        destination = bigquery.TableReference.from_string(
+            f"{self.write_project_id}.{table_ref_str}"
+        )
         job_config = self.make_job_config(
-            script=sql_script,
-            destination=destination,
-            write_disposition="WRITE_TRUNCATE"
+            script=sql_script, destination=destination, write_disposition="WRITE_TRUNCATE"
         )
         return BigQueryJob(
             client=self,
             query_job=self.client.query(sql_script.code, job_config=job_config),
-            destination=destination
+            destination=destination,
         )
 
     def query_script(self, script: scripts.Script) -> BigQueryJob:
@@ -166,13 +170,16 @@ class BigQueryClient:
     def query_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
         job_config = self.make_job_config(sql=sql_script.code, table_ref=None, destination=None)
         return BigQueryJob(
-            client=self,
-            query_job=self.client.query(sql_script.code, job_config=job_config)
+            client=self, query_job=self.client.query(sql_script.code, job_config=job_config)
         )
 
-    def clone_table(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef) -> BigQueryJob:
+    def clone_table(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
+    ) -> BigQueryJob:
         to_table_ref_str = BigQueryDialect.format_table_ref(to_table_ref)
-        destination = bigquery.TableReference.from_string(f"{self.write_project_id}.{to_table_ref_str}")
+        destination = bigquery.TableReference.from_string(
+            f"{self.write_project_id}.{to_table_ref_str}"
+        )
         clone_code = f"""
         CREATE OR REPLACE TABLE
         {destination}
@@ -182,10 +189,12 @@ class BigQueryClient:
         return BigQueryJob(
             client=self,
             query_job=self.client.query(clone_code, job_config=job_config),
-            destination=destination
+            destination=destination,
         )
 
-    def delete_and_insert(self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str) -> BigQueryJob:
+    def delete_and_insert(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
+    ) -> BigQueryJob:
         from_table_ref_str = BigQueryDialect.format_table_ref(from_table_ref)
         to_table_ref_str = BigQueryDialect.format_table_ref(to_table_ref)
         delete_and_insert_code = f"""
@@ -204,8 +213,10 @@ class BigQueryClient:
         job_config = self.make_job_config()
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(delete_and_insert_code,  job_config=job_config),
-            destination=bigquery.TableReference.from_string(f"{self.write_project_id}.{to_table_ref_str}")
+            query_job=self.client.query(delete_and_insert_code, job_config=job_config),
+            destination=bigquery.TableReference.from_string(
+                f"{self.write_project_id}.{to_table_ref_str}"
+            ),
         )
 
     def delete_table(self, table_ref: scripts.TableRef) -> BigQueryJob:
@@ -215,8 +226,7 @@ class BigQueryClient:
         """
         job_config = self.make_job_config()
         return BigQueryJob(
-            client=self,
-            query_job=self.client.query(delete_code, job_config=job_config)
+            client=self, query_job=self.client.query(delete_code, job_config=job_config)
         )
 
     def list_tables(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
@@ -227,16 +237,17 @@ class BigQueryClient:
         job = self.client.query(query)
         return {
             BigQueryDialect.parse_table_ref(f"{dataset_name}.{row['table_id']}"): TableStats(
-                n_rows=row["row_count"],
-                n_bytes=row["size_bytes"]
+                n_rows=row["row_count"], n_bytes=row["size_bytes"]
             )
             for row in job.result()
         }
 
-    def make_job_config(self, script: scripts.SQLScript | None = None, **kwargs) -> bigquery.QueryJobConfig:
+    def make_job_config(
+        self, script: scripts.SQLScript | None = None, **kwargs
+    ) -> bigquery.QueryJobConfig:
         return bigquery.QueryJobConfig(
             priority=bigquery.QueryPriority.INTERACTIVE,
             use_query_cache=False,
             dry_run=self.dry_run,
-            **kwargs
+            **kwargs,
         )

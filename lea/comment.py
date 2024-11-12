@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import dataclasses
 
@@ -25,8 +27,9 @@ class CommentBlock(collections.UserList):
         return self[-1].line
 
 
-def extract_comments(code: str, expected_field_names: list[str], sql_dialect: SQLDialect) -> dict[str, CommentBlock]:
-
+def extract_comments(
+    code: str, expected_field_names: list[str], sql_dialect: SQLDialect
+) -> dict[str, CommentBlock]:
     dialect = sqlglot.Dialect.get_or_raise(sql_dialect.sqlglot_dialect.value)
     tokens = dialect.tokenizer_class().tokenize(code)
 
@@ -43,26 +46,22 @@ def extract_comments(code: str, expected_field_names: list[str], sql_dialect: SQ
     # We assume the tokens are stored. Therefore, by looping over them and building a dictionary,
     # each key will be unique and the last value will be the last variable in the line.
     var_tokens = [
-        token for token in tokens if token.token_type.value == "VAR" and token.text in expected_field_names
+        token
+        for token in tokens
+        if token.token_type.value == "VAR" and token.text in expected_field_names
     ]
 
     def is_var_line(line):
         line_tokens = [t for t in tokens if t.line == line and t.token_type.value != "COMMA"]
         return line_tokens[-1].token_type.value == "VAR"
 
-    last_var_per_line = {
-        token.line: token.text for token in var_tokens if is_var_line(token.line)
-    }
+    last_var_per_line = {token.line: token.text for token in var_tokens if is_var_line(token.line)}
 
     # Now assign each comment block to a variable
     var_comments = {}
     for comment_block in comment_blocks:
         adjacent_var = next(
-            (
-                var
-                for line, var in last_var_per_line.items()
-                if comment_block.last_line == line - 1
-            ),
+            (var for line, var in last_var_per_line.items() if comment_block.last_line == line - 1),
             None,
         )
         if adjacent_var:
