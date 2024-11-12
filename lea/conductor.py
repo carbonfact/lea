@@ -374,7 +374,7 @@ class Conductor:
         self.scripts_dir = pathlib.Path(scripts_dir)
         if not self.scripts_dir.is_dir():
             raise ValueError(f"Directory {self.scripts_dir} not found")
-        dataset_name = dataset_name or os.environ.get("LEA_BQ_SERVICE_ACCOUNT")
+        dataset_name = dataset_name or os.environ.get("LEA_BQ_DATASET_NAME")
         if dataset_name is None:
             raise ValueError("Dataset name could not be inferred")
         self.dataset_name = dataset_name
