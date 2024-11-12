@@ -181,9 +181,9 @@ class Session:
             )
 
         def add_context_to_dependency(dependency: TableRef) -> TableRef:
-            dependency = dependency.replace_dataset(self.write_dataset)
-            if dependency not in self.selected_table_refs and dependency in self.scripts:
+            if dependency in self.selected_table_refs and dependency in self.scripts:
                 dependency = dependency.add_audit_suffix()
+            dependency = dependency.replace_dataset(self.write_dataset)
             return dependency
 
         script = replace_script_dependencies(
@@ -442,7 +442,8 @@ class Conductor:
         keep_going: bool = False,
         fresh: bool = False,
         incremental_field_name: str | None = None,
-        incremental_field_values: list[str] | None = None
+        incremental_field_values: list[str] | None = None,
+        print_mode: bool = False
     ):
 
         # We need a database client to run scripts
@@ -482,7 +483,7 @@ class Conductor:
             selected_table_refs=selected_table_refs,
             materialized_table_refs=materialized_table_refs,
             incremental_field_name=incremental_field_name,
-            incremental_field_values=incremental_field_values
+            incremental_field_values=incremental_field_values,
         )
 
         try:
@@ -490,6 +491,7 @@ class Conductor:
                 session,
                 keep_going=keep_going,
                 dry_run=dry_run,
+                print_mode=print_mode
             )
         except KeyboardInterrupt:
             log.error("🛑 Keyboard interrupt")
@@ -509,8 +511,18 @@ class Conductor:
         self,
         session: Session,
         keep_going: bool,
-        dry_run: bool
+        dry_run: bool,
+        print_mode: bool
     ):
+
+        if print_mode:
+            for table_ref in self.dag.static_order():
+                if table_ref not in session.selected_table_refs:
+                    continue
+                script = self.dag.scripts[table_ref]
+                script = session.add_context_to_script(script)
+                rich.print(script)
+            return
 
         # Loop over table references in topological order
         self.dag.prepare()

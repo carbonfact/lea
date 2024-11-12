@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import dataclasses
 import functools
 import pathlib
@@ -8,6 +7,7 @@ import os
 import re
 
 import jinja2
+import rich.syntax
 import sqlglot
 import sqlglot.optimizer
 
@@ -152,6 +152,10 @@ class SQLScript:
 
     def replace_table_ref(self, table_ref: TableRef) -> SQLScript:
         return dataclasses.replace(self, table_ref=table_ref)
+
+    def __rich__(self):
+        code_with_table_ref = f"""-- Table: {self.table_ref}\n\n{self.code}"""
+        return rich.syntax.Syntax(code_with_table_ref, "sql", theme="nord")
 
 
 Script = SQLScript
