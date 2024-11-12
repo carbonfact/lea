@@ -18,11 +18,11 @@ class TableRef:
         return ".".join([self.dataset, *self.schema, self.name])
 
     @classmethod
-    def from_path(cls, dataset_dir: pathlib.Path, relative_path: pathlib.Path) -> TableRef:
+    def from_path(cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path) -> TableRef:
         parts = list(filter(None, relative_path.parts))
         *schema, filename = parts
         return cls(
-            dataset=dataset_dir.name,
+            dataset=scripts_dir.name,
             schema=tuple(schema),
             # Remove the ex
             name=filename.split(".")[0]

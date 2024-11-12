@@ -145,8 +145,7 @@ class BigQueryClient:
         table_ref_str = BigQueryDialect.format_table_ref(sql_script.table_ref)
         destination = bigquery.TableReference.from_string(f"{self.write_project_id}.{table_ref_str}")
         job_config = self.make_job_config(
-            sql=sql_script.code,
-            table_ref=sql_script.table_ref,
+            script=sql_script,
             destination=destination,
             write_disposition="WRITE_TRUNCATE"
         )
@@ -176,7 +175,7 @@ class BigQueryClient:
         {destination}
         CLONE {self.write_project_id}.{BigQueryDialect.format_table_ref(from_table_ref)}
         """
-        job_config = self.make_job_config(sql=clone_code, table_ref=to_table_ref)
+        job_config = self.make_job_config()
         return BigQueryJob(
             client=self,
             query_job=self.client.query(clone_code, job_config=job_config),
@@ -199,7 +198,7 @@ class BigQueryClient:
 
         COMMIT TRANSACTION;
         """
-        job_config = self.make_job_config(sql=delete_and_insert_code, table_ref=to_table_ref)
+        job_config = self.make_job_config()
         return BigQueryJob(
             client=self,
             query_job=self.client.query(delete_and_insert_code,  job_config=job_config),
@@ -211,7 +210,7 @@ class BigQueryClient:
         delete_code = f"""
         DROP TABLE IF EXISTS {self.write_project_id}.{table_ref_str}
         """
-        job_config = self.make_job_config(sql=delete_code, table_ref=table_ref)
+        job_config = self.make_job_config()
         return BigQueryJob(
             client=self,
             query_job=self.client.query(delete_code, job_config=job_config)
@@ -231,7 +230,7 @@ class BigQueryClient:
             for row in job.result()
         }
 
-    def make_job_config(self, sql: str, table_ref: TableRef | None, **kwargs) -> bigquery.QueryJobConfig:
+    def make_job_config(self, script: scripts.SQLScript | None = None, **kwargs) -> bigquery.QueryJobConfig:
         return bigquery.QueryJobConfig(
             priority=bigquery.QueryPriority.INTERACTIVE,
             use_query_cache=False,

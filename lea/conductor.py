@@ -238,8 +238,6 @@ class Session:
                 time.sleep(delay)
                 continue
 
-            print('done')
-
             try:
                 job.ended_at = dt.datetime.now()
 
@@ -549,8 +547,10 @@ class Conductor:
                 # dependencies, add incremental logic, and set the write context.
                 script = session.add_context_to_script(script)
 
-                future = session.executor.submit(session.start_script, script)
-                session.start_script_futures[script.table_ref] = future
+                # TODO
+                #future = session.executor.submit(session.start_script, script)
+                #session.start_script_futures[script.table_ref] = future
+                session.start_script(script)
 
             # Check for scripts that have finished
             for job, future in list(session.monitor_script_job_futures.items()):
@@ -558,7 +558,7 @@ class Conductor:
                     table_ref = session.remove_write_context_from_table_ref(job.script.table_ref)
                     self.dag.done(table_ref)
                     del session.monitor_script_job_futures[job]
-                    del session.start_script_futures[job.script.table_ref]
+                    #del session.start_script_futures[job.script.table_ref]
 
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.

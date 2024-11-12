@@ -3,7 +3,10 @@ from __future__ import annotations
 import graphlib
 import pathlib
 import typing
+import re
 from collections.abc import Iterator
+
+import git
 
 from .dialects import SQLDialect
 from .table_ref import TableRef
@@ -47,6 +50,22 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
             if query == "*":
                 yield from self.scripts.keys()
+                return
+
+            # It's possible to query views via git. For example:
+            # * `git` will select all the views that have been modified compared to the main branch.
+            # * `git+` will select all the modified views, and their descendants.
+            # * `+git` will select all the modified views, and their ancestors.
+            # * `+git+` will select all the modified views, with their ancestors and descendants.
+            if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", query):
+                include_ancestors = include_ancestors or m.group("ancestors") == "+"
+                include_descendants = include_descendants or m.group("descendants") == "+"
+                for table_ref in list_table_refs_that_changed(scripts_dir=self.scripts_dir):
+                    yield from _select(
+                        ".".join([*table_ref.schema, table_ref.name]),
+                        include_ancestors=include_ancestors,
+                        include_descendants=include_descendants,
+                    )
                 return
 
             if query.endswith("+"):
@@ -131,3 +150,28 @@ def iter_descendants(dependency_graph: dict[typing.Hashable, set[typing.Hashable
         if node in dependency_graph[potential_child]:
             yield potential_child
             yield from iter_descendants(dependency_graph, potential_child)
+
+def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
+
+    repo = git.Repo(".")  # TODO: is using "." always correct? Probably not.
+    # Changes that have been committed
+    staged_diffs = repo.index.diff(
+        repo.refs.main.commit
+        # repo.remotes.origin.refs.main.commit
+    )
+    # Changes that have not been committed
+    unstage_diffs = repo.head.commit.diff(None)
+
+    table_refs = set()
+    for diff in staged_diffs + unstage_diffs:
+        # One thing to note is that we don't filter out deleted views. This is because
+        # these views will get filtered out by dag.select anyway.
+        diff_path = pathlib.Path(diff.a_path)
+        if (
+            diff_path.is_relative_to(scripts_dir)
+            and tuple(diff_path.suffixes) in {(".sql",), (".sql", ".jinja")}
+        ):
+            table_ref = TableRef.from_path(scripts_dir=scripts_dir, relative_path=diff_path.relative_to(scripts_dir))
+            table_refs.add(table_ref)
+
+    return table_refs

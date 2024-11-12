@@ -38,14 +38,14 @@ class SQLScript:
             code = (scripts_dir / relative_path).read_text().rstrip().rstrip(";")
 
         return cls(
-            table_ref=TableRef.from_path(scripts_dir, relative_path),
+            table_ref=TableRef.from_path(scripts_dir=scripts_dir, relative_path=relative_path),
             code=code,
             sql_dialect=sql_dialect,
         )
 
     @property
     def is_test(self) -> bool:
-        return self.table_ref.schema and self.table_ref.schema[0] == "tests"
+        return len(self.table_ref.schema) > 0 and self.table_ref.schema[0] == "tests"
 
     @functools.cached_property
     def ast(self):
