@@ -460,7 +460,10 @@ class Conductor:
         if fresh and materialized_table_refs:
             log.info("🧹 Starting fresh, deleting audit tables")
             delete_audit_tables(
-                table_refs=materialized_table_refs,
+                table_refs={
+                    table_ref.replace_dataset(write_dataset)
+                    for table_ref in materialized_table_refs
+                },
                 database_client=database_client,
                 executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
                 verbose=True,
