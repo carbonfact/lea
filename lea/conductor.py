@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 
+import dotenv
 import rich.logging
 
 from lea import databases
@@ -364,6 +365,11 @@ def delete_audit_tables(
 
 class Conductor:
     def __init__(self, scripts_dir: str, dataset_name: str | None = None):
+
+        # Load environment variables from .env file
+        # TODO: is is Pythonic to do this here?
+        dotenv.load_dotenv(".env", verbose=True)
+
         self.scripts_dir = pathlib.Path(scripts_dir)
         if not self.scripts_dir.is_dir():
             raise ValueError(f"Directory {self.scripts_dir} not found")

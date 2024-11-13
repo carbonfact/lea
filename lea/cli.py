@@ -4,14 +4,13 @@ import collections
 import pathlib
 
 import click
-import dotenv
 
 import lea
 
 
 @click.group()
 def app():
-    dotenv.load_dotenv(".env", verbose=True)
+    ...
 
 
 @app.command()
