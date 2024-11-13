@@ -168,7 +168,7 @@ class BigQueryClient:
         raise ValueError("Unsupported script type")
 
     def query_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
-        job_config = self.make_job_config(sql=sql_script.code, table_ref=None, destination=None)
+        job_config = self.make_job_config()
         return BigQueryJob(
             client=self, query_job=self.client.query(sql_script.code, job_config=job_config)
         )

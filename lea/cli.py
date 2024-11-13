@@ -14,7 +14,7 @@ def app():
 
 
 @app.command()
-@click.option("--select", "-m", multiple=True)
+@click.option("--select", "-m", multiple=True, default=["*"], help="Scripts to materialize.")
 @click.option("--dataset", default=None, help="Name of the base dataset.")
 @click.option("--scripts", default="scripts", help="Directory where the scripts are located.")
 @click.option(
