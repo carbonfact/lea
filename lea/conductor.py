@@ -267,7 +267,7 @@ class Session:
 
         if (
             self.incremental_field_name is not None
-            and from_table_ref in self.incremental_table_refs
+            and to_table_ref.replace_dataset(self.base_dataset) in self.incremental_table_refs
         ):
             database_job = self.database_client.delete_and_insert(
                 from_table_ref=from_table_ref,
@@ -510,70 +510,16 @@ class Conductor:
         # In print mode, we just print the scripts. There's no need to run them. We take care of
         # printing them in topological order.
         if print_mode:
-            for table_ref in self.dag.static_order():
-                if table_ref not in session.selected_table_refs:
-                    continue
-                script = self.dag.scripts[table_ref]
-                script = session.add_context_to_script(script)
-                rich.print(script)
+            print_scripts(dag=self.dag, session=session)
             return
 
         # Loop over table references in topological order
-        self.dag.prepare()
-        while self.dag.is_active():
-            # If we're in early end mode, we need to check if any script errored, in which case we
-            # have to stop everything.
-            if session.any_error_has_occurred and not keep_going:
-                log.error("✋ Early ending because an error occurred")
-                break
-
-            # Start available jobs
-            for script in self.dag.iter_scripts(session.table_refs_to_run):
-                # Before executing a script, we need to contextualize it. We have to edit its
-                # dependencies, add incremental logic, and set the write context.
-                script = session.add_context_to_script(script)
-                future = session.executor.submit(session.run_script, script)
-                session.run_script_futures[future] = script
-
-            # Check for scripts that have finished
-            done, _ = concurrent.futures.wait(
-                session.run_script_futures, return_when=concurrent.futures.FIRST_COMPLETED
-            )
-            for future in done:
-                if future.exception():
-                    log.error(f"Failed running {script.table_ref}\n{future.exception()}")
-                table_ref = session.remove_write_context_from_table_ref(script.table_ref)
-                self.dag.done(table_ref)
-                session.run_script_futures_complete[future] = session.run_script_futures.pop(future)
+        run_scripts(dag=self.dag, session=session, keep_going=keep_going)
 
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.
         if not session.any_error_has_occurred and not dry_run:
-            table_refs_to_promote = {
-                session.add_write_context_to_table_ref(table_ref)
-                for table_ref in session.table_refs_to_run | session.materialized_table_refs
-            }
-            if table_refs_to_promote:
-                log.info("🥇 Promoting audit tables")
-
-                # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
-                # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
-                # best we can do for now. There's a very small chance that at least one promotion job will
-                # fail.
-                # https://hiflylabs.com/blog/2022/11/22/dbt-deployment-best-practices
-                # https://calogica.com/sql/bigquery/dbt/2020/05/24/dbt-bigquery-blue-green-wap.html
-                # https://calogica.com/assets/wap_dbt_bigquery.pdf
-                # Note: it's important for the following loop to be a list comprehension. If we used a
-                # generator expression, the loop would be infinite because jobs are being added to
-                # session.jobs when session.promote is called.
-                for table_ref in table_refs_to_promote:
-                    future = session.executor.submit(session.promote_audit_table, table_ref)
-                    session.promote_audit_tables_futures[future] = script
-
-                # Wait for all promotion jobs to finish
-                for future in concurrent.futures.as_completed(session.promote_audit_tables_futures):
-                    if future.exception() is not None:
-                        log.error(f"Promotion failed\n{future.exception()}")
+            promote_tables(session)
 
         # If all the scripts succeeded, we can delete the audit tables.
         if not session.any_error_has_occurred and not dry_run:
@@ -596,3 +542,71 @@ class Conductor:
                     executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
                     verbose=True,
                 )
+
+
+def print_scripts(dag: DAGOfScripts, session: Session):
+    for table_ref in dag.static_order():
+        if table_ref not in session.selected_table_refs:
+            continue
+        script = dag.scripts[table_ref]
+        script = session.add_context_to_script(script)
+        rich.print(script)
+
+
+def run_scripts(dag: DAGOfScripts, session: Session, keep_going: bool):
+
+    dag.prepare()
+    while dag.is_active():
+        # If we're in early end mode, we need to check if any script errored, in which case we
+        # have to stop everything.
+        if session.any_error_has_occurred and not keep_going:
+            log.error("✋ Early ending because an error occurred")
+            break
+
+        # Start available jobs
+        for script in dag.iter_scripts(session.table_refs_to_run):
+            # Before executing a script, we need to contextualize it. We have to edit its
+            # dependencies, add incremental logic, and set the write context.
+            script = session.add_context_to_script(script)
+            future = session.executor.submit(session.run_script, script)
+            session.run_script_futures[future] = script
+
+        # Check for scripts that have finished
+        done, _ = concurrent.futures.wait(
+            session.run_script_futures, return_when=concurrent.futures.FIRST_COMPLETED
+        )
+        for future in done:
+            if future.exception():
+                log.error(f"Failed running {script.table_ref}\n{future.exception()}")
+            table_ref = session.remove_write_context_from_table_ref(script.table_ref)
+            dag.done(table_ref)
+            session.run_script_futures_complete[future] = session.run_script_futures.pop(future)
+
+
+def promote_tables(session: Session):
+
+    table_refs_to_promote = {
+        session.add_write_context_to_table_ref(table_ref)
+        for table_ref in session.table_refs_to_run | session.materialized_table_refs
+    }
+    if table_refs_to_promote:
+        log.info("🥇 Promoting audit tables")
+
+        # Ideally, we would like to do this atomatically, but BigQuery does not support DDL
+        # statements in a transaction. So we do it concurrently. This isn't ideal, but it's the
+        # best we can do for now. There's a very small chance that at least one promotion job will
+        # fail.
+        # https://hiflylabs.com/blog/2022/11/22/dbt-deployment-best-practices
+        # https://calogica.com/sql/bigquery/dbt/2020/05/24/dbt-bigquery-blue-green-wap.html
+        # https://calogica.com/assets/wap_dbt_bigquery.pdf
+        # Note: it's important for the following loop to be a list comprehension. If we used a
+        # generator expression, the loop would be infinite because jobs are being added to
+        # session.jobs when session.promote is called.
+        for table_ref in table_refs_to_promote:
+            future = session.executor.submit(session.promote_audit_table, table_ref)
+            session.promote_audit_tables_futures[future] = table_ref
+
+        # Wait for all promotion jobs to finish
+        for future in concurrent.futures.as_completed(session.promote_audit_tables_futures):
+            if future.exception() is not None:
+                log.error(f"Promotion failed\n{future.exception()}")
