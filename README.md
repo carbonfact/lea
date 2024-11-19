@@ -65,14 +65,39 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 
 ## Installation
 
-Use one of the following commands, depending on which warehouse you wish to use:
+### Basic
+
+With pip :
 
 ```sh
-pip install lea-cli[duckdb]
-pip install lea-cli[bigquery]
+pip install lea-cli
+```
+
+Or pipx :
+
+```sh
+pipx install lea-cli
 ```
 
 This installs the `lea` command. It also makes the `lea` Python library available.
+
+### Warehouse specific installation
+
+**NB : By default, lea is installed with `duckdb` for local development.**
+
+Use one of the following commands, depending on which warehouse you wish to use:
+
+- Bigquery :
+
+```sh
+pip install lea-cli[bigquery]
+```
+
+- Motherduck :
+
+```sh
+pip install lea-cli[motherduck]
+```
 
 ## Usage
 

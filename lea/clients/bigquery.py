@@ -4,7 +4,14 @@ import concurrent.futures
 import os
 
 import pandas as pd
-import pandas_gbq
+
+try:
+    import pandas_gbq
+except ImportError:
+    _HAS_MPL = False
+else:
+    _HAS_MPL = True
+
 import rich.console
 import sqlglot
 
@@ -27,6 +34,10 @@ class BigQuery(Client):
         username,
         wap_mode,
     ):
+        if not _HAS_MPL:
+            raise ImportError(
+                "bigquery extras are required.Install with `pip install lea[bigquery]`"
+            )
         self.credentials = credentials
         self.write_project_id = write_project_id
         self.compute_project_id = compute_project_id
