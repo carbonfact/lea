@@ -26,7 +26,9 @@ def app():
     "--keep-going", is_flag=True, default=False, help="Whether to keep going after an error."
 )
 @click.option("--print", is_flag=True, default=False, help="Whether to print the SQL code.")
-@click.option("--production", is_flag=True, default=False, help="Whether to run the scripts in production.")
+@click.option(
+    "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
+)
 def run(select, dataset, scripts, incremental, stateful, dry, keep_going, print, production):
     if not pathlib.Path(scripts).is_dir():
         raise click.ClickException(f"Directory {scripts} does not exist")
