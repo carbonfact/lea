@@ -26,7 +26,8 @@ def app():
     "--keep-going", is_flag=True, default=False, help="Whether to keep going after an error."
 )
 @click.option("--print", is_flag=True, default=False, help="Whether to print the SQL code.")
-def run(select, dataset, scripts, incremental, stateful, dry, keep_going, print):
+@click.option("--production", is_flag=True, default=False, help="Whether to run the scripts in production.")
+def run(select, dataset, scripts, incremental, stateful, dry, keep_going, print, production):
     if not pathlib.Path(scripts).is_dir():
         raise click.ClickException(f"Directory {scripts} does not exist")
 
@@ -42,6 +43,7 @@ def run(select, dataset, scripts, incremental, stateful, dry, keep_going, print)
     conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
     conductor.run(
         *select,
+        production=production,
         dry_run=dry,
         keep_going=keep_going,
         stateful=stateful,
