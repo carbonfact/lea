@@ -3,16 +3,10 @@ from __future__ import annotations
 import os
 import pathlib
 
+import duckdb
 import pandas as pd
 import rich.console
 import sqlglot
-
-try:
-    import duckdb
-except ImportError:
-    _HAS_MPL = False
-else:
-    _HAS_MPL = True
 
 import lea
 
@@ -24,9 +18,6 @@ console = rich.console.Console()
 
 class DuckDB(Client):
     def __init__(self, path: str, username: str | None = None, wap_mode: bool = False):
-        if not _HAS_MPL:
-            raise ImportError("duckdb extras are required.Install with `pip install lea[duckdb]`")
-
         self.path = path
         self.username = username
         self.wap_mode = wap_mode
