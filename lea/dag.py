@@ -147,17 +147,13 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             yield self.scripts[table_ref]
 
 
-def iter_ancestors(
-    dependency_graph: dict[TableRef, set[TableRef]], node: TableRef
-):
+def iter_ancestors(dependency_graph: dict[TableRef, set[TableRef]], node: TableRef):
     for child in dependency_graph.get(node, []):
         yield child
         yield from iter_ancestors(dependency_graph, child)
 
 
-def iter_descendants(
-    dependency_graph: dict[TableRef, set[TableRef]], node: TableRef
-):
+def iter_descendants(dependency_graph: dict[TableRef, set[TableRef]], node: TableRef):
     for potential_child in dependency_graph:
         if node in dependency_graph[potential_child]:
             yield potential_child

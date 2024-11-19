@@ -568,8 +568,6 @@ def run_scripts(dag: DAGOfScripts, session: Session, keep_going: bool):
             # Before executing a script, we need to contextualize it. We have to edit its
             # dependencies, add incremental logic, and set the write context.
             script_to_run = session.add_context_to_script(script_to_run)
-            if str(script_to_run.table_ref) == 'kaya_max.tests.core__components__component_id#unique':
-                print(script_to_run.code)
             future = session.executor.submit(session.run_script, script_to_run)
             session.run_script_futures[future] = script_to_run
 
