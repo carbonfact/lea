@@ -588,6 +588,7 @@ def promote_tables(session: Session):
     table_refs_to_promote = {
         session.add_write_context_to_table_ref(table_ref)
         for table_ref in session.table_refs_to_run | session.materialized_table_refs
+        if not table_ref.is_test
     }
     if table_refs_to_promote:
         log.info("🥇 Promoting audit tables")

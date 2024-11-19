@@ -45,7 +45,7 @@ class SQLScript:
 
     @property
     def is_test(self) -> bool:
-        return len(self.table_ref.schema) > 0 and self.table_ref.schema[0] == "tests"
+        return self.table_ref.is_test
 
     @functools.cached_property
     def ast(self):

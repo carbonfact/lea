@@ -36,3 +36,7 @@ class TableRef:
 
     def remove_audit_suffix(self) -> TableRef:
         return dataclasses.replace(self, name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", self.name))
+
+    @property
+    def is_test(self) -> bool:
+        return len(self.schema) > 0 and self.schema[0] == "tests"
