@@ -225,7 +225,7 @@ class Session:
                 retries += 1
                 if (now := dt.datetime.now()) - checked_at >= dt.timedelta(seconds=10):
                     duration_str = str(now - job.started_at).split(".")[0]
-                    log.info(f"{job.table_ref} still running after {duration_str}")
+                    log.info(f"{job.status} {job.table_ref} after {duration_str}")
                     checked_at = now
                 time.sleep(delay)
                 continue
@@ -439,7 +439,7 @@ class Conductor:
         production: bool = False,
         dry_run: bool = False,
         keep_going: bool = False,
-        fresh: bool = False,
+        stateful: bool = False,
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
@@ -465,8 +465,8 @@ class Conductor:
         materialized_table_refs = self.list_materialized_audit_table_refs(
             database_client, write_dataset
         )
-        if fresh and materialized_table_refs:
-            log.info("🧹 Starting fresh, deleting audit tables")
+        if not stateful and materialized_table_refs:
+            log.info("🧹 Deleting audit tables")
             delete_audit_tables(
                 table_refs={
                     table_ref.replace_dataset(write_dataset)
@@ -564,21 +564,24 @@ def run_scripts(dag: DAGOfScripts, session: Session, keep_going: bool):
             break
 
         # Start available jobs
-        for script in dag.iter_scripts(session.table_refs_to_run):
+        for script_to_run in dag.iter_scripts(session.table_refs_to_run):
             # Before executing a script, we need to contextualize it. We have to edit its
             # dependencies, add incremental logic, and set the write context.
-            script = session.add_context_to_script(script)
-            future = session.executor.submit(session.run_script, script)
-            session.run_script_futures[future] = script
+            script_to_run = session.add_context_to_script(script_to_run)
+            if str(script_to_run.table_ref) == 'kaya_max.tests.core__components__component_id#unique':
+                print(script_to_run.code)
+            future = session.executor.submit(session.run_script, script_to_run)
+            session.run_script_futures[future] = script_to_run
 
         # Check for scripts that have finished
         done, _ = concurrent.futures.wait(
             session.run_script_futures, return_when=concurrent.futures.FIRST_COMPLETED
         )
         for future in done:
+            script_done = session.run_script_futures[future]
             if future.exception():
-                log.error(f"Failed running {script.table_ref}\n{future.exception()}")
-            table_ref = session.remove_write_context_from_table_ref(script.table_ref)
+                log.error(f"Failed running {script_done.table_ref}\n{future.exception()}")
+            table_ref = session.remove_write_context_from_table_ref(script_done.table_ref)
             dag.done(table_ref)
             session.run_script_futures_complete[future] = session.run_script_futures.pop(future)
 

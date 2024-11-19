@@ -3,7 +3,6 @@ from __future__ import annotations
 import graphlib
 import pathlib
 import re
-import typing
 from collections.abc import Iterator
 
 import git
@@ -149,7 +148,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
 
 def iter_ancestors(
-    dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable
+    dependency_graph: dict[TableRef, set[TableRef]], node: TableRef
 ):
     for child in dependency_graph.get(node, []):
         yield child
@@ -157,7 +156,7 @@ def iter_ancestors(
 
 
 def iter_descendants(
-    dependency_graph: dict[typing.Hashable, set[typing.Hashable]], node: typing.Hashable
+    dependency_graph: dict[TableRef, set[TableRef]], node: TableRef
 ):
     for potential_child in dependency_graph:
         if node in dependency_graph[potential_child]:

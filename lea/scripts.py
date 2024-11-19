@@ -112,7 +112,7 @@ class SQLScript:
             return TableRef(
                 dataset=self.table_ref.dataset,
                 schema=("tests",),
-                name=f"{'__'.join(self.table_ref.schema)}__{self.table_ref.name}__{field.name}#{tag.lower()}",
+                name=f"{'__'.join(self.table_ref.schema)}__{self.table_ref.name}__{field.name}{tag.lower()}",
             )
 
         def make_assertion_test(table_ref, field, tag):

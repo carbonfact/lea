@@ -20,13 +20,13 @@ def app():
 @click.option(
     "--incremental", nargs=2, type=str, multiple=True, help="Incremental field name and value."
 )
-@click.option("--fresh", is_flag=True, default=False, help="Whether to start from scratch.")
+@click.option("--stateful", is_flag=True, default=False, help="Whether to start from scratch.")
 @click.option("--dry", is_flag=True, default=False, help="Whether to run in dry mode.")
 @click.option(
     "--keep-going", is_flag=True, default=False, help="Whether to keep going after an error."
 )
 @click.option("--print", is_flag=True, default=False, help="Whether to print the SQL code.")
-def run(select, dataset, scripts, incremental, fresh, dry, keep_going, print):
+def run(select, dataset, scripts, incremental, stateful, dry, keep_going, print):
     if not pathlib.Path(scripts).is_dir():
         raise click.ClickException(f"Directory {scripts} does not exist")
 
@@ -44,7 +44,7 @@ def run(select, dataset, scripts, incremental, fresh, dry, keep_going, print):
         *select,
         dry_run=dry,
         keep_going=keep_going,
-        fresh=fresh,
+        stateful=stateful,
         incremental_field_name=incremental_field_name,
         incremental_field_values=incremental_field_values,
         print_mode=print,
