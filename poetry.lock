@@ -2258,9 +2258,9 @@ files = [
 
 [extras]
 bigquery = ["db-dtypes", "google-cloud-bigquery", "pandas-gbq"]
-duckdb = ["duckdb"]
+motherduck = ["duckdb"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4"
-content-hash = "a28a492c35a06dc225061bdcd2e20c87323055eb84ae7ba08b06aeda868b5168"
+content-hash = "64bf80d23c53dbec3e19b5cf327b041b052638ff0ec808e20ec0705deb920d2c"
