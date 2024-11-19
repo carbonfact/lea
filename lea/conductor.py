@@ -365,7 +365,6 @@ def delete_audit_tables(
 
 class Conductor:
     def __init__(self, scripts_dir: str, dataset_name: str | None = None):
-
         # Load environment variables from .env file
         # TODO: is is Pythonic to do this here?
         dotenv.load_dotenv(".env", verbose=True)
@@ -429,7 +428,10 @@ class Conductor:
             for table_ref, stats in existing_tables.items()
             if table_ref.name.endswith(AUDIT_TABLE_SUFFIX)
         }
-        return {table_ref.remove_audit_suffix().replace_dataset(self.dataset_name) for table_ref in existing_audit_tables}
+        return {
+            table_ref.remove_audit_suffix().replace_dataset(self.dataset_name)
+            for table_ref in existing_audit_tables
+        }
 
     def run(
         self,
@@ -506,7 +508,6 @@ class Conductor:
             return sys.exit(1)
 
     def run_session(self, session: Session, keep_going: bool, dry_run: bool, print_mode: bool):
-
         # In print mode, we just print the scripts. There's no need to run them. We take care of
         # printing them in topological order.
         if print_mode:
@@ -554,7 +555,6 @@ def print_scripts(dag: DAGOfScripts, session: Session):
 
 
 def run_scripts(dag: DAGOfScripts, session: Session, keep_going: bool):
-
     dag.prepare()
     while dag.is_active():
         # If we're in early end mode, we need to check if any script errored, in which case we
@@ -584,7 +584,6 @@ def run_scripts(dag: DAGOfScripts, session: Session, keep_going: bool):
 
 
 def promote_tables(session: Session):
-
     table_refs_to_promote = {
         session.add_write_context_to_table_ref(table_ref)
         for table_ref in session.table_refs_to_run | session.materialized_table_refs
