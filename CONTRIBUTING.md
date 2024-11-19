@@ -25,6 +25,7 @@ You'll also need [Poetry](https://python-poetry.org/):
 
 ```sh
 curl -sSL https://install.python-poetry.org | python3 -
+poetry install --with dev
 ```
 
 Based on the client you wish to use, install the application dependencies :
@@ -32,25 +33,18 @@ Based on the client you wish to use, install the application dependencies :
 - Bigquery
 
 ```sh
-poetry install -E duckdb
+poetry install -E bigquery
 ```
 
-- Duckb
+- All extras if all specific client development and testing :
 
-```sh
-poetry install -E duckdb
-```
-
-- All extras if non specific client development and testing :
-
-```sh
+````sh
 poetry install --all-extras
 
 Activate your virtual environment :
-```
 
+```sh
 poetry shell
-
 ````
 
 ## Testing
@@ -59,7 +53,7 @@ You can run tests once the environment is set up:
 
 ```sh
 pytest
-````
+```
 
 ## Code quality
 
