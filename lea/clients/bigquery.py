@@ -8,9 +8,9 @@ import pandas as pd
 try:
     import pandas_gbq
 except ImportError:
-    _HAS_MPL = False
+    _HAS_GBQ = False
 else:
-    _HAS_MPL = True
+    _HAS_GBQ = True
 
 import rich.console
 import sqlglot
@@ -34,7 +34,7 @@ class BigQuery(Client):
         username,
         wap_mode,
     ):
-        if not _HAS_MPL:
+        if not _HAS_GBQ:
             raise ImportError(
                 "bigquery extras are required.Install with `pip install lea[bigquery]`"
             )
