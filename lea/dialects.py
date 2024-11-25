@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import textwrap
 
 import jinja2
 import sqlglot
@@ -65,12 +66,11 @@ class SQLDialect:
                 dependency_str,
                 f"(SELECT * FROM {dependency_str} WHERE {incremental_field_name} IN ({incremental_field_values_str}))",
             )
-        return f"""
-        SELECT * FROM (
-        {code}
+        return (
+            "SELECT * FROM (\n" +
+            textwrap.indent(code, prefix='    ') +
+            f"\n)\nWHERE {incremental_field_name} IN ({incremental_field_values_str})"
         )
-        WHERE {incremental_field_name} IN ({incremental_field_values_str})
-        """
 
     @classmethod
     def handle_incremental_dependencies(

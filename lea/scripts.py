@@ -22,6 +22,50 @@ class SQLScript:
     table_ref: TableRef
     code: str
     sql_dialect: SQLDialect
+    fields: list[Field] | None = dataclasses.field(default=None)
+
+    def __post_init__(self):
+        """
+
+        This part is a bit tricky. We extract fields from each script for different reasons. For
+        instance, the fields are used to generate assertion tests.
+
+        The logic to extract fields is based on SQLGlot. The latter usually works well, but it
+        sometimes fail for complex queries. For instance, in incremental mode, we have to edit
+        the queries to filter their dependencies. These queries are not always parsed correctly by
+        SQLGlot.
+
+        To circumvent this issue, we extract fields, and cache them. This way, whenever we call
+        dataclasses.replace, they won't have to be recomputed. This makes sense because the scripts
+        are never edited to add or remove fields. They are only edited to change the filtering
+        conditions.
+
+        """
+        if self.fields is not None:
+            return
+        field_names = self.ast.named_selects
+        field_comments = extract_comments(
+            code=self.code, expected_field_names=field_names, sql_dialect=self.sql_dialect
+        )
+        fields = [
+            Field(
+                name=name,
+                tags={
+                    comment.text
+                    for comment in field_comments.get(name, [])
+                    if comment.text.startswith("#")
+                },
+                description=" ".join(
+                    comment.text
+                    for comment in field_comments.get(name, [])
+                    if not comment.text.startswith("#")
+                ),
+            )
+            for name in field_names
+            if name != "*"
+        ]
+        # https://stackoverflow.com/a/54119384
+        object.__setattr__(self, "fields", fields)
 
     @classmethod
     def from_path(
@@ -66,33 +110,6 @@ class SQLScript:
                 and sqlglot.exp.table_name(table) not in scope.cte_sources
             )
         }
-
-    @functools.cached_property
-    def fields(self) -> list[Field]:
-        try:
-            field_names = self.ast.named_selects
-        except sqlglot.errors.ParseError:
-            field_names = []
-        field_comments = extract_comments(
-            code=self.code, expected_field_names=field_names, sql_dialect=self.sql_dialect
-        )
-        return [
-            Field(
-                name=name,
-                tags={
-                    comment.text
-                    for comment in field_comments.get(name, [])
-                    if comment.text.startswith("#")
-                },
-                description=" ".join(
-                    comment.text
-                    for comment in field_comments.get(name, [])
-                    if not comment.text.startswith("#")
-                ),
-            )
-            for name in field_names
-            if name != "*"
-        ]
 
     @property
     def assertion_tests(self) -> list[SQLScript]:
@@ -147,7 +164,7 @@ class SQLScript:
 
         return [
             make_assertion_test(self.table_ref, field, tag)
-            for field in self.fields
+            for field in self.fields or []
             for tag in field.tags
             if tag not in {FieldTag.INCREMENTAL}
         ]
@@ -169,11 +186,6 @@ def read_scripts(
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):
             case (".sql",) | (".sql", ".jinja"):
-                # 🐉
-                # SQL scripts may include the dataset when they reference tables. We want to determine
-                # dependencies between scripts. Therefore, we are not interested in the dataset of the
-                # dependencies. We know what the target dataset is called, so we can remove it from the
-                # dependencies.
                 return SQLScript.from_path(
                     scripts_dir=scripts_dir,
                     relative_path=path.relative_to(scripts_dir),
