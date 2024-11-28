@@ -67,9 +67,9 @@ class SQLDialect:
                 f"(SELECT * FROM {dependency_str} WHERE {incremental_field_name} IN ({incremental_field_values_str}))",
             )
         return (
-            "SELECT * FROM (\n" +
-            textwrap.indent(code, prefix='    ') +
-            f"\n)\nWHERE {incremental_field_name} IN ({incremental_field_values_str})"
+            "SELECT * FROM (\n"
+            + textwrap.indent(code, prefix="    ")
+            + f"\n)\nWHERE {incremental_field_name} IN ({incremental_field_values_str})"
         )
 
     @classmethod

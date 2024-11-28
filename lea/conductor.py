@@ -105,7 +105,10 @@ class Session:
             self.filterable_table_refs = {
                 table_ref
                 for table_ref in scripts
-                if any(field.name == incremental_field_name for field in scripts[table_ref].fields or [])
+                if any(
+                    field.name == incremental_field_name
+                    for field in scripts[table_ref].fields or []
+                )
             }
             self.incremental_table_refs = {
                 table_ref
