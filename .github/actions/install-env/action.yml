@@ -35,7 +35,7 @@ runs:
     - name: Install dependencies
       shell: bash
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-      run: poetry install --no-interaction --no-ansi --with duckdb
+      run: poetry install --no-interaction --no-ansi --with dev --all-extras
 
     - name: Activate environment
       shell: bash

@@ -25,9 +25,27 @@ You'll also need [Poetry](https://python-poetry.org/):
 
 ```sh
 curl -sSL https://install.python-poetry.org | python3 -
-poetry install
-poetry shell
+poetry install --with dev
 ```
+
+Based on the client you wish to use, install the application dependencies :
+
+- Bigquery
+
+```sh
+poetry install -E bigquery
+```
+
+- All extras if all specific client development and testing :
+
+````sh
+poetry install --all-extras
+
+Activate your virtual environment :
+
+```sh
+poetry shell
+````
 
 ## Testing
 
