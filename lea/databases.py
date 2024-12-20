@@ -138,6 +138,13 @@ class BigQueryClient:
         dataset.location = self.location
         dataset = self.client.create_dataset(dataset, exists_ok=True)
 
+    def delete_dataset(self, dataset_name: str):
+        self.client.delete_dataset(
+            dataset=f"{self.write_project_id}.{dataset_name}",
+            delete_contents=True,
+            not_found_ok=True,
+        )
+
     @staticmethod
     def estimate_cost_in_dollars(bytes_billed: int) -> float:
         cost_per_tb = 5
