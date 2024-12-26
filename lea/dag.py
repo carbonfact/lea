@@ -1,347 +1,192 @@
 from __future__ import annotations
 
-import collections
 import graphlib
-import io
+import pathlib
+import re
+from collections.abc import Iterator
 
-FOUR_SPACES = "    "
+import git
+
+from .dialects import SQLDialect
+from .scripts import Script, read_scripts
+from .table_ref import TableRef
 
 
-class DAGOfViews(graphlib.TopologicalSorter):
-    def __init__(self, graph):
-        graphlib.TopologicalSorter.__init__(self, graph)
-        self.graph = graph
+class DAGOfScripts(graphlib.TopologicalSorter):
+    def __init__(
+        self,
+        dependency_graph: dict[TableRef, set[TableRef]],
+        scripts: list[Script],
+        scripts_dir: pathlib.Path,
+        dataset_name: str,
+    ):
+        graphlib.TopologicalSorter.__init__(self, dependency_graph)
+        self.dependency_graph = dependency_graph
+        self.scripts = {script.table_ref: script for script in scripts}
+        self.scripts_dir = scripts_dir
+        self.dataset_name = dataset_name
 
-    @property
-    def schemas(self) -> set:
-        return {schema for schema, *_ in self.graph}
+    @classmethod
+    def from_directory(
+        cls, scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str
+    ) -> DAGOfScripts:
+        scripts = read_scripts(
+            scripts_dir=scripts_dir, sql_dialect=sql_dialect, dataset_name=dataset_name
+        )
 
-    @property
-    def schema_dependencies(self):
-        deps = collections.defaultdict(set)
-        for (src_schema, *_), dsts in self.graph.items():
-            deps[src_schema].update([schema for schema, *_ in dsts if schema != src_schema])
-        return deps
+        # Fields in the script's code may contain tags. These tags induce assertion tests, which
+        # are also scripts. We need to include these assertion tests in the dependency graph.
+        for script in scripts:
+            scripts.extend(script.assertion_tests)
 
-    def list_ancestors(self, node):
-        """Returns a list of all the ancestors for a given node."""
-
-        def _list_ancestors(node):
-            for child in self.graph.get(node, []):
-                yield child
-                yield from _list_ancestors(child)
-
-        return list(_list_ancestors(node))
-
-    def list_descendants(self, node):
-        """Returns a list of all the descendants for a given node."""
-
-        def _list_descendants(node):
-            for parent in self.graph:
-                if node in self.graph[parent]:
-                    yield parent
-                    yield from _list_descendants(parent)
-
-        return list(_list_descendants(node))
-
-    @property
-    def roots(self):
-        """A root is a view that doesn't depend on any other view.
-
-        A root can depend on a table that is not part of the views, such as a third-party table. It
-        can also depend on nothing at all.
-
-        Roots are important because they are the only views that can be run without having to run
-        any other view first. If we want to do a run in a git branch, we don't need to run the
-        roots if they haven't been selected, because they are already available in production.
-
-        """
-        return {
-            view.key
-            for view in self.values()
-            if all(dependency[0] not in self.schemas for dependency in self.graph[view.key])
+        # TODO: the following is quite slow. This is because parsing dependencies from each script
+        # is slow. There are several optimizations that could be done.
+        dependency_graph = {
+            script.table_ref: {
+                dependency.replace_dataset(dataset_name) for dependency in script.dependencies
+            }
+            for script in scripts
         }
 
-    def select(self, query: str) -> set[tuple[str]]:
-        """Make a whitelist of tables given a query.
+        return cls(
+            dependency_graph=dependency_graph,
+            scripts=scripts,
+            scripts_dir=scripts_dir,
+            dataset_name=dataset_name,
+        )
 
-        These are the different queries to handle:
+    def select(self, *queries: str) -> set[TableRef]:
+        """Select a subset of the views in the DAG."""
 
-        schema.table
-        schema.table+   (descendants)
-        +schema.table   (ancestors)
-        +schema.table+  (ancestors and descendants)
-        schema/         (all tables in schema)
-        schema/+        (all tables in schema with their descendants)
-        +schema/        (all tables in schema with their ancestors)
-        +schema/+       (all tables in schema with their ancestors and descendants)
+        def _select(
+            query: str,
+            include_ancestors: bool = False,
+            include_descendants: bool = False,
+        ):
+            if query == "*":
+                yield from self.scripts.keys()
+                return
 
-        Examples
-        --------
+            # It's possible to query views via git. For example:
+            # * `git` will select all the views that have been modified compared to the main branch.
+            # * `git+` will select all the modified views, and their descendants.
+            # * `+git` will select all the modified views, and their ancestors.
+            # * `+git+` will select all the modified views, with their ancestors and descendants.
+            if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", query):
+                include_ancestors = include_ancestors or m.group("ancestors") == "+"
+                include_descendants = include_descendants or m.group("descendants") == "+"
+                for table_ref in list_table_refs_that_changed(scripts_dir=self.scripts_dir):
+                    yield from _select(
+                        ".".join([*table_ref.schema, table_ref.name]),
+                        include_ancestors=include_ancestors,
+                        include_descendants=include_descendants,
+                    )
+                return
 
-        >>> import lea
-
-        >>> client = lea.clients.DuckDB(":memory:")
-        >>> runner = lea.Runner('examples/jaffle_shop/views', client=client)
-        >>> dag = runner.dag
-
-        >>> def pprint(whitelist):
-        ...     for key in sorted(whitelist):
-        ...         print('.'.join(key))
-
-        schema.table
-
-        >>> pprint(dag.select('staging.orders'))
-        staging.orders
-
-        schema.table+ (descendants)
-
-        >>> pprint(dag.select('staging.orders+'))
-        analytics.finance.kpis
-        analytics.kpis
-        core.customers
-        core.orders
-        staging.orders
-
-        +schema.table (ancestors)
-
-        >>> pprint(dag.select('+core.customers'))
-        core.customers
-        staging.customers
-        staging.orders
-        staging.payments
-
-        +schema.table+ (ancestors and descendants)
-
-        >>> pprint(dag.select('+core.customers+'))
-        analytics.kpis
-        core.customers
-        staging.customers
-        staging.orders
-        staging.payments
-
-        schema/ (all tables in schema)
-
-        >>> pprint(dag.select('staging/'))
-        staging.customers
-        staging.orders
-        staging.payments
-
-        schema/+ (all tables in schema with their descendants)
-
-        >>> pprint(dag.select('staging/+'))
-        analytics.finance.kpis
-        analytics.kpis
-        core.customers
-        core.orders
-        staging.customers
-        staging.orders
-        staging.payments
-
-        +schema/ (all tables in schema with their ancestors)
-
-        >>> pprint(dag.select('+core/'))
-        core.customers
-        core.orders
-        staging.customers
-        staging.orders
-        staging.payments
-
-        +schema/+  (all tables in schema with their ancestors and descendants)
-
-        >>> pprint(dag.select('+core/+'))
-        analytics.finance.kpis
-        analytics.kpis
-        core.customers
-        core.orders
-        staging.customers
-        staging.orders
-        staging.payments
-
-        schema/subschema/
-
-        >>> pprint(dag.select('analytics/finance/'))
-        analytics.finance.kpis
-
-        """
-
-        def _select(query, include_ancestors, include_descendants):
             if query.endswith("+"):
                 yield from _select(
-                    query[:-1], include_ancestors=include_ancestors, include_descendants=True
+                    query=query[:-1],
+                    include_ancestors=include_ancestors,
+                    include_descendants=True,
                 )
                 return
+
             if query.startswith("+"):
                 yield from _select(
-                    query[1:], include_ancestors=True, include_descendants=include_descendants
+                    query=query[1:],
+                    include_ancestors=True,
+                    include_descendants=include_descendants,
                 )
                 return
-            if query.endswith("/"):
-                query_key = tuple([key for key in query.split("/") if key])
-                for key in self.graph:
-                    if key[: len(query_key)] == query_key:
+
+            if "/" in query:
+                schema = tuple(query.strip("/").split("/"))
+                for table_ref in self.dependency_graph:
+                    if table_ref.schema == schema:
                         yield from _select(
-                            ".".join(key),
+                            ".".join([*table_ref.schema, table_ref.name]),
                             include_ancestors=include_ancestors,
                             include_descendants=include_descendants,
                         )
-            else:
-                key = tuple(query.split("."))
-                yield key
-                if include_ancestors:
-                    yield from self.list_ancestors(key)
-                if include_descendants:
-                    yield from self.list_descendants(key)
+                return
+
+            *schema, name = query.split(".")
+            table_ref = TableRef(dataset=self.dataset_name, schema=tuple(schema), name=name)
+            yield table_ref
+            if include_ancestors:
+                yield from self.iter_ancestors(node=table_ref)
+            if include_descendants:
+                yield from self.iter_descendants(node=table_ref)
+
+        all_selected_table_refs = set()
+        for query in queries:
+            selected_table_refs = set(_select(query))
+            all_selected_table_refs.update(selected_table_refs)
 
         return {
-            key
-            for key in _select(query, include_ancestors=False, include_descendants=False)
-            # Some nodes in the graph are not part of the views, such as third-party tables
-            if key in self.graph
+            table_ref
+            for table_ref in all_selected_table_refs
+            # Some nodes in the graph are not part of the views, such as external dependencies
+            if table_ref in self.scripts
         }
 
-    @property
-    def _nested_schema(self):
-        """
+    def iter_scripts(self, table_refs: set[TableRef]) -> Iterator[Script]:
+        """Loop over scripts in topological order.
 
-        >>> import pathlib
-        >>> import lea
-        >>> from pprint import pprint
-
-        >>> client = lea.clients.DuckDB(":memory:")
-        >>> runner = lea.Runner(
-        ...     views_dir=pathlib.Path(__file__).parent.parent / "examples" / "jaffle_shop" / "views",
-        ...     client=client
-        ... )
-        >>> dag = runner.dag
-
-        >>> pprint(dag._nested_schema)
-        {'analytics': {'finance': {'kpis': {}}, 'kpis': {}},
-         'core': {'customers': {}, 'orders': {}},
-         'staging': {'customers': {}, 'orders': {}, 'payments': {}}}
+        This method does not have the responsibility of calling .prepare() and .done() when a
+        script terminates. This is the responsibility of the caller.
 
         """
 
-        nodes = set(node for deps in self.graph.values() for node in deps) | set(self.graph.keys())
+        for table_ref in self.get_ready():
+            if (
+                # The DAG contains all the scripts as well as all the dependencies of each script.
+                # Not all of these dependencies are scripts. We need to filter out the non-script
+                # dependencies.
+                table_ref not in self.scripts
+                # We also need to filter out the scripts that are not part of the selected table
+                # refs.
+                or table_ref not in table_refs
+            ):
+                self.done(table_ref)
+                continue
 
-        nested_schema = {}
+            yield self.scripts[table_ref]
 
-        for key in nodes:
-            current_level = nested_schema
-            for part in key:
-                if part not in current_level:
-                    current_level[part] = {}
-                current_level = current_level[part]
+    def iter_ancestors(self, node: TableRef):
+        for child in self.dependency_graph.get(node, []):
+            yield child
+            yield from self.iter_ancestors(node=child)
 
-        return nested_schema
+    def iter_descendants(self, node: TableRef):
+        for potential_child in self.dependency_graph:
+            if node in self.dependency_graph[potential_child]:
+                yield potential_child
+                yield from self.iter_descendants(node=potential_child)
 
-    def _to_mermaid_views(self):
-        out = io.StringIO()
-        out.write('%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%\n')
-        out.write("flowchart TB\n")
 
-        def output_subgraph(schema: str, values: dict, prefix: str = ""):
-            out.write(f"\n{FOUR_SPACES}subgraph {schema}\n".replace('"', ""))
-            for value in sorted(values.keys()):
-                sub_values = values[value]
-                path = f"{prefix}.{schema}" if prefix else schema
-                full_path = f"{path}.{value}"
-                if sub_values:
-                    output_subgraph(value, sub_values, path)
-                else:
-                    out.write(f"{FOUR_SPACES*2}{full_path}({value})\n".replace('"', ""))
-            out.write(f"{FOUR_SPACES}end\n\n")
+def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
+    repo = git.Repo(".")  # TODO: is using "." always correct? Probably not.
+    # Changes that have been committed
+    staged_diffs = repo.index.diff(
+        repo.refs.main.commit
+        # repo.remotes.origin.refs.main.commit
+    )
+    # Changes that have not been committed
+    unstage_diffs = repo.head.commit.diff(None)
 
-        # Print out the nodes, within each subgraph block
-        nested_schema = self._nested_schema
-        for schema in sorted(nested_schema.keys()):
-            values = nested_schema[schema]
-            output_subgraph(schema, values)
+    table_refs = set()
+    for diff in staged_diffs + unstage_diffs:
+        # One thing to note is that we don't filter out deleted views. This is because
+        # these views will get filtered out by dag.select anyway.
+        diff_path = pathlib.Path(diff.a_path)
+        if diff_path.is_relative_to(scripts_dir) and tuple(diff_path.suffixes) in {
+            (".sql",),
+            (".sql", ".jinja"),
+        }:
+            table_ref = TableRef.from_path(
+                scripts_dir=scripts_dir, relative_path=diff_path.relative_to(scripts_dir)
+            )
+            table_refs.add(table_ref)
 
-        # Print out the edges
-        for dst, srcs in sorted(self.graph.items()):
-            dst = ".".join(dst)
-            for src in sorted(srcs):
-                src = ".".join(src)
-                out.write(f"{FOUR_SPACES}{src} --> {dst}\n".replace('"', ""))
-
-        return out.getvalue()
-
-    def _to_mermaid_schemas(self):
-        out = io.StringIO()
-        out.write('%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%\n')
-        out.write("flowchart TB\n")
-        schema_dependencies = self.schema_dependencies
-        nodes = set(node for deps in schema_dependencies.values() for node in deps) | set(
-            schema_dependencies.keys()
-        )
-        for node in sorted(nodes):
-            out.write(f"{FOUR_SPACES}{node}({node})\n".replace('"', ""))
-        for dst, srcs in sorted(schema_dependencies.items()):
-            for src in sorted(srcs):
-                out.write(f"{FOUR_SPACES}{src} --> {dst}\n".replace('"', ""))
-        return out.getvalue()
-
-    def to_mermaid(self, schemas_only=False):
-        """
-
-        >>> import pathlib
-        >>> import lea
-
-        >>> client = lea.clients.DuckDB(":memory:")
-        >>> runner = lea.Runner(
-        ...     views_dir=pathlib.Path(__file__).parent.parent / "examples" / "jaffle_shop" / "views",
-        ...     client=client
-        ... )
-        >>> dag = runner.dag
-
-        >>> print(dag.to_mermaid(schemas_only=True))
-        %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
-        flowchart TB
-            analytics(analytics)
-            core(core)
-            staging(staging)
-            core --> analytics
-            staging --> core
-        <BLANKLINE>
-
-        >>> print(dag.to_mermaid())
-        %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
-        flowchart TB
-        <BLANKLINE>
-            subgraph analytics
-        <BLANKLINE>
-            subgraph finance
-                analytics.finance.kpis(kpis)
-            end
-        <BLANKLINE>
-                analytics.kpis(kpis)
-            end
-        <BLANKLINE>
-        <BLANKLINE>
-            subgraph core
-                core.customers(customers)
-                core.orders(orders)
-            end
-        <BLANKLINE>
-        <BLANKLINE>
-            subgraph staging
-                staging.customers(customers)
-                staging.orders(orders)
-                staging.payments(payments)
-            end
-        <BLANKLINE>
-            core.orders --> analytics.finance.kpis
-            core.customers --> analytics.kpis
-            core.orders --> analytics.kpis
-            staging.customers --> core.customers
-            staging.orders --> core.customers
-            staging.payments --> core.customers
-            staging.orders --> core.orders
-            staging.payments --> core.orders
-        <BLANKLINE>
-
-        """
-        if schemas_only:
-            return self._to_mermaid_schemas()
-        return self._to_mermaid_views()
+    return table_refs
