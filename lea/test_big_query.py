@@ -3,10 +3,14 @@ from __future__ import annotations
 import re
 
 import pytest
+from google.auth.credentials import AnonymousCredentials
 
 from lea.conductor import Session
+from lea.databases import BigQueryClient, TableStats
 from lea.dialects import BigQueryDialect
 from lea.scripts import Script, TableRef
+
+DUMMY_TABLE_STATS = TableStats(n_rows=0, n_bytes=0, updated_at=None)
 
 
 @pytest.fixture
@@ -62,7 +66,7 @@ def test_simple_run(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs=scripts.keys(),
-        materialized_table_refs=set(),
+        existing_audit_tables={},
     )
 
     assert_queries_are_equal(
@@ -91,7 +95,7 @@ def test_incremental_field(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs=scripts.keys(),
-        materialized_table_refs=set(),
+        existing_audit_tables={},
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
@@ -133,7 +137,7 @@ def test_incremental_field_but_no_incremental_table_selected(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("analytics",), "n_users")},
-        materialized_table_refs=set(),
+        existing_audit_tables={},
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
@@ -158,7 +162,7 @@ def test_incremental_field_with_just_incremental_table_selected(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("core",), "users")},
-        materialized_table_refs=set(),
+        existing_audit_tables={},
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
@@ -185,7 +189,7 @@ def test_incremental_field_with_just_incremental_table_selected_and_materialized
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("core",), "users")},
-        materialized_table_refs={TableRef("read", ("raw",), "users")},
+        existing_audit_tables={TableRef("read", ("raw",), "users"): DUMMY_TABLE_STATS},
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
@@ -212,7 +216,9 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("analytics",), "n_users")},
-        materialized_table_refs={TableRef("read", ("core",), "users")},
+        existing_audit_tables={
+            TableRef("read", ("core",), "users"): DUMMY_TABLE_STATS,
+        },
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
@@ -230,6 +236,46 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
 
             SELECT *
             FROM write.core__users
+            WHERE name NOT IN ('Alice')
+        )
+        """,
+    )
+
+
+def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_is_materialized_with_client(
+    scripts,
+):
+    session = Session(
+        database_client=BigQueryClient(
+            credentials=AnonymousCredentials(),
+            location="EU",
+            write_project_id="write-project-id",
+            compute_project_id="compute-project-id",
+        ),
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs={TableRef("read", ("analytics",), "n_users")},
+        existing_audit_tables={
+            TableRef("read", ("core",), "users"): DUMMY_TABLE_STATS,
+        },
+        incremental_field_name="name",
+        incremental_field_values={"Alice"},
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(scripts[TableRef("read", ("analytics",), "n_users")]).code,
+        """
+        SELECT COUNT(*)
+        FROM (
+            SELECT *
+            FROM `write-project-id`.write.core__users___audit
+            WHERE name IN ('Alice')
+
+            UNION ALL
+
+            SELECT *
+            FROM `write-project-id`.write.core__users
             WHERE name NOT IN ('Alice')
         )
         """,

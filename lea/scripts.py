@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime as dt
 import functools
 import os
 import pathlib
 import re
+import textwrap
 
 import jinja2
 import rich.syntax
@@ -23,6 +25,7 @@ class SQLScript:
     code: str
     sql_dialect: SQLDialect
     fields: list[Field] | None = dataclasses.field(default=None)
+    updated_at: dt.datetime | None = None
 
     def __post_init__(self):
         """
@@ -85,6 +88,9 @@ class SQLScript:
             table_ref=TableRef.from_path(scripts_dir=scripts_dir, relative_path=relative_path),
             code=code,
             sql_dialect=sql_dialect,
+            updated_at=dt.datetime.fromtimestamp(
+                (scripts_dir / relative_path).stat().st_mtime, tz=dt.timezone.utc
+            ),
         )
 
     @property
@@ -129,7 +135,7 @@ class SQLScript:
             return TableRef(
                 dataset=self.table_ref.dataset,
                 schema=("tests",),
-                name=f"{'__'.join(self.table_ref.schema)}__{self.table_ref.name}__{field.name}{tag.lower()}",
+                name=f"{'__'.join(self.table_ref.schema)}__{self.table_ref.name}__{field.name}___{tag.lower().lstrip('#')}",
             )
 
         def make_assertion_test(table_ref, field, tag):
@@ -173,8 +179,9 @@ class SQLScript:
         return dataclasses.replace(self, table_ref=table_ref)
 
     def __rich__(self):
-        code_with_table_ref = f"""-- Table: {self.table_ref}\n\n{self.code}"""
-        return rich.syntax.Syntax(code_with_table_ref, "sql", theme="nord")
+        code = textwrap.dedent(self.code).strip()
+        code_with_table_ref = f"""-- {self.table_ref}\n\n{code}\n"""
+        return rich.syntax.Syntax(code_with_table_ref, "sql", line_numbers=True, theme="ansi_dark")
 
 
 Script = SQLScript

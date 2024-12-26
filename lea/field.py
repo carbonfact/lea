@@ -4,11 +4,11 @@ import dataclasses
 import enum
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class Field:
     name: str
-    tags: set[FieldTag]
-    description: str
+    tags: set[FieldTag] = dataclasses.field(default_factory=set)
+    description: str | None = None
 
     @property
     def is_unique(self):

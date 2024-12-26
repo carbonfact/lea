@@ -41,7 +41,12 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
         # TODO: the following is quite slow. This is because parsing dependencies from each script
         # is slow. There are several optimizations that could be done.
-        dependency_graph = {script.table_ref: script.dependencies for script in scripts}
+        dependency_graph = {
+            script.table_ref: {
+                dependency.replace_dataset(dataset_name) for dependency in script.dependencies
+            }
+            for script in scripts
+        }
 
         return cls(
             dependency_graph=dependency_graph,
@@ -51,6 +56,8 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         )
 
     def select(self, *queries: str) -> set[TableRef]:
+        """Select a subset of the views in the DAG."""
+
         def _select(
             query: str,
             include_ancestors: bool = False,
@@ -107,9 +114,9 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             table_ref = TableRef(dataset=self.dataset_name, schema=tuple(schema), name=name)
             yield table_ref
             if include_ancestors:
-                yield from iter_ancestors(self.dependency_graph, node=table_ref)
+                yield from self.iter_ancestors(node=table_ref)
             if include_descendants:
-                yield from iter_descendants(self.dependency_graph, node=table_ref)
+                yield from self.iter_descendants(node=table_ref)
 
         all_selected_table_refs = set()
         for query in queries:
@@ -124,7 +131,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         }
 
     def iter_scripts(self, table_refs: set[TableRef]) -> Iterator[Script]:
-        """
+        """Loop over scripts in topological order.
 
         This method does not have the responsibility of calling .prepare() and .done() when a
         script terminates. This is the responsibility of the caller.
@@ -146,18 +153,16 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
             yield self.scripts[table_ref]
 
+    def iter_ancestors(self, node: TableRef):
+        for child in self.dependency_graph.get(node, []):
+            yield child
+            yield from self.iter_ancestors(node=child)
 
-def iter_ancestors(dependency_graph: dict[TableRef, set[TableRef]], node: TableRef):
-    for child in dependency_graph.get(node, []):
-        yield child
-        yield from iter_ancestors(dependency_graph, child)
-
-
-def iter_descendants(dependency_graph: dict[TableRef, set[TableRef]], node: TableRef):
-    for potential_child in dependency_graph:
-        if node in dependency_graph[potential_child]:
-            yield potential_child
-            yield from iter_descendants(dependency_graph, potential_child)
+    def iter_descendants(self, node: TableRef):
+        for potential_child in self.dependency_graph:
+            if node in self.dependency_graph[potential_child]:
+                yield potential_child
+                yield from self.iter_descendants(node=potential_child)
 
 
 def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:

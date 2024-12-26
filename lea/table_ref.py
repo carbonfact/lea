@@ -31,11 +31,18 @@ class TableRef:
     def replace_dataset(self, dataset: str) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
 
+    def replace_project(self, project: str | None) -> TableRef:
+        return dataclasses.replace(self, project=project)
+
     def add_audit_suffix(self) -> TableRef:
         return dataclasses.replace(self, name=f"{self.name}{AUDIT_TABLE_SUFFIX}")
 
     def remove_audit_suffix(self) -> TableRef:
         return dataclasses.replace(self, name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", self.name))
+
+    @property
+    def is_audit_table(self) -> bool:
+        return self.name.endswith(AUDIT_TABLE_SUFFIX)
 
     @property
     def is_test(self) -> bool:

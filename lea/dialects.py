@@ -6,6 +6,7 @@ import textwrap
 
 import jinja2
 import sqlglot
+from google.cloud import bigquery
 
 from lea.field import FieldTag
 from lea.table_ref import TableRef
@@ -132,6 +133,9 @@ class BigQueryDialect(SQLDialect):
         >>> BigQueryDialect.parse_table_ref("my_project.my_dataset.my_schema__my_table___audit")
         TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table___audit', project='my_project')
 
+        >>> BigQueryDialect.parse_table_ref("`carbonfact-gsheet`.hubspot.company")
+        TableRef(dataset='hubspot', schema=(), name='company', project='`carbonfact-gsheet`')
+
         """
         project, dataset, leftover = None, *tuple(table_ref.rsplit(".", 1))
         if "." in dataset:
@@ -148,3 +152,12 @@ class BigQueryDialect(SQLDialect):
             table_ref_str += f"{table_ref.dataset}."
         table_ref_str += f"{'__'.join([*table_ref.schema, table_ref.name])}"
         return table_ref_str
+
+    @staticmethod
+    def convert_table_ref_to_bigquery_table_reference(
+        table_ref: TableRef, project: str
+    ) -> bigquery.TableReference:
+        return bigquery.TableReference(
+            dataset_ref=bigquery.DatasetReference(project=project, dataset_id=table_ref.dataset),
+            table_id=f"{'__'.join([*table_ref.schema, table_ref.name])}",
+        )
