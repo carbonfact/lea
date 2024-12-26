@@ -27,7 +27,7 @@ rsa = "^4.7"
 ipykernel = "^6.21.2"
 pre-commit = ">=3.5,<5.0"
 pytest = ">=7.4.2,<9.0.0"
-ruff = ">=0.1,<0.7"
+ruff = ">=0.1,<0.8"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
