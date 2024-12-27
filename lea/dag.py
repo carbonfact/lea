@@ -166,7 +166,11 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
 
 def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
-    repo = git.Repo(".")  # TODO: is using "." always correct? Probably not.
+    repo = git.Repo(search_parent_directories=True)
+    repo_root = pathlib.Path(repo.working_tree_dir)
+
+    absolute_scripts_dir = scripts_dir.resolve()
+
     # Changes that have been committed
     staged_diffs = repo.index.diff(
         repo.refs.main.commit
@@ -179,13 +183,13 @@ def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
     for diff in staged_diffs + unstage_diffs:
         # One thing to note is that we don't filter out deleted views. This is because
         # these views will get filtered out by dag.select anyway.
-        diff_path = pathlib.Path(diff.a_path)
-        if diff_path.is_relative_to(scripts_dir) and tuple(diff_path.suffixes) in {
+        diff_path = pathlib.Path(repo_root / diff.a_path).resolve()
+        if diff_path.is_relative_to(absolute_scripts_dir) and tuple(diff_path.suffixes) in {
             (".sql",),
             (".sql", ".jinja"),
         }:
             table_ref = TableRef.from_path(
-                scripts_dir=scripts_dir, relative_path=diff_path.relative_to(scripts_dir)
+                scripts_dir=scripts_dir, relative_path=diff_path.relative_to(absolute_scripts_dir)
             )
             table_refs.add(table_ref)
 
