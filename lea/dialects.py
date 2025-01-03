@@ -64,7 +64,8 @@ class SQLDialect:
         for dependency in dependencies_to_filter:
             dependency_str = cls.format_table_ref(dependency)
             code = re.sub(
-                rf"\b{dependency_str}\b",
+                # We could use \b, but it doesn't work with backticks
+                rf"(?<!\S){re.escape(dependency_str)}(?!\S)",
                 f"(SELECT * FROM {dependency_str} WHERE {incremental_field_name} IN ({incremental_field_values_str}))",
                 code,
             )
@@ -91,7 +92,8 @@ class SQLDialect:
             dependency_without_wap_suffix_str = cls.format_table_ref(dependency_without_wap_suffix)
             dependency_with_wap_suffix_str = cls.format_table_ref(dependency_with_wap_suffix)
             code = re.sub(
-                rf"\b{dependency_without_wap_suffix_str}\b",
+                # We could use \b, but it doesn't work with backticks
+                rf"(?<!\S){re.escape(dependency_with_wap_suffix_str)}(?!\S)",
                 f"""
                 (
                     SELECT * FROM {dependency_with_wap_suffix_str}
