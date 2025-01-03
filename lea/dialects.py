@@ -63,9 +63,11 @@ class SQLDialect:
         incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
         for dependency in dependencies_to_filter:
             dependency_str = cls.format_table_ref(dependency)
-            code = code.replace(
-                dependency_str,
+            code = re.sub(
+                # We could use \b, but it doesn't work with backticks
+                rf"(?<!\S){re.escape(dependency_str)}(?!\S)",
                 f"(SELECT * FROM {dependency_str} WHERE {incremental_field_name} IN ({incremental_field_values_str}))",
+                code,
             )
         return (
             "SELECT * FROM (\n"
@@ -89,8 +91,9 @@ class SQLDialect:
         ) in incremental_dependencies.items():
             dependency_without_wap_suffix_str = cls.format_table_ref(dependency_without_wap_suffix)
             dependency_with_wap_suffix_str = cls.format_table_ref(dependency_with_wap_suffix)
-            code = code.replace(
-                dependency_with_wap_suffix_str,
+            code = re.sub(
+                # We could use \b, but it doesn't work with backticks
+                rf"(?<!\S){re.escape(dependency_with_wap_suffix_str)}(?!\S)",
                 f"""
                 (
                     SELECT * FROM {dependency_with_wap_suffix_str}
@@ -100,6 +103,7 @@ class SQLDialect:
                     WHERE {incremental_field_name} NOT IN ({incremental_field_values_str})
                 )
                 """,
+                code,
             )
         return code
 
