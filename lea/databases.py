@@ -95,7 +95,9 @@ class BigQueryJob:
     def statistics(self) -> TableStats | None:
         if self.client.dry_run or self.destination is None:
             return None
-        table = self.client.client.get_table(self.destination)
+        table = self.client.client.get_table(
+            self.destination, retry=bigquery.DEFAULT_RETRY.with_deadline(10)
+        )
         return TableStats(n_rows=table.num_rows, n_bytes=table.num_bytes, updated_at=table.modified)
 
     def stop(self):
