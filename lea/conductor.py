@@ -298,10 +298,12 @@ class Session:
         from_table_ref = table_ref
         to_table_ref = table_ref.remove_audit_suffix()
 
-        if (
+        is_incremental = (
             self.incremental_field_name is not None
-            and to_table_ref.replace_dataset(self.base_dataset) in self.incremental_table_refs
-        ):
+            and to_table_ref.replace_dataset(self.base_dataset).replace_project(None)
+            in self.incremental_table_refs
+        )
+        if is_incremental:
             database_job = self.database_client.delete_and_insert(
                 from_table_ref=from_table_ref,
                 to_table_ref=to_table_ref,
@@ -314,7 +316,7 @@ class Session:
 
         job = Job(table_ref=to_table_ref, is_test=False, database_job=database_job)
         self.jobs.append(job)
-        log.info(f"{job.status} {job.table_ref}")
+        log.info(f"{job.status} {job.table_ref}" + (" (incremental)" if is_incremental else ""))
 
         self.monitor_job(job)
 
