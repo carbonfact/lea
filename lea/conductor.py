@@ -175,7 +175,7 @@ class Session:
                 in self.selected_table_refs
                 | {
                     self.remove_write_context_from_table_ref(table_ref)
-                    for table_ref in list(self.existing_audit_tables)
+                    for table_ref in self.existing_audit_tables
                 }
                 and dependency.replace_dataset(self.base_dataset) in self.scripts
             ):
@@ -287,11 +287,6 @@ class Session:
                             msg += f", contains {stats.n_rows:,d} rows"
                             msg += f", weighs {format_bytes(stats.n_bytes)}"
                     log.info(msg)
-                    # If the script is not a test, we add it to the list of existing audit tables.
-                    # We will use this list to promote the audit tables to production. We'll also
-                    # use it to delete the audit tables once all the scripts succeed.
-                    if not job.is_test and job.table_ref.is_audit_table:
-                        self.existing_audit_tables[job.table_ref] = stats
 
             except Exception as e:
                 job.status = JobStatus.ERRORED
@@ -602,9 +597,10 @@ def promote_audit_tables(session: Session):
     # Note: it's important for the following loop to be a list comprehension. If we used a
     # generator expression, the loop would be infinite because jobs are being added to
     # session.jobs when session.promote is called.
-    for table_ref in session.existing_audit_tables:
-        future = session.executor.submit(session.promote_audit_table, table_ref)
-        session.promote_audit_tables_futures[future] = table_ref
+    for selected_table_ref in session.selected_table_refs:
+        selected_table_ref = session.add_write_context_to_table_ref(selected_table_ref)
+        future = session.executor.submit(session.promote_audit_table, selected_table_ref)
+        session.promote_audit_tables_futures[future] = selected_table_ref
 
     # Wait for all promotion jobs to finish
     for future in concurrent.futures.as_completed(session.promote_audit_tables_futures):
