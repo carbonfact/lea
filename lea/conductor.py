@@ -175,7 +175,7 @@ class Session:
                 in self.selected_table_refs
                 | {
                     self.remove_write_context_from_table_ref(table_ref)
-                    for table_ref in self.existing_audit_tables
+                    for table_ref in list(self.existing_audit_tables)
                 }
                 and dependency.replace_dataset(self.base_dataset) in self.scripts
             ):
