@@ -5,7 +5,7 @@ name = "lea-cli"
 packages = [
   {include = "lea", from = "."},
 ]
-version = "0.7.0"
+version = "0.7.1"
 
 [tool.poetry.dependencies]
 click = "^8.1.7"
@@ -18,8 +18,9 @@ pandas = "^2.1.3"
 python = ">=3.10,<4"
 python-dotenv = "^1.0.0"
 rich = "^13.5.3"
-sqlglot = ">=22.2,<27.0"
+sqlglot = "^26.0.0"
 rsa = "^4.7"
+google-cloud-bigquery-storage = "^2.27.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.21.2"
