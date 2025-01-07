@@ -261,34 +261,28 @@ class Session:
                 time.sleep(delay)
                 continue
 
-            try:
-                job.ended_at = dt.datetime.now()
-
-                # Case 1: the job raised an exception
-                if (exception := job.database_job.exception) is not None:
-                    job.status = JobStatus.ERRORED
-                    log.error(f"{job.status} {job.table_ref}\n{exception}")
-
-                # Case 2: the job succeeded, but it's a test and there are negative cases
-                elif job.is_test and not (dataframe := job.database_job.result).empty:
-                    job.status = JobStatus.ERRORED
-                    log.error(f"{job.status} {job.table_ref}\n{dataframe.head()}")
-
-                # Case 3: the job succeeded!
-                else:
-                    job.status = JobStatus.SUCCESS
-                    msg = f"{job.status} {job.table_ref}"
-                    duration_str = str(job.ended_at - job.started_at).split(".")[0]
-                    msg += f", took {duration_str}, cost ${job.database_job.billed_dollars:.2f}"
-                    if not job.is_test:
-                        if (stats := job.database_job.statistics) is not None:
-                            msg += f", contains {stats.n_rows:,d} rows"
-                            msg += f", weighs {format_bytes(stats.n_bytes)}"
-                    log.info(msg)
-
-            except Exception as e:
+            # Case 1: the job raised an exception
+            if (exception := job.database_job.exception) is not None:
                 job.status = JobStatus.ERRORED
-                log.error(f"{job.status} {job.table_ref}\n{e}")
+                log.error(f"{job.status} {job.table_ref}\n{exception}")
+
+            # Case 2: the job succeeded, but it's a test and there are negative cases
+            elif job.is_test and not (dataframe := job.database_job.result).empty:
+                job.status = JobStatus.ERRORED
+                log.error(f"{job.status} {job.table_ref}\n{dataframe.head()}")
+
+            # Case 3: the job succeeded!
+            else:
+                job.status = JobStatus.SUCCESS
+                msg = f"{job.status} {job.table_ref}"
+                job.ended_at = dt.datetime.now()
+                duration_str = str(job.ended_at - job.started_at).split(".")[0]
+                msg += f", took {duration_str}, cost ${job.database_job.billed_dollars:.2f}"
+                if not job.is_test:
+                    if (stats := job.database_job.statistics) is not None:
+                        msg += f", contains {stats.n_rows:,d} rows"
+                        msg += f", weighs {format_bytes(stats.n_bytes)}"
+                log.info(msg)
 
             return
 
@@ -392,8 +386,8 @@ def delete_table_refs(
         futures[future] = table_ref
 
     for future in concurrent.futures.as_completed(futures):
-        if future.exception() is not None:
-            log.error(future.exception())
+        if (exception := future.exception()) is not None:
+            log.error(exception)
             continue
         if verbose:
             log.info(f"Deleted {futures[future]}")
@@ -584,8 +578,8 @@ def run_scripts(dag: DAGOfScripts, session: Session):
         )
         for future in done:
             script_done = session.run_script_futures[future]
-            if future.exception():
-                log.error(f"Failed running {script_done.table_ref}\n{future.exception()}")
+            if exception := future.exception():
+                log.error(f"Failed running {script_done.table_ref}\n{exception}")
             table_ref = session.remove_write_context_from_table_ref(script_done.table_ref)
             session.run_script_futures_complete[future] = session.run_script_futures.pop(future)
             dag.done(table_ref)
@@ -612,8 +606,8 @@ def promote_audit_tables(session: Session):
 
     # Wait for all promotion jobs to finish
     for future in concurrent.futures.as_completed(session.promote_audit_tables_futures):
-        if future.exception() is not None:
-            log.error(f"Promotion failed\n{future.exception()}")
+        if (exception := future.exception()) is not None:
+            log.error(f"Promotion failed\n{exception}")
 
 
 def delete_audit_tables(session: Session):

@@ -28,6 +28,9 @@ def app():
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
 def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart):
+    if select in {"", "Ø"}:
+        select = []
+
     if not pathlib.Path(scripts).is_dir():
         raise click.ClickException(f"Directory {scripts} does not exist")
 
