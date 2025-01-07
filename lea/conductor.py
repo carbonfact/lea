@@ -600,6 +600,8 @@ def promote_audit_tables(session: Session):
     # generator expression, the loop would be infinite because jobs are being added to
     # session.jobs when session.promote is called.
     for selected_table_ref in session.selected_table_refs:
+        if selected_table_ref.is_test:
+            continue
         selected_table_ref = session.add_write_context_to_table_ref(selected_table_ref)
         future = session.executor.submit(session.promote_audit_table, selected_table_ref)
         session.promote_audit_tables_futures[future] = selected_table_ref
