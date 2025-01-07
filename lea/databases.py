@@ -175,7 +175,9 @@ class BigQueryClient:
         )
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(query=sql_script.code, job_config=job_config),
+            query_job=self.client.query(
+                query=sql_script.code, job_config=job_config, location=self.location
+            ),
             destination=destination,
         )
 
@@ -187,7 +189,10 @@ class BigQueryClient:
     def query_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
         job_config = self.make_job_config(script=sql_script)
         return BigQueryJob(
-            client=self, query_job=self.client.query(query=sql_script.code, job_config=job_config)
+            client=self,
+            query_job=self.client.query(
+                query=sql_script.code, job_config=job_config, location=self.location
+            ),
         )
 
     def clone_table(
@@ -210,7 +215,7 @@ class BigQueryClient:
         )
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(clone_code, job_config=job_config),
+            query_job=self.client.query(clone_code, job_config=job_config, location=self.location),
             destination=destination,
         )
 
@@ -247,7 +252,9 @@ class BigQueryClient:
         )
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(delete_and_insert_code, job_config=job_config),
+            query_job=self.client.query(
+                delete_and_insert_code, job_config=job_config, location=self.location
+            ),
             destination=destination,
         )
 
@@ -267,7 +274,8 @@ class BigQueryClient:
             )
         )
         return BigQueryJob(
-            client=self, query_job=self.client.query(delete_code, job_config=job_config)
+            client=self,
+            query_job=self.client.query(delete_code, job_config=job_config, location=self.location),
         )
 
     def list_table_stats(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
@@ -275,7 +283,7 @@ class BigQueryClient:
         SELECT table_id, row_count, size_bytes, last_modified_time
         FROM `{self.write_project_id}.{dataset_name}.__TABLES__`
         """
-        job = self.client.query(query)
+        job = self.client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(f"{dataset_name}.{row['table_id']}"): TableStats(
                 n_rows=row["row_count"],
@@ -292,7 +300,7 @@ class BigQueryClient:
         SELECT table_name, column_name
         FROM `{self.write_project_id}.{dataset_name}.INFORMATION_SCHEMA.COLUMNS`
         """
-        job = self.client.query(query)
+        job = self.client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(f"{dataset_name}.{table_name}"): [
                 scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()
@@ -304,11 +312,35 @@ class BigQueryClient:
         }
 
     def make_job_config(self, script: scripts.SQLScript, **kwargs) -> bigquery.QueryJobConfig:
+        # if self.print_mode:
+        #     rich.print(script)
+        # return bigquery.QueryJobConfig(
+        #     priority=bigquery.QueryPriority.INTERACTIVE,
+        #     use_query_cache=False,
+        #     dry_run=self.dry_run,
+        #     **kwargs,
+        # )
+
         if self.print_mode:
             rich.print(script)
-        return bigquery.QueryJobConfig(
+        job_config = bigquery.QueryJobConfig(
             priority=bigquery.QueryPriority.INTERACTIVE,
             use_query_cache=False,
             dry_run=self.dry_run,
             **kwargs,
         )
+
+        # The approach we use works best if the tables are clustered by account_slug. This is
+        # because we only need to refresh the data for a subset of accounts, and clustering by
+        # account_slug allows BigQuery to only scan the data for the accounts that need to be
+        # refreshed. This is a good practice in general, but it's particularly important in this
+        # case.
+        if (
+            script is not None
+            and not script.table_ref.is_test
+            and script.table_ref.name.endswith("___audit")
+            and "account_slug" in {field.name for field in script.fields}
+        ):
+            job_config.clustering_fields = ["account_slug"]
+
+        return job_config
