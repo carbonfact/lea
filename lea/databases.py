@@ -312,35 +312,11 @@ class BigQueryClient:
         }
 
     def make_job_config(self, script: scripts.SQLScript, **kwargs) -> bigquery.QueryJobConfig:
-        # if self.print_mode:
-        #     rich.print(script)
-        # return bigquery.QueryJobConfig(
-        #     priority=bigquery.QueryPriority.INTERACTIVE,
-        #     use_query_cache=False,
-        #     dry_run=self.dry_run,
-        #     **kwargs,
-        # )
-
         if self.print_mode:
             rich.print(script)
-        job_config = bigquery.QueryJobConfig(
+        return bigquery.QueryJobConfig(
             priority=bigquery.QueryPriority.INTERACTIVE,
             use_query_cache=False,
             dry_run=self.dry_run,
             **kwargs,
         )
-
-        # The approach we use works best if the tables are clustered by account_slug. This is
-        # because we only need to refresh the data for a subset of accounts, and clustering by
-        # account_slug allows BigQuery to only scan the data for the accounts that need to be
-        # refreshed. This is a good practice in general, but it's particularly important in this
-        # case.
-        if (
-            script is not None
-            and not script.table_ref.is_test
-            and script.table_ref.name.endswith("___audit")
-            and "account_slug" in {field.name for field in script.fields}
-        ):
-            job_config.clustering_fields = ["account_slug"]
-
-        return job_config
