@@ -216,9 +216,7 @@ class Session:
                 ),
             )
 
-        if not script.is_test:
-            return script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
-        return script.replace_table_ref(script.table_ref.replace_dataset(self.write_dataset))
+        return script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
 
     def run_script(self, script: Script):
         # If the script is a test, we don't materialize it, we just query it. A test fails if it
