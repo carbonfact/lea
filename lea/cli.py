@@ -9,12 +9,12 @@ import lea
 
 
 @click.group()
-def app():
-    ...
+def app(): ...
 
 
 @app.command()
 @click.option("--select", "-m", multiple=True, default=["*"], help="Scripts to materialize.")
+@click.option("--unselect", "-m", multiple=True, default=[], help="Scripts to unselect.")
 @click.option("--dataset", default=None, help="Name of the base dataset.")
 @click.option("--scripts", default="views", help="Directory where the scripts are located.")
 @click.option(
@@ -26,7 +26,7 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-def run(select, dataset, scripts, incremental, dry, print, production, restart):
+def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart):
     if not pathlib.Path(scripts).is_dir():
         raise click.ClickException(f"Directory {scripts} does not exist")
 
@@ -41,7 +41,8 @@ def run(select, dataset, scripts, incremental, dry, print, production, restart):
 
     conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
     conductor.run(
-        *select,
+        select=select,
+        unselect=unselect,
         production=production,
         dry_run=dry,
         restart=restart,

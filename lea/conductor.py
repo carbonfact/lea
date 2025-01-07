@@ -475,7 +475,8 @@ class Conductor:
 
     def run(
         self,
-        *query: str,
+        select: list[str],
+        unselect: list[str],
         production: bool = False,
         dry_run: bool = False,
         restart: bool = False,
@@ -487,9 +488,14 @@ class Conductor:
         database_client = self.make_client(dry_run=dry_run, print_mode=print_mode)
 
         # We need to select the scripts we want to run. We do this by querying the DAG.
-        selected_table_refs = self.dag.select(*query)
+        selected_table_refs = self.dag.select(*select)
+        unselected_table_refs = self.dag.select(*unselect)
+        selected_table_refs -= unselected_table_refs
         if not selected_table_refs:
-            log.error("Nothing found for query: " + ", ".join(query))
+            msg = "Nothing found for select " + ", ".join(select)
+            if unselect:
+                msg += " and unselect: " + ", ".join(unselect)
+            log.error(msg)
             return sys.exit(1)
         log.info(f"{len(selected_table_refs):,d} scripts selected")
 
