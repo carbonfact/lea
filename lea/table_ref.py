@@ -12,7 +12,7 @@ class TableRef:
     dataset: str
     schema: tuple[str, ...]
     name: str
-    project: str
+    project: str | None
 
     def __str__(self):
         return ".".join(filter(None, [self.project, self.dataset, *self.schema, self.name]))
@@ -37,10 +37,14 @@ class TableRef:
         return dataclasses.replace(self, project=project)
 
     def add_audit_suffix(self) -> TableRef:
+        if self.is_audit_table:
+            return self
         return dataclasses.replace(self, name=f"{self.name}{AUDIT_TABLE_SUFFIX}")
 
     def remove_audit_suffix(self) -> TableRef:
-        return dataclasses.replace(self, name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", self.name))
+        if self.is_audit_table:
+            return dataclasses.replace(self, name=re.sub(rf"{AUDIT_TABLE_SUFFIX}$", "", self.name))
+        return self
 
     @property
     def is_audit_table(self) -> bool:
