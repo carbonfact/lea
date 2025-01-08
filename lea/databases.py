@@ -277,7 +277,9 @@ class BigQueryClient:
         """
         job = self.client.query(query)
         return {
-            BigQueryDialect.parse_table_ref(f"{dataset_name}.{row['table_id']}"): TableStats(
+            BigQueryDialect.parse_table_ref(
+                f"{self.write_project_id}.{dataset_name}.{row['table_id']}"
+            ): TableStats(
                 n_rows=row["row_count"],
                 n_bytes=row["size_bytes"],
                 updated_at=(
@@ -294,9 +296,9 @@ class BigQueryClient:
         """
         job = self.client.query(query)
         return {
-            BigQueryDialect.parse_table_ref(f"{dataset_name}.{table_name}"): [
-                scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()
-            ]
+            BigQueryDialect.parse_table_ref(
+                f"{self.write_project_id}.{dataset_name}.{table_name}"
+            ): [scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()]
             for table_name, rows in job.result()
             .to_dataframe()
             .sort_values(["table_name", "column_name"])

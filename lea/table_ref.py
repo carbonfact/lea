@@ -12,26 +12,28 @@ class TableRef:
     dataset: str
     schema: tuple[str, ...]
     name: str
-    project: str | None = None
+    project: str
 
     def __str__(self):
         return ".".join(filter(None, [self.project, self.dataset, *self.schema, self.name]))
 
     @classmethod
-    def from_path(cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path) -> TableRef:
+    def from_path(
+        cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, project_name: str
+    ) -> TableRef:
         parts = list(filter(None, relative_path.parts))
         *schema, filename = parts
         return cls(
             dataset=scripts_dir.name,
             schema=tuple(schema),
-            # Remove the ex
-            name=filename.split(".")[0],
+            name=filename.split(".")[0],  # remove the extension
+            project=project_name,
         )
 
     def replace_dataset(self, dataset: str) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
 
-    def replace_project(self, project: str | None) -> TableRef:
+    def replace_project(self, project: str) -> TableRef:
         return dataclasses.replace(self, project=project)
 
     def add_audit_suffix(self) -> TableRef:

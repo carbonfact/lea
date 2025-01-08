@@ -140,15 +140,11 @@ class Session:
     def add_write_context_to_table_ref(self, table_ref: TableRef) -> TableRef:
         table_ref = table_ref.replace_dataset(self.write_dataset)
         table_ref = table_ref.add_audit_suffix()
-        if isinstance(self.database_client, databases.BigQueryClient):
-            table_ref = table_ref.replace_project(self.database_client.write_project_id)
         return table_ref
 
     def remove_write_context_from_table_ref(self, table_ref: TableRef) -> TableRef:
         table_ref = table_ref.replace_dataset(self.base_dataset)
         table_ref = table_ref.remove_audit_suffix()
-        if isinstance(self.database_client, databases.BigQueryClient):
-            table_ref = table_ref.replace_project(None)
         return table_ref
 
     def add_context_to_script(self, script: Script) -> Script:
@@ -298,8 +294,7 @@ class Session:
 
         is_incremental = (
             self.incremental_field_name is not None
-            and to_table_ref.replace_dataset(self.base_dataset).replace_project(None)
-            in self.incremental_table_refs
+            and to_table_ref.replace_dataset(self.base_dataset) in self.incremental_table_refs
         )
         if is_incremental:
             database_job = self.database_client.delete_and_insert(
@@ -400,18 +395,32 @@ def delete_table_refs(
 
 
 class Conductor:
-    def __init__(self, scripts_dir: str, dataset_name: str | None = None):
+    def __init__(
+        self, scripts_dir: str, dataset_name: str | None = None, project_name: str | None = None
+    ):
         # Load environment variables from .env file
         # TODO: is is Pythonic to do this here?
         dotenv.load_dotenv(".env", verbose=True)
 
+        self.warehouse = os.environ["LEA_WAREHOUSE"].lower()
+
         self.scripts_dir = pathlib.Path(scripts_dir)
         if not self.scripts_dir.is_dir():
             raise ValueError(f"Directory {self.scripts_dir} not found")
-        dataset_name = dataset_name or os.environ.get("LEA_BQ_DATASET_NAME")
+
+        if dataset_name is None:
+            if self.warehouse == "bigquery":
+                dataset_name = os.environ.get("LEA_BQ_DATASET_NAME")
         if dataset_name is None:
             raise ValueError("Dataset name could not be inferred")
         self.dataset_name = dataset_name
+
+        if project_name is None:
+            if self.warehouse == "bigquery":
+                project_name = os.environ.get("LEA_BQ_PROJECT_ID")
+        if project_name is None:
+            raise ValueError("Project name could not be inferred")
+        self.project_name = project_name
 
         log.info("📝 Reading scripts")
 
@@ -419,13 +428,12 @@ class Conductor:
             scripts_dir=self.scripts_dir,
             sql_dialect=BigQueryDialect(),
             dataset_name=self.dataset_name,
+            project_name=self.project_name,
         )
         log.info(f"{len(self.dag.scripts):,d} scripts found")
 
     def make_client(self, dry_run: bool = False, print_mode: bool = False) -> DatabaseClient:
-        warehouse = os.environ["LEA_WAREHOUSE"]
-
-        if warehouse.lower() == "bigquery":
+        if self.warehouse.lower() == "bigquery":
             # Do imports here to avoid loading them all the time
             from google.oauth2 import service_account
 
@@ -454,7 +462,7 @@ class Conductor:
                 print_mode=print_mode,
             )
 
-        raise ValueError(f"Unsupported warehouse {warehouse!r}")
+        raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
 
     def name_user_dataset(self) -> str:
         username = os.environ.get("LEA_USERNAME", getpass.getuser())
@@ -617,10 +625,14 @@ def promote_audit_tables(session: Session):
 
 
 def delete_audit_tables(session: Session):
-    if session.existing_audit_tables:
+    table_refs_to_delete = set(session.existing_audit_tables) | {
+        session.add_write_context_to_table_ref(table_ref)
+        for table_ref in session.selected_table_refs
+    }
+    if table_refs_to_delete:
         log.info("🧹 Deleting audit tables")
         delete_table_refs(
-            table_refs=session.existing_audit_tables,
+            table_refs=table_refs_to_delete,
             database_client=session.database_client,
             executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
             verbose=False,
