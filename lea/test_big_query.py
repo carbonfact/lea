@@ -19,7 +19,7 @@ def scripts() -> dict[TableRef, Script]:
         script.table_ref: script
         for script in [
             Script(
-                table_ref=TableRef("read", ("raw",), "users"),
+                table_ref=TableRef("read", ("raw",), "users", "test_project"),
                 code="""
                 SELECT * FROM UNNEST([
                     STRUCT(1 AS id, 'Alice' AS name, 30 AS age),
@@ -30,7 +30,7 @@ def scripts() -> dict[TableRef, Script]:
                 sql_dialect=BigQueryDialect(),
             ),
             Script(
-                table_ref=TableRef("read", ("core",), "users"),
+                table_ref=TableRef("read", ("core",), "users", "test_project"),
                 code="""
                 SELECT
                     id,
@@ -42,7 +42,7 @@ def scripts() -> dict[TableRef, Script]:
                 sql_dialect=BigQueryDialect(),
             ),
             Script(
-                table_ref=TableRef("read", ("analytics",), "n_users"),
+                table_ref=TableRef("read", ("analytics",), "n_users", "test_project"),
                 code="""
                 SELECT COUNT(*)
                 FROM read.core__users
@@ -70,7 +70,9 @@ def test_simple_run(scripts):
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("raw",), "users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("raw",), "users", "test_project")]
+        ).code,
         """
         SELECT * FROM UNNEST([
             STRUCT(1 AS id, 'Alice' AS name, 30 AS age),
@@ -80,10 +82,12 @@ def test_simple_run(scripts):
         """,
     )
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("analytics",), "n_users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("analytics",), "n_users", "test_project")]
+        ).code,
         """
         SELECT COUNT(*)
-        FROM write.core__users___audit
+        FROM `test_project`.write.core__users___audit
         """,
     )
 
@@ -101,29 +105,33 @@ def test_incremental_field(scripts):
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("core",), "users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("core",), "users", "test_project")]
+        ).code,
         """
         SELECT *
         FROM (
             SELECT id, name, age
-            FROM write.raw__users___audit
+            FROM `test_project`.write.raw__users___audit
         )
         WHERE name IN ('Alice')
         """,
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("analytics",), "n_users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("analytics",), "n_users", "test_project")]
+        ).code,
         """
         SELECT COUNT(*) FROM (
             SELECT *
-            FROM write.core__users___audit
+            FROM `test_project`.write.core__users___audit
             WHERE name IN ('Alice')
 
             UNION ALL
 
             SELECT *
-            FROM write.core__users
+            FROM `test_project`.write.core__users
             WHERE name NOT IN ('Alice')
         )
         """,
@@ -136,21 +144,23 @@ def test_incremental_field_but_no_incremental_table_selected(scripts):
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={TableRef("read", ("analytics",), "n_users")},
+        selected_table_refs={TableRef("read", ("analytics",), "n_users", "test_project")},
         existing_audit_tables={},
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("core",), "users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("core",), "users", "test_project")]
+        ).code,
         """
         SELECT
             id,
             -- #INCREMENTAL
             name,
             age
-        FROM write.raw__users
+        FROM `test_project`.write.raw__users
         """,
     )
 
@@ -161,19 +171,21 @@ def test_incremental_field_with_just_incremental_table_selected(scripts):
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={TableRef("read", ("core",), "users")},
+        selected_table_refs={TableRef("read", ("core",), "users", "test_project")},
         existing_audit_tables={},
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("core",), "users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("core",), "users", "test_project")]
+        ).code,
         """
         SELECT *
         FROM (
             SELECT id, name, age
-            FROM write.raw__users
+            FROM `test_project`.write.raw__users
         )
         WHERE name IN ('Alice')
         """,
@@ -188,19 +200,23 @@ def test_incremental_field_with_just_incremental_table_selected_and_materialized
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={TableRef("read", ("core",), "users")},
-        existing_audit_tables={TableRef("read", ("raw",), "users"): DUMMY_TABLE_STATS},
+        selected_table_refs={TableRef("read", ("core",), "users", "test_project")},
+        existing_audit_tables={
+            TableRef("read", ("raw",), "users", "test_project"): DUMMY_TABLE_STATS
+        },
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("core",), "users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("core",), "users", "test_project")]
+        ).code,
         """
         SELECT *
         FROM (
             SELECT id, name, age
-            FROM write.raw__users___audit
+            FROM `test_project`.write.raw__users___audit
         )
         WHERE name IN ('Alice')
         """,
@@ -215,27 +231,29 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={TableRef("read", ("analytics",), "n_users")},
+        selected_table_refs={TableRef("read", ("analytics",), "n_users", "test_project")},
         existing_audit_tables={
-            TableRef("read", ("core",), "users"): DUMMY_TABLE_STATS,
+            TableRef("read", ("core",), "users", "test_project"): DUMMY_TABLE_STATS,
         },
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("analytics",), "n_users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("analytics",), "n_users", "test_project")]
+        ).code,
         """
         SELECT COUNT(*)
         FROM (
             SELECT *
-            FROM write.core__users___audit
+            FROM `test_project`.write.core__users___audit
             WHERE name IN ('Alice')
 
             UNION ALL
 
             SELECT *
-            FROM write.core__users
+            FROM `test_project`.write.core__users
             WHERE name NOT IN ('Alice')
         )
         """,
@@ -255,27 +273,29 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         base_dataset="read",
         write_dataset="write",
         scripts=scripts,
-        selected_table_refs={TableRef("read", ("analytics",), "n_users")},
+        selected_table_refs={TableRef("read", ("analytics",), "n_users", "test_project")},
         existing_audit_tables={
-            TableRef("read", ("core",), "users"): DUMMY_TABLE_STATS,
+            TableRef("read", ("core",), "users", "test_project"): DUMMY_TABLE_STATS,
         },
         incremental_field_name="name",
         incremental_field_values={"Alice"},
     )
 
     assert_queries_are_equal(
-        session.add_context_to_script(scripts[TableRef("read", ("analytics",), "n_users")]).code,
+        session.add_context_to_script(
+            scripts[TableRef("read", ("analytics",), "n_users", "test_project")]
+        ).code,
         """
         SELECT COUNT(*)
         FROM (
             SELECT *
-            FROM `write-project-id`.write.core__users___audit
+            FROM `test_project`.write.core__users___audit
             WHERE name IN ('Alice')
 
             UNION ALL
 
             SELECT *
-            FROM `write-project-id`.write.core__users
+            FROM `test_project`.write.core__users
             WHERE name NOT IN ('Alice')
         )
         """,

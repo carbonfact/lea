@@ -72,7 +72,11 @@ class SQLScript:
 
     @classmethod
     def from_path(
-        cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, sql_dialect: SQLDialect
+        cls,
+        scripts_dir: pathlib.Path,
+        relative_path: pathlib.Path,
+        sql_dialect: SQLDialect,
+        project_name: str,
     ) -> SQLScript:
         # Either the file is a Jinja template
         if relative_path.suffixes == [".sql", ".jinja"]:
@@ -85,7 +89,9 @@ class SQLScript:
             code = (scripts_dir / relative_path).read_text().rstrip().rstrip(";")
 
         return cls(
-            table_ref=TableRef.from_path(scripts_dir=scripts_dir, relative_path=relative_path),
+            table_ref=TableRef.from_path(
+                scripts_dir=scripts_dir, relative_path=relative_path, project_name=project_name
+            ),
             code=code,
             sql_dialect=sql_dialect,
             updated_at=dt.datetime.fromtimestamp(
@@ -107,8 +113,15 @@ class SQLScript:
 
     @functools.cached_property
     def dependencies(self) -> set[TableRef]:
+        def add_default_project(table_ref: TableRef) -> TableRef:
+            if table_ref.project is None:
+                return table_ref.replace_project(self.table_ref.project)
+            return table_ref
+
         return {
-            self.sql_dialect.parse_table_ref(table_ref=sqlglot.exp.table_name(table))
+            add_default_project(
+                self.sql_dialect.parse_table_ref(table_ref=sqlglot.exp.table_name(table))
+            )
             for scope in sqlglot.optimizer.scope.traverse_scope(self.ast)
             for table in scope.tables
             if (
@@ -136,6 +149,7 @@ class SQLScript:
                 dataset=self.table_ref.dataset,
                 schema=("tests",),
                 name=f"{'__'.join(self.table_ref.schema)}__{self.table_ref.name}__{field.name}___{tag.lower().lstrip('#')}",
+                project=self.table_ref.project,
             )
 
         def make_assertion_test(table_ref, field, tag):
@@ -181,14 +195,14 @@ class SQLScript:
     def __rich__(self):
         code = textwrap.dedent(self.code).strip()
         code_with_table_ref = f"""-- {self.table_ref}\n\n{code}\n"""
-        return rich.syntax.Syntax(code_with_table_ref, "sql", line_numbers=True, theme="ansi_dark")
+        return rich.syntax.Syntax(code_with_table_ref, "sql", line_numbers=False, theme="ansi_dark")
 
 
 Script = SQLScript
 
 
 def read_scripts(
-    scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str
+    scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str, project_name: str
 ) -> list[Script]:
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):
@@ -197,6 +211,7 @@ def read_scripts(
                     scripts_dir=scripts_dir,
                     relative_path=path.relative_to(scripts_dir),
                     sql_dialect=sql_dialect,
+                    project_name=project_name,
                 )
             case _:
                 raise ValueError(f"Unsupported script type: {path}")

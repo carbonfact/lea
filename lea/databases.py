@@ -285,7 +285,9 @@ class BigQueryClient:
         """
         job = self.client.query(query, location=self.location)
         return {
-            BigQueryDialect.parse_table_ref(f"{dataset_name}.{row['table_id']}"): TableStats(
+            BigQueryDialect.parse_table_ref(
+                f"{self.write_project_id}.{dataset_name}.{row['table_id']}"
+            ): TableStats(
                 n_rows=row["row_count"],
                 n_bytes=row["size_bytes"],
                 updated_at=(
@@ -302,9 +304,9 @@ class BigQueryClient:
         """
         job = self.client.query(query, location=self.location)
         return {
-            BigQueryDialect.parse_table_ref(f"{dataset_name}.{table_name}"): [
-                scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()
-            ]
+            BigQueryDialect.parse_table_ref(
+                f"{self.write_project_id}.{dataset_name}.{table_name}"
+            ): [scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()]
             for table_name, rows in job.result()
             .to_dataframe()
             .sort_values(["table_name", "column_name"])
@@ -320,3 +322,19 @@ class BigQueryClient:
             dry_run=self.dry_run,
             **kwargs,
         )
+
+        # The approach we use works best if the tables are clustered by account_slug. This is
+        # because we only need to refresh the data for a subset of accounts, and clustering by
+        # account_slug allows BigQuery to only scan the data for the accounts that need to be
+        # refreshed. This is a good practice in general, but it's particularly important in this
+        # case.
+        # WIP
+        # if (
+        #     script is not None
+        #     and not script.table_ref.is_test
+        #     and script.table_ref.name.endswith("___audit")
+        #     and "account_slug" in {field.name for field in script.fields}
+        # ):
+        #     job_config.clustering_fields = ["account_slug"]
+
+        # return job_config

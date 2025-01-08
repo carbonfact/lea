@@ -115,7 +115,7 @@ class Session:
 
         if self.incremental_field_name is not None:
             self.filterable_table_refs = {
-                table_ref
+                table_ref.replace_dataset(self.write_dataset)
                 for table_ref in scripts
                 if any(
                     field.name == incremental_field_name
@@ -123,7 +123,7 @@ class Session:
                 )
             }
             self.incremental_table_refs = {
-                table_ref
+                table_ref.replace_dataset(self.write_dataset)
                 for table_ref in selected_table_refs | set(existing_audit_tables)
                 if any(
                     field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags
@@ -140,22 +140,39 @@ class Session:
     def add_write_context_to_table_ref(self, table_ref: TableRef) -> TableRef:
         table_ref = table_ref.replace_dataset(self.write_dataset)
         table_ref = table_ref.add_audit_suffix()
-        if isinstance(self.database_client, databases.BigQueryClient):
-            table_ref = table_ref.replace_project(self.database_client.write_project_id)
         return table_ref
 
     def remove_write_context_from_table_ref(self, table_ref: TableRef) -> TableRef:
         table_ref = table_ref.replace_dataset(self.base_dataset)
         table_ref = table_ref.remove_audit_suffix()
-        if isinstance(self.database_client, databases.BigQueryClient):
-            table_ref = table_ref.replace_project(None)
         return table_ref
 
     def add_context_to_script(self, script: Script) -> Script:
+        def add_context_to_dependency(dependency: TableRef) -> TableRef | None:
+            if dependency.project != script.table_ref.project:
+                return None
+
+            if (
+                dependency.replace_dataset(self.base_dataset)
+                in self.selected_table_refs
+                | {
+                    self.remove_write_context_from_table_ref(table_ref)
+                    for table_ref in self.existing_audit_tables
+                }
+                and dependency.replace_dataset(self.base_dataset) in self.scripts
+            ):
+                dependency = dependency.add_audit_suffix()
+
+            dependency = dependency.replace_dataset(self.write_dataset)
+
+            return dependency
+
+        script = replace_script_dependencies(script=script, replace_func=add_context_to_dependency)
+
         # If a script is marked as incremental, it implies that it can be run incrementally. This
         # means that we have to filter the script's dependencies, as well as filter the output.
         # This logic is implemented by the script's SQL dialect.
-        if script.table_ref in self.incremental_table_refs:
+        if script.table_ref.replace_dataset(self.write_dataset) in self.incremental_table_refs:
             script = dataclasses.replace(
                 script,
                 code=script.sql_dialect.add_dependency_filters(
@@ -169,38 +186,12 @@ class Session:
                 ),
             )
 
-        def add_context_to_dependency(dependency: TableRef) -> TableRef:
-            if (
-                dependency.replace_dataset(self.base_dataset)
-                in self.selected_table_refs
-                | {
-                    self.remove_write_context_from_table_ref(table_ref)
-                    for table_ref in self.existing_audit_tables
-                }
-                and dependency.replace_dataset(self.base_dataset) in self.scripts
-            ):
-                dependency = dependency.add_audit_suffix()
-            dependency = dependency.replace_dataset(self.write_dataset)
-
-            # Replace occurences of the dataset in script queries clauses to ensure it points
-            # to the right project. If we don't do that and a separate compute project is used,
-            # queries will default to looking for tables in the compute project, which is not
-            # what we want.
-            if (
-                isinstance(self.database_client, databases.BigQueryClient)
-                and dependency.project is None
-            ):
-                dependency = dependency.replace_project(self.database_client.write_project_id)
-            return dependency
-
-        script = replace_script_dependencies(script=script, replace_func=add_context_to_dependency)
-
         # If the script is not incremental, we're not out of the woods! All scripts are
         # materialized into side-tables which we call "audit" tables. This is the WAP pattern.
         # Therefore, if a script is not incremental, but it depends on an incremental script, we
         # have to modify the script to use both the incremental and non-incremental versions of
         # the dependency. This is handled by the script's SQL dialect.
-        if script.table_ref not in self.incremental_table_refs and self.incremental_table_refs:
+        elif self.incremental_table_refs:
             script = dataclasses.replace(
                 script,
                 code=script.sql_dialect.handle_incremental_dependencies(
@@ -208,10 +199,8 @@ class Session:
                     incremental_field_name=self.incremental_field_name,
                     incremental_field_values=self.incremental_field_values,
                     incremental_dependencies={
-                        self.add_write_context_to_table_ref(
-                            table_ref
-                        ).remove_audit_suffix(): self.add_write_context_to_table_ref(table_ref)
-                        for table_ref in self.incremental_table_refs
+                        incremental_table_ref: incremental_table_ref.add_audit_suffix()
+                        for incremental_table_ref in self.incremental_table_refs
                     },
                 ),
             )
@@ -234,7 +223,8 @@ class Session:
         self.jobs.append(job)
 
         msg = f"{job.status} {script.table_ref}"
-        if script.table_ref in self.incremental_table_refs:
+
+        if script.table_ref.remove_audit_suffix() in self.incremental_table_refs:
             msg += " (incremental)"
         log.info(msg)
 
@@ -291,9 +281,7 @@ class Session:
         to_table_ref = table_ref.remove_audit_suffix()
 
         is_incremental = (
-            self.incremental_field_name is not None
-            and to_table_ref.replace_dataset(self.base_dataset).replace_project(None)
-            in self.incremental_table_refs
+            self.incremental_field_name is not None and to_table_ref in self.incremental_table_refs
         )
         if is_incremental:
             database_job = self.database_client.delete_and_insert(
@@ -345,11 +333,21 @@ def replace_script_dependencies(
 
     """
     code = script.code
+
     for dependency_to_edit in script.dependencies:
-        dependency_to_edit_str = script.sql_dialect.format_table_ref(dependency_to_edit)
         new_dependency = replace_func(dependency_to_edit)
+        if new_dependency is None:
+            continue
+
+        dependency_to_edit_without_project_str = script.sql_dialect.format_table_ref(
+            dependency_to_edit.replace_project(None)
+        )
         new_dependency_str = script.sql_dialect.format_table_ref(new_dependency)
-        code = re.sub(rf"\b{dependency_to_edit_str}\b", new_dependency_str, code)
+        code = re.sub(
+            rf"\b{dependency_to_edit_without_project_str}\b",
+            new_dependency_str,
+            code,
+        )
 
         # We also have to handle the case where the table is referenced to access a field.
         # TODO: refactor this with the above
@@ -394,18 +392,32 @@ def delete_table_refs(
 
 
 class Conductor:
-    def __init__(self, scripts_dir: str, dataset_name: str | None = None):
+    def __init__(
+        self, scripts_dir: str, dataset_name: str | None = None, project_name: str | None = None
+    ):
         # Load environment variables from .env file
         # TODO: is is Pythonic to do this here?
         dotenv.load_dotenv(".env", verbose=True)
 
+        self.warehouse = os.environ["LEA_WAREHOUSE"].lower()
+
         self.scripts_dir = pathlib.Path(scripts_dir)
         if not self.scripts_dir.is_dir():
             raise ValueError(f"Directory {self.scripts_dir} not found")
-        dataset_name = dataset_name or os.environ.get("LEA_BQ_DATASET_NAME")
+
+        if dataset_name is None:
+            if self.warehouse == "bigquery":
+                dataset_name = os.environ.get("LEA_BQ_DATASET_NAME")
         if dataset_name is None:
             raise ValueError("Dataset name could not be inferred")
         self.dataset_name = dataset_name
+
+        if project_name is None:
+            if self.warehouse == "bigquery":
+                project_name = os.environ.get("LEA_BQ_PROJECT_ID")
+        if project_name is None:
+            raise ValueError("Project name could not be inferred")
+        self.project_name = project_name
 
         log.info("📝 Reading scripts")
 
@@ -413,13 +425,12 @@ class Conductor:
             scripts_dir=self.scripts_dir,
             sql_dialect=BigQueryDialect(),
             dataset_name=self.dataset_name,
+            project_name=self.project_name,
         )
         log.info(f"{len(self.dag.scripts):,d} scripts found")
 
     def make_client(self, dry_run: bool = False, print_mode: bool = False) -> DatabaseClient:
-        warehouse = os.environ["LEA_WAREHOUSE"]
-
-        if warehouse.lower() == "bigquery":
+        if self.warehouse.lower() == "bigquery":
             # Do imports here to avoid loading them all the time
             from google.oauth2 import service_account
 
@@ -448,7 +459,7 @@ class Conductor:
                 print_mode=print_mode,
             )
 
-        raise ValueError(f"Unsupported warehouse {warehouse!r}")
+        raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
 
     def name_user_dataset(self) -> str:
         username = os.environ.get("LEA_USERNAME", getpass.getuser())
@@ -611,10 +622,14 @@ def promote_audit_tables(session: Session):
 
 
 def delete_audit_tables(session: Session):
-    if session.existing_audit_tables:
+    table_refs_to_delete = set(session.existing_audit_tables) | {
+        session.add_write_context_to_table_ref(table_ref)
+        for table_ref in session.selected_table_refs
+    }
+    if table_refs_to_delete:
         log.info("🧹 Deleting audit tables")
         delete_table_refs(
-            table_refs=session.existing_audit_tables,
+            table_refs=table_refs_to_delete,
             database_client=session.database_client,
             executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
             verbose=False,
