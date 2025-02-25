@@ -56,6 +56,121 @@ class Conductor:
         )
         lea.log.info(f"{len(self.dag.scripts):,d} scripts found")
 
+    def run(
+        self,
+        select: list[str],
+        unselect: list[str],
+        production: bool = False,
+        dry_run: bool = False,
+        restart: bool = False,
+        incremental_field_name: str | None = None,
+        incremental_field_values: list[str] | None = None,
+        print_mode: bool = False,
+    ):
+        session = self.prepare_session(
+            select=select,
+            unselect=unselect,
+            production=production,
+            dry_run=dry_run,
+            incremental_field_name=incremental_field_name,
+            incremental_field_values=incremental_field_values,
+            print_mode=print_mode,
+        )
+
+        try:
+            self.run_session(session, restart=restart, dry_run=dry_run)
+            if session.any_error_has_occurred:
+                return sys.exit(1)
+        except KeyboardInterrupt:
+            lea.log.error("🛑 Keyboard interrupt")
+            session.end()
+            return sys.exit(1)
+
+    def prepare_session(
+        self,
+        select: list[str],
+        unselect: list[str],
+        production: bool = False,
+        dry_run: bool = False,
+        incremental_field_name: str | None = None,
+        incremental_field_values: list[str] | None = None,
+        print_mode: bool = False,
+    ) -> Session:
+        # We need a database client to run scripts
+        database_client = self.make_client(dry_run=dry_run, print_mode=print_mode)
+
+        # We need to select the scripts we want to run. We do this by querying the DAG.
+        selected_table_refs = self.dag.select(*select)
+        unselected_table_refs = self.dag.select(*unselect)
+        selected_table_refs -= unselected_table_refs
+        if not selected_table_refs:
+            msg = "Nothing found for select " + ", ".join(select)
+            if unselect:
+                msg += " and unselect: " + ", ".join(unselect)
+            lea.log.error(msg)
+            return sys.exit(1)
+        lea.log.info(f"{len(selected_table_refs):,d} scripts selected")
+
+        # We need a dataset to materialize the scripts. If we're in production mode, we use the
+        # base dataset. If we're in user mode, we use a dataset named after the user.
+        write_dataset = self.dataset_name if production else self.name_user_dataset()
+        database_client.create_dataset(write_dataset)
+
+        # When the scripts run, they are materialized into side-tables which we call "audit"
+        # tables. When a run stops because of an error, the audit tables are left behind. If we
+        # want to start fresh, we have to delete the audit tables. If not, the materialized tables
+        # can be skipped.
+        existing_tables = self.list_existing_tables(
+            database_client=database_client, dataset=write_dataset
+        )
+        lea.log.info(f"{len(existing_tables):,d} tables already exist")
+        existing_audit_tables = self.list_existing_audit_tables(
+            database_client=database_client, dataset=write_dataset
+        )
+        lea.log.info(f"{len(existing_audit_tables):,d} audit tables already exist")
+
+        session = Session(
+            database_client=database_client,
+            base_dataset=self.dataset_name,
+            write_dataset=write_dataset,
+            scripts=self.dag.scripts,
+            selected_table_refs=selected_table_refs,
+            existing_tables=existing_tables,
+            existing_audit_tables=existing_audit_tables,
+            incremental_field_name=incremental_field_name,
+            incremental_field_values=incremental_field_values,
+        )
+
+        return session
+
+    def run_session(self, session: Session, restart: bool, dry_run: bool):
+        if restart:
+            delete_audit_tables(session)
+
+        # Loop over table references in topological order
+        run_scripts(dag=self.dag, session=session)
+
+        # At this point, the scripts have been materialized into side-tables which we call "audit"
+        # tables. We can now take care of promoting the audit tables to production.
+        if not session.any_error_has_occurred and not dry_run:
+            promote_audit_tables(session)
+
+        # If all the scripts succeeded, we can delete the audit tables.
+        if not session.any_error_has_occurred and not dry_run:
+            delete_audit_tables(session)
+
+            # Let's also delete orphan tables, which are tables that exist but who's scripts have
+            # been deleted.
+            delete_orphan_tables(session)
+
+        # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
+        session.end()
+        duration_str = str(session.ended_at - session.started_at).split(".")[0]  # type: ignore[operator]
+        emoji = "✅" if not session.any_error_has_occurred else "❌"
+        lea.log.info(
+            f"{emoji} Finished, took {duration_str}, cost ${session.total_billed_dollars:.2f}"
+        )
+
     def make_client(self, dry_run: bool = False, print_mode: bool = False) -> DatabaseClient:
         if self.warehouse.lower() == "bigquery":
             # Do imports here to avoid loading them all the time
@@ -113,99 +228,6 @@ class Conductor:
             if table_ref.name.endswith(AUDIT_TABLE_SUFFIX)
         }
         return existing_audit_tables
-
-    def run(
-        self,
-        select: list[str],
-        unselect: list[str],
-        production: bool = False,
-        dry_run: bool = False,
-        restart: bool = False,
-        incremental_field_name: str | None = None,
-        incremental_field_values: list[str] | None = None,
-        print_mode: bool = False,
-    ):
-        # We need a database client to run scripts
-        database_client = self.make_client(dry_run=dry_run, print_mode=print_mode)
-
-        # We need to select the scripts we want to run. We do this by querying the DAG.
-        selected_table_refs = self.dag.select(*select)
-        unselected_table_refs = self.dag.select(*unselect)
-        selected_table_refs -= unselected_table_refs
-        if not selected_table_refs:
-            msg = "Nothing found for select " + ", ".join(select)
-            if unselect:
-                msg += " and unselect: " + ", ".join(unselect)
-            lea.log.error(msg)
-            return sys.exit(1)
-        lea.log.info(f"{len(selected_table_refs):,d} scripts selected")
-
-        # We need a dataset to materialize the scripts. If we're in production mode, we use the
-        # base dataset. If we're in user mode, we use a dataset named after the user.
-        write_dataset = self.dataset_name if production else self.name_user_dataset()
-        database_client.create_dataset(write_dataset)
-
-        # When the scripts run, they are materialized into side-tables which we call "audit"
-        # tables. When a run stops because of an error, the audit tables are left behind. If we
-        # want to start fresh, we have to delete the audit tables. If not, the materialized tables
-        # can be skipped.
-        existing_tables = self.list_existing_tables(
-            database_client=database_client, dataset=write_dataset
-        )
-        lea.log.info(f"{len(existing_tables):,d} tables already exist")
-        existing_audit_tables = self.list_existing_audit_tables(
-            database_client=database_client, dataset=write_dataset
-        )
-        lea.log.info(f"{len(existing_audit_tables):,d} audit tables already exist")
-
-        session = Session(
-            database_client=database_client,
-            base_dataset=self.dataset_name,
-            write_dataset=write_dataset,
-            scripts=self.dag.scripts,
-            selected_table_refs=selected_table_refs,
-            existing_tables=existing_tables,
-            existing_audit_tables=existing_audit_tables,
-            incremental_field_name=incremental_field_name,
-            incremental_field_values=incremental_field_values,
-        )
-
-        try:
-            self.run_session(session, restart=restart, dry_run=dry_run)
-            if session.any_error_has_occurred:
-                return sys.exit(1)
-        except KeyboardInterrupt:
-            lea.log.error("🛑 Keyboard interrupt")
-            session.end()
-            return sys.exit(1)
-
-    def run_session(self, session: Session, restart: bool, dry_run: bool):
-        if restart:
-            delete_audit_tables(session)
-
-        # Loop over table references in topological order
-        run_scripts(dag=self.dag, session=session)
-
-        # At this point, the scripts have been materialized into side-tables which we call "audit"
-        # tables. We can now take care of promoting the audit tables to production.
-        if not session.any_error_has_occurred and not dry_run:
-            promote_audit_tables(session)
-
-        # If all the scripts succeeded, we can delete the audit tables.
-        if not session.any_error_has_occurred and not dry_run:
-            delete_audit_tables(session)
-
-            # Let's also delete orphan tables, which are tables that exist but who's scripts have
-            # been deleted.
-            delete_orphan_tables(session)
-
-        # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
-        session.end()
-        duration_str = str(session.ended_at - session.started_at).split(".")[0]  # type: ignore[operator]
-        emoji = "✅" if not session.any_error_has_occurred else "❌"
-        lea.log.info(
-            f"{emoji} Finished, took {duration_str}, cost ${session.total_billed_dollars:.2f}"
-        )
 
 
 def run_scripts(dag: DAGOfScripts, session: Session):
