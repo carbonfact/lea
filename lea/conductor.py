@@ -91,7 +91,8 @@ class Session:
         write_dataset: str,
         scripts: dict[TableRef, Script],
         selected_table_refs: set[TableRef],
-        existing_audit_tables: set[TableRef],
+        existing_tables: dict[TableRef, TableStats],
+        existing_audit_tables: dict[TableRef, TableStats],
         incremental_field_name=None,
         incremental_field_values=None,
     ):
@@ -100,6 +101,7 @@ class Session:
         self.write_dataset = write_dataset
         self.scripts = scripts
         self.selected_table_refs = selected_table_refs
+        self.existing_tables = existing_tables
         self.existing_audit_tables = existing_audit_tables
         self.incremental_field_name = incremental_field_name
         self.incremental_field_values = incremental_field_values
@@ -465,6 +467,17 @@ class Conductor:
         username = os.environ.get("LEA_USERNAME", getpass.getuser())
         return f"{self.dataset_name}_{username}"
 
+    def list_existing_tables(
+        self, database_client: DatabaseClient, dataset: str
+    ) -> dict[TableRef, TableStats]:
+        existing_tables = database_client.list_table_stats(dataset)
+        existing_tables = {
+            table_ref: stats
+            for table_ref, stats in existing_tables.items()
+            if not table_ref.name.endswith(AUDIT_TABLE_SUFFIX)
+        }
+        return existing_tables
+
     def list_existing_audit_tables(
         self, database_client: DatabaseClient, dataset: str
     ) -> dict[TableRef, TableStats]:
@@ -511,6 +524,10 @@ class Conductor:
         # tables. When a run stops because of an error, the audit tables are left behind. If we
         # want to start fresh, we have to delete the audit tables. If not, the materialized tables
         # can be skipped.
+        existing_tables = self.list_existing_tables(
+            database_client=database_client, dataset=write_dataset
+        )
+        log.info(f"{len(existing_tables):,d} tables already exist")
         existing_audit_tables = self.list_existing_audit_tables(
             database_client=database_client, dataset=write_dataset
         )
@@ -522,6 +539,7 @@ class Conductor:
             write_dataset=write_dataset,
             scripts=self.dag.scripts,
             selected_table_refs=selected_table_refs,
+            existing_tables=existing_tables,
             existing_audit_tables=existing_audit_tables,
             incremental_field_name=incremental_field_name,
             incremental_field_values=incremental_field_values,
@@ -551,6 +569,10 @@ class Conductor:
         # If all the scripts succeeded, we can delete the audit tables.
         if not session.any_error_has_occurred and not dry_run:
             delete_audit_tables(session)
+
+            # Let's also delete orphan tables, which are tables that exist but who's scripts have
+            # been deleted.
+            delete_orphan_tables(session)
 
         # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
         session.end()
@@ -628,6 +650,23 @@ def delete_audit_tables(session: Session):
     }
     if table_refs_to_delete:
         log.info("🧹 Deleting audit tables")
+        delete_table_refs(
+            table_refs=table_refs_to_delete,
+            database_client=session.database_client,
+            executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+            verbose=False,
+        )
+        session.existing_audit_tables = {}
+
+
+def delete_orphan_tables(session: Session):
+    tables_with_script = {
+        session.add_write_context_to_table_ref(table_ref).remove_audit_suffix()
+        for table_ref in session.scripts
+    }
+    table_refs_to_delete = set(session.existing_tables) - tables_with_script
+    if table_refs_to_delete:
+        log.info("🧹 Deleting orphan tables")
         delete_table_refs(
             table_refs=table_refs_to_delete,
             database_client=session.database_client,
