@@ -29,18 +29,3 @@ class Job:
 
     def __hash__(self):
         return hash(self.table_ref)
-
-
-def format_bytes(size: float) -> str:
-    # Define the size units in ascending order
-    power = 1024
-    n = 0
-    units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
-
-    # Convert bytes to the highest possible unit
-    while size >= power and n < len(units) - 1:
-        size /= power
-        n += 1
-
-    # Format the result with two decimal places
-    return f"{size:.0f}{units[n]}"
