@@ -4,6 +4,7 @@ import dataclasses
 import datetime as dt
 import typing
 
+import duckdb
 import pandas as pd
 import rich
 from google.cloud import bigquery
@@ -325,3 +326,113 @@ class BigQueryClient:
             dry_run=self.dry_run,
             **kwargs,
         )
+
+
+@dataclasses.dataclass
+class DuckDBJob:
+    query: str
+    connection: duckdb.DuckDBPyConnection
+
+    @property
+    def is_done(self) -> bool:
+        return True  # DuckDB queries are synchronous
+
+    def stop(self):
+        pass  # No support for stopping queries in DuckDB
+
+    @property
+    def result(self) -> pd.DataFrame:
+        return self.connection.execute(self.query).fetchdf()
+
+    @property
+    def exception(self) -> Exception:
+        return None  # DuckDB raises exceptions directly
+
+    @property
+    def billed_dollars(self) -> float:
+        return 0.0  # DuckDB is free to use
+
+    @property
+    def statistics(self) -> TableStats | None:
+        return None  # No statistics available for DuckDB
+
+
+class DuckDBClient:
+    def __init__(self, database: str, dry_run: bool = False, print_mode: bool = False):
+        self.connection = duckdb.connect(database)
+
+    def create_dataset(self, dataset_name: str):
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {dataset_name}")
+
+    def delete_dataset(self, dataset_name: str):
+        self.connection.execute(f"DROP SCHEMA IF EXISTS {dataset_name} CASCADE")
+
+    def materialize_script(self, script: scripts.Script) -> DuckDBJob:
+        if isinstance(script, scripts.SQLScript):
+            return DuckDBJob(query=script.code, connection=self.connection)
+        raise ValueError("Unsupported script type")
+
+    def query_script(self, script: scripts.Script) -> DuckDBJob:
+        if isinstance(script, scripts.SQLScript):
+            return DuckDBJob(query=script.code, connection=self.connection)
+        raise ValueError("Unsupported script type")
+
+    def clone_table(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
+    ) -> DuckDBJob:
+        clone_code = f"""
+        CREATE TABLE {to_table_ref} AS SELECT * FROM {from_table_ref}
+        """
+        return DuckDBJob(query=clone_code, connection=self.connection)
+
+    def delete_and_insert(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
+    ) -> DuckDBJob:
+        delete_and_insert_code = f"""
+        DELETE FROM {to_table_ref} WHERE {on} IN (SELECT DISTINCT {on} FROM {from_table_ref});
+        INSERT INTO {to_table_ref} SELECT * FROM {from_table_ref};
+        """
+        return DuckDBJob(query=delete_and_insert_code, connection=self.connection)
+
+    def delete_table(self, table_ref: scripts.TableRef) -> DuckDBJob:
+        delete_code = f"DROP TABLE IF EXISTS {table_ref}"
+        return DuckDBJob(query=delete_code, connection=self.connection)
+
+    def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
+        tables_query = f"""
+        SELECT table_name
+        FROM information_schema.tables
+        """
+        tables_result = self.connection.execute(tables_query).fetchdf()
+
+        table_stats = {}
+        for _, row in tables_result.iterrows():
+            table_name = row["table_name"]
+            stats_query = f"""
+            SELECT 
+                '{table_name}' AS table_name, 
+                COUNT(*) AS n_rows, 
+                COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes 
+            FROM pragma_storage_info('{dataset_name}.{table_name}')
+            """
+            stats_result = self.connection.execute(stats_query).fetchdf().iloc[0]
+            table_stats[TableRef(name=table_name)] = TableStats(
+                n_rows=stats_result["n_rows"],
+                n_bytes=stats_result["n_bytes"],
+                updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
+            )
+        return table_stats
+
+    def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:
+        query = f"""
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = '{dataset_name}'
+        """
+        result = self.connection.execute(query).fetchdf()
+        return {
+            scripts.TableRef(name=table_name): [
+                scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()
+            ]
+            for table_name, rows in result.groupby("table_name")
+        }

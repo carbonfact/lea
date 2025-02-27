@@ -4,6 +4,7 @@ import pathlib
 import re
 import textwrap
 
+import duckdb
 import jinja2
 import sqlglot
 from google.cloud import bigquery
@@ -165,3 +166,57 @@ class BigQueryDialect(SQLDialect):
             dataset_ref=bigquery.DatasetReference(project=project, dataset_id=table_ref.dataset),
             table_id=f"{'__'.join([*table_ref.schema, table_ref.name])}",
         )
+
+
+class DuckDBDialect(SQLDialect):
+    sqlglot_dialect = sqlglot.dialects.Dialects.DUCKDB
+
+    @staticmethod
+    def parse_table_ref(table_ref: str) -> TableRef:
+        """
+        Parses a DuckDB table reference string into a TableRef object.
+
+        >>> DuckDBDialect.parse_table_ref("my_schema.my_table")
+        TableRef(dataset=None, schema=('my_schema',), name='my_table', project=None)
+
+        >>> DuckDBDialect.parse_table_ref("my_table")
+        TableRef(dataset=None, schema=(), name='my_table', project=None)
+        """
+        parts = table_ref.split(".")
+        if len(parts) == 2:
+            schema, name = parts
+            return TableRef(dataset=None, schema=(schema,), name=name, project=None)
+        elif len(parts) == 1:
+            name = parts[0]
+            return TableRef(dataset=None, schema=(), name=name, project=None)
+        else:
+            raise ValueError(f"Invalid table reference: {table_ref}")
+
+    @staticmethod
+    def format_table_ref(table_ref: TableRef) -> str:
+        if table_ref.schema:
+            return f"{table_ref.schema[0]}.{table_ref.name}"
+        return table_ref.name
+
+    @staticmethod
+    def convert_table_ref_to_duckdb_table_reference(table_ref: TableRef) -> str:
+        return DuckDBDialect.format_table_ref(table_ref)
+
+    def make_column_test_unique(self, table_ref: TableRef, field_name: str) -> str:
+        table_ref_str = self.format_table_ref(table_ref)
+        return f"SELECT COUNT(*) FROM {table_ref_str} GROUP BY {field_name} HAVING COUNT(*) > 1"
+
+    def make_column_test_unique_by(self, table_ref: TableRef, field_name: str, by: str) -> str:
+        table_ref_str = self.format_table_ref(table_ref)
+        return (
+            f"SELECT COUNT(*) FROM {table_ref_str} GROUP BY {field_name}, {by} HAVING COUNT(*) > 1"
+        )
+
+    def make_column_test_no_nulls(self, table_ref: TableRef, field_name: str) -> str:
+        table_ref_str = self.format_table_ref(table_ref)
+        return f"SELECT COUNT(*) FROM {table_ref_str} WHERE {field_name} IS NULL"
+
+    def make_column_test_set(self, table_ref: TableRef, field_name: str, elements: set[str]) -> str:
+        table_ref_str = self.format_table_ref(table_ref)
+        elements_str = ", ".join(f"'{element}'" for element in elements)
+        return f"SELECT COUNT(*) FROM {table_ref_str} WHERE {field_name} NOT IN ({elements_str})"

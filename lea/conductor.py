@@ -13,7 +13,7 @@ import lea
 from lea import databases
 from lea.dag import DAGOfScripts
 from lea.databases import DatabaseClient, TableStats
-from lea.dialects import BigQueryDialect
+from lea.dialects import BigQueryDialect, DuckDBDialect
 from lea.session import Session
 from lea.table_ref import AUDIT_TABLE_SUFFIX, TableRef
 
@@ -35,6 +35,10 @@ class Conductor:
         if dataset_name is None:
             if self.warehouse == "bigquery":
                 dataset_name = os.environ.get("LEA_BQ_DATASET_NAME")
+
+            if self.warehouse == "duckdb":
+                duckdb_path = pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", ""))
+                dataset_name = duckdb_path.stem
         if dataset_name is None:
             raise ValueError("Dataset name could not be inferred")
         self.dataset_name = dataset_name
@@ -42,18 +46,28 @@ class Conductor:
         if project_name is None:
             if self.warehouse == "bigquery":
                 project_name = os.environ.get("LEA_BQ_PROJECT_ID")
+            if self.warehouse == "duckdb":
+                project_name = dataset_name
         if project_name is None:
             raise ValueError("Project name could not be inferred")
         self.project_name = project_name
 
         lea.log.info("📝 Reading scripts")
 
-        self.dag = DAGOfScripts.from_directory(
-            scripts_dir=self.scripts_dir,
-            sql_dialect=BigQueryDialect(),
-            dataset_name=self.dataset_name,
-            project_name=self.project_name,
-        )
+        if self.warehouse == "bigquery":
+            self.dag = DAGOfScripts.from_directory(
+                scripts_dir=self.scripts_dir,
+                sql_dialect=BigQueryDialect(),
+                dataset_name=self.dataset_name,
+                project_name=self.project_name,
+            )
+        if self.warehouse == "duckdb":
+            self.dag = DAGOfScripts.from_directory(
+                scripts_dir=self.scripts_dir,
+                sql_dialect=DuckDBDialect(),
+                dataset_name=self.dataset_name,
+                project_name=self.project_name,
+            )
         lea.log.info(f"{len(self.dag.scripts):,d} scripts found")
 
     def run(
@@ -188,7 +202,6 @@ class Conductor:
                 is not None
                 else None
             )
-
             return databases.BigQueryClient(
                 credentials=credentials,
                 location=os.environ["LEA_BQ_LOCATION"],
@@ -198,6 +211,12 @@ class Conductor:
                     credentials.project_id if credentials is not None else None,
                 ),
                 storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL"),
+                dry_run=dry_run,
+                print_mode=print_mode,
+            )
+        if self.warehouse.lower() == "duckdb":
+            return databases.DuckDBClient(
+                database=os.environ.get("LEA_DUCKDB_PATH", ""),
                 dry_run=dry_run,
                 print_mode=print_mode,
             )
