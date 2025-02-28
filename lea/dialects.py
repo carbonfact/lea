@@ -182,6 +182,10 @@ class DuckDBDialect(SQLDialect):
         >>> DuckDBDialect.parse_table_ref("my_table")
         TableRef(dataset=None, schema=(), name='my_table', project=None)
         """
+        # as Duckdb can read csv files, detect them
+        # if table_ref.endswith(".csv"):
+        if ".csv" in table_ref:
+            return TableRef(dataset=None, schema=(), name=table_ref, project=None)
         parts = table_ref.split(".")
         if len(parts) == 2:
             schema, name = parts

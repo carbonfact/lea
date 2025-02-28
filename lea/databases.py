@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import typing
+from pathlib import Path
 
 import duckdb
 import pandas as pd
@@ -10,7 +11,8 @@ import rich
 from google.cloud import bigquery
 
 from lea import scripts
-from lea.dialects import BigQueryDialect
+from lea.dialects import BigQueryDialect, DuckDBDialect
+from lea.table_ref import TableRef
 
 
 class DatabaseJob(typing.Protocol):
@@ -332,10 +334,15 @@ class BigQueryClient:
 class DuckDBJob:
     query: str
     connection: duckdb.DuckDBPyConnection
+    destination: str | None = None
+
+    def execute(self):
+        self.connection.execute(self.query)
 
     @property
     def is_done(self) -> bool:
-        return True  # DuckDB queries are synchronous
+        self.execute()
+        return True
 
     def stop(self):
         pass  # No support for stopping queries in DuckDB
@@ -354,23 +361,53 @@ class DuckDBJob:
 
     @property
     def statistics(self) -> TableStats | None:
-        return None  # No statistics available for DuckDB
+        # query = f"""
+        # SELECT COUNT(*) AS n_rows, COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes
+        # FROM pragma_storage_info('{self.destination}')
+        # """
+        # table = self.connection.execute(query).fetchdf().iloc[0]
+        # return TableStats(
+        #     n_rows=table["n_rows"],
+        #     n_bytes=table["n_bytes"],
+        #     updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
+        # )
+        return None  # DuckDB does not provide table statistics
 
 
 class DuckDBClient:
-    def __init__(self, database: str, dry_run: bool = False, print_mode: bool = False):
-        self.connection = duckdb.connect(database)
+    def __init__(self, database: Path, dry_run: bool = False, print_mode: bool = False):
+        self.database = database
+        if self.database == "":
+            raise ValueError("Duckdb path not configured")
+        self.dry_run = dry_run
+        self.print_mode = print_mode
+
+    @property
+    def connection(self) -> duckdb.DuckDBPyConnection:
+        return duckdb.connect(database=str(self.database))
+
+    @property
+    def dataset(self) -> str:
+        return self.database.stem
 
     def create_dataset(self, dataset_name: str):
-        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {dataset_name}")
-
-    def delete_dataset(self, dataset_name: str):
-        self.connection.execute(f"DROP SCHEMA IF EXISTS {dataset_name} CASCADE")
+        self.database = self.database.with_stem(dataset_name)
 
     def materialize_script(self, script: scripts.Script) -> DuckDBJob:
         if isinstance(script, scripts.SQLScript):
-            return DuckDBJob(query=script.code, connection=self.connection)
+            return self.materialize_sql_script(sql_script=script)
         raise ValueError("Unsupported script type")
+
+    def materialize_sql_script(self, sql_script: scripts.SQLScript) -> DuckDBJob:
+        destination = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=sql_script.table_ref
+        )
+        materialize_code = f"""
+        CREATE SCHEMA IF NOT EXISTS {sql_script.table_ref.schema[0]};
+        CREATE OR REPLACE TABLE {destination} AS ({sql_script.code})
+        """
+        job = DuckDBJob(query=materialize_code, connection=self.connection, destination=destination)
+        return job
 
     def query_script(self, script: scripts.Script) -> DuckDBJob:
         if isinstance(script, scripts.SQLScript):
@@ -380,10 +417,15 @@ class DuckDBClient:
     def clone_table(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
     ) -> DuckDBJob:
+        destination = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=to_table_ref
+        )
+        source = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(table_ref=from_table_ref)
         clone_code = f"""
-        CREATE TABLE {to_table_ref} AS SELECT * FROM {from_table_ref}
+        DROP TABLE IF EXISTS {destination};
+        CREATE TABLE {destination} AS SELECT * FROM {source}
         """
-        return DuckDBJob(query=clone_code, connection=self.connection)
+        return DuckDBJob(query=clone_code, connection=self.connection, destination=destination)
 
     def delete_and_insert(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
@@ -395,12 +437,15 @@ class DuckDBClient:
         return DuckDBJob(query=delete_and_insert_code, connection=self.connection)
 
     def delete_table(self, table_ref: scripts.TableRef) -> DuckDBJob:
+        print(table_ref)
         delete_code = f"DROP TABLE IF EXISTS {table_ref}"
-        return DuckDBJob(query=delete_code, connection=self.connection)
+        job = DuckDBJob(query=delete_code, connection=self.connection)
+        job.execute()
+        return job
 
     def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
         tables_query = f"""
-        SELECT table_name
+        SELECT table_name, table_schema
         FROM information_schema.tables
         """
         tables_result = self.connection.execute(tables_query).fetchdf()
@@ -408,15 +453,18 @@ class DuckDBClient:
         table_stats = {}
         for _, row in tables_result.iterrows():
             table_name = row["table_name"]
+            table_schema = row["table_schema"]
             stats_query = f"""
             SELECT 
                 '{table_name}' AS table_name, 
                 COUNT(*) AS n_rows, 
                 COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes 
-            FROM pragma_storage_info('{dataset_name}.{table_name}')
+            FROM pragma_storage_info('{table_schema}.{table_name}')
             """
             stats_result = self.connection.execute(stats_query).fetchdf().iloc[0]
-            table_stats[TableRef(name=table_name)] = TableStats(
+            table_stats[
+                TableRef(name=table_name, dataset=self.dataset, schema=table_schema, project=None)
+            ] = TableStats(
                 n_rows=stats_result["n_rows"],
                 n_bytes=stats_result["n_bytes"],
                 updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
