@@ -335,13 +335,17 @@ class DuckDBJob:
     query: str
     connection: duckdb.DuckDBPyConnection
     destination: str | None = None
+    exception: str | None = None
 
     def execute(self):
         self.connection.execute(self.query)
 
     @property
     def is_done(self) -> bool:
+        # try:
         self.execute()
+        # except Exception as e:
+        #     self.exception = repr(e)
         return True
 
     def stop(self):
@@ -352,26 +356,22 @@ class DuckDBJob:
         return self.connection.execute(self.query).fetchdf()
 
     @property
-    def exception(self) -> Exception:
-        return None  # DuckDB raises exceptions directly
-
-    @property
     def billed_dollars(self) -> float:
         return 0.0  # DuckDB is free to use
 
     @property
     def statistics(self) -> TableStats | None:
-        # query = f"""
-        # SELECT COUNT(*) AS n_rows, COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes
-        # FROM pragma_storage_info('{self.destination}')
-        # """
-        # table = self.connection.execute(query).fetchdf().iloc[0]
-        # return TableStats(
-        #     n_rows=table["n_rows"],
-        #     n_bytes=table["n_bytes"],
-        #     updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
-        # )
-        return None  # DuckDB does not provide table statistics
+        query = f"""
+        SELECT COUNT(*) AS n_rows, COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes
+        FROM pragma_storage_info('{self.destination}')
+        """
+        table = self.connection.execute(query).fetchdf().iloc[0]
+        return TableStats(
+            n_rows=table["n_rows"],
+            n_bytes=table["n_bytes"],
+            updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
+        )
+        # return None  # DuckDB does not provide table statistics
 
 
 class DuckDBClient:
@@ -463,7 +463,7 @@ class DuckDBClient:
             """
             stats_result = self.connection.execute(stats_query).fetchdf().iloc[0]
             table_stats[
-                TableRef(name=table_name, dataset=self.dataset, schema=table_schema, project=None)
+                TableRef(name=table_name, dataset=self.dataset, schema=(table_schema), project=None)
             ] = TableStats(
                 n_rows=stats_result["n_rows"],
                 n_bytes=stats_result["n_bytes"],

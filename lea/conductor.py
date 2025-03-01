@@ -313,6 +313,14 @@ def promote_audit_tables(session: Session):
 
 
 def delete_audit_tables(session: Session):
+    print("existing_audit_tables", session.existing_audit_tables)
+    print(
+        "selected_table_refs",
+        {
+            session.add_write_context_to_table_ref(table_ref)
+            for table_ref in session.selected_table_refs
+        },
+    )
     table_refs_to_delete = set(session.existing_audit_tables) | {
         session.add_write_context_to_table_ref(table_ref)
         for table_ref in session.selected_table_refs
@@ -329,15 +337,19 @@ def delete_audit_tables(session: Session):
 
 
 def delete_orphan_tables(session: Session):
-    tables_with_script = {
+    print("existing_tables", set(session.existing_tables))
+    print(
+        "tables_with_script",
+        {
+            session.add_write_context_to_table_ref(table_ref).remove_audit_suffix()
+            for table_ref in session.scripts
+        },
+    )
+    table_refs_to_delete = set(session.existing_tables) - {
         session.add_write_context_to_table_ref(table_ref).remove_audit_suffix()
         for table_ref in session.scripts
     }
-    # print("tables with script", tables_with_script)
-    # print("existing tables", session.existing_tables)
-    table_refs_to_delete = set(session.existing_tables) - tables_with_script
-
-    print("table_refs_to_delete", table_refs_to_delete)
+    print(table_refs_to_delete)
     if table_refs_to_delete:
         lea.log.info("🧹 Deleting orphan tables")
         delete_table_refs(

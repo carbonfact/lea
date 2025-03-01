@@ -184,8 +184,8 @@ class DuckDBDialect(SQLDialect):
         """
         # as Duckdb can read csv files, detect them
         # if table_ref.endswith(".csv"):
-        if ".csv" in table_ref:
-            return TableRef(dataset=None, schema=(), name=table_ref, project=None)
+        # if ".csv" in table_ref:
+        #     return TableRef(dataset=None, schema=(), name=table_ref, project=None)
         parts = table_ref.split(".")
         if len(parts) == 2:
             schema, name = parts
@@ -198,7 +198,7 @@ class DuckDBDialect(SQLDialect):
 
     @staticmethod
     def format_table_ref(table_ref: TableRef) -> str:
-        if table_ref.schema:
+        if len(table_ref.schema) > 0:
             return f"{table_ref.schema[0]}.{table_ref.name}"
         return table_ref.name
 
