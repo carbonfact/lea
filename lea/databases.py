@@ -362,13 +362,23 @@ class DuckDBJob:
     @property
     def statistics(self) -> TableStats | None:
         query = f"""
-        SELECT COUNT(*) AS n_rows, COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes
-        FROM pragma_storage_info('{self.destination}')
+        WITH number_of_rows AS (
+            SELECT COUNT(*) AS n_rows
+            FROM {self.destination}
+        ),
+        table_size AS (
+            SELECT COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes
+            FROM pragma_storage_info('{self.destination}')
+        )
+        SELECT number_of_rows.n_rows, table_size.n_bytes
+        FROM number_of_rows, table_size
         """
+        print(query)
         table = self.connection.execute(query).fetchdf().iloc[0]
+        print(table)
         return TableStats(
-            n_rows=table["n_rows"],
-            n_bytes=table["n_bytes"],
+            n_rows=int(table["n_rows"]),
+            n_bytes=int(table["n_bytes"]),
             updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
         )
         # return None  # DuckDB does not provide table statistics
@@ -437,8 +447,10 @@ class DuckDBClient:
         return DuckDBJob(query=delete_and_insert_code, connection=self.connection)
 
     def delete_table(self, table_ref: scripts.TableRef) -> DuckDBJob:
-        print(table_ref)
-        delete_code = f"DROP TABLE IF EXISTS {table_ref}"
+        table_reference = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=table_ref
+        )
+        delete_code = f"DROP TABLE IF EXISTS {table_reference}"
         job = DuckDBJob(query=delete_code, connection=self.connection)
         job.execute()
         return job
@@ -465,10 +477,12 @@ class DuckDBClient:
             table_stats[
                 TableRef(name=table_name, dataset=self.dataset, schema=(table_schema), project=None)
             ] = TableStats(
-                n_rows=stats_result["n_rows"],
-                n_bytes=stats_result["n_bytes"],
+                n_rows=int(stats_result["n_rows"]),
+                n_bytes=int(stats_result["n_bytes"]),
                 updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
             )
+            # for table_elem, table_stat_elem in table_stats.items():
+            #     print(table_stat_elem)
         return table_stats
 
     def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:

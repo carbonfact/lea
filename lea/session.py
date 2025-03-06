@@ -202,7 +202,9 @@ class Session:
                 msg = f"{job.status} {job.table_ref}"
                 job.ended_at = dt.datetime.now()
                 duration_str = str(job.ended_at - job.started_at).split(".")[0]
-                msg += f", took {duration_str}, cost ${job.database_job.billed_dollars:.2f}"
+                msg += f", took {duration_str}"
+                if int(job.database_job.billed_dollars) > 0:
+                    msg += f", cost ${job.database_job.billed_dollars:.2f}"
                 if not job.is_test:
                     if (stats := job.database_job.statistics) is not None:
                         msg += f", contains {stats.n_rows:,d} rows"
