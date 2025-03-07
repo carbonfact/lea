@@ -94,8 +94,8 @@ LEA_BQ_COMPUTE_PROJECT_ID=carbonfact-dwh-compute
 LEA_BQ_SERVICE_ACCOUNT=<JSON dump of the service account file>  # not a path ⚠️
 # Defaults to https://www.googleapis.com/auth/bigquery
 LEA_BQ_SCOPES=https://www.googleapis.com/auth/bigquery,https://www.googleapis.com/auth/drive
-# LOGICAL or PHYSICAL, defaults to LOGICAL
-LEA_BQ_STORAGE_BILLING_MODEL=LOGICAL
+# LOGICAL or PHYSICAL, defaults to PHYSICAL
+LEA_BQ_STORAGE_BILLING_MODEL=PHYSICAL
 ```
 
 ## Usage

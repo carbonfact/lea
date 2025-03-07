@@ -126,7 +126,7 @@ class BigQueryClient:
         location: str,
         write_project_id: str,
         compute_project_id: str,
-        storage_billing_model: str = "LOGICAL",
+        storage_billing_model: str = "PHYSICAL",
         dry_run: bool = False,
         print_mode: bool = False,
     ):
