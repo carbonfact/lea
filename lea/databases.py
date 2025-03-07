@@ -126,12 +126,14 @@ class BigQueryClient:
         location: str,
         write_project_id: str,
         compute_project_id: str,
+        storage_billing_model: str = "PHYSICAL",
         dry_run: bool = False,
         print_mode: bool = False,
     ):
         self.credentials = credentials
         self.write_project_id = write_project_id
         self.compute_project_id = compute_project_id
+        self.storage_billing_model = storage_billing_model
         self.location = location
         self.client = bigquery.Client(
             project=self.compute_project_id,
@@ -147,6 +149,7 @@ class BigQueryClient:
         )
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
+        dataset.storage_billing_model = self.storage_billing_model
         dataset = self.client.create_dataset(dataset, exists_ok=True)
 
     def delete_dataset(self, dataset_name: str):
