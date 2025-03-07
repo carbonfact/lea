@@ -9,8 +9,7 @@ import lea
 
 
 @click.group()
-def app():
-    ...
+def app(): ...
 
 
 @app.command()
@@ -27,17 +26,7 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-def run(
-    select,
-    unselect,
-    dataset,
-    scripts,
-    incremental,
-    dry,
-    print,
-    production,
-    restart,
-):
+def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart):
     if select in {"", "Ø"}:
         select = []
 
