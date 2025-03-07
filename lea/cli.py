@@ -32,7 +32,18 @@ def app():
     type=click.Choice(["LOGICAL", "PHYSICAL"], case_sensitive=False),
     help="BigQuery storage billing mode for created datasets.",
 )
-def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart, storage_billing_mode):
+def run(
+    select,
+    unselect,
+    dataset,
+    scripts,
+    incremental,
+    dry,
+    print,
+    production,
+    restart,
+    storage_billing_mode,
+):
     if select in {"", "Ø"}:
         select = []
 
@@ -54,7 +65,7 @@ def run(select, unselect, dataset, scripts, incremental, dry, print, production,
     }
     if storage_billing_mode is not None:
         conductor_params["storage_billing_mode"] = storage_billing_mode
-    
+
     conductor = lea.Conductor(**conductor_params)
     conductor.run(
         select=select,
