@@ -27,7 +27,12 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart):
+@click.option(
+    "--storage-billing-mode",
+    type=click.Choice(["LOGICAL", "PHYSICAL"], case_sensitive=False),
+    help="BigQuery storage billing mode for created datasets.",
+)
+def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart, storage_billing_mode):
     if select in {"", "Ø"}:
         select = []
 
@@ -43,7 +48,14 @@ def run(select, unselect, dataset, scripts, incremental, dry, print, production,
     incremental_field_name = next(iter(incremental_field_values), None)
     incremental_field_values = incremental_field_values[incremental_field_name]
 
-    conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
+    conductor_params = {
+        "scripts_dir": scripts,
+        "dataset_name": dataset,
+    }
+    if storage_billing_mode is not None:
+        conductor_params["storage_billing_mode"] = storage_billing_mode
+    
+    conductor = lea.Conductor(**conductor_params)
     conductor.run(
         select=select,
         unselect=unselect,

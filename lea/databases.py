@@ -38,7 +38,7 @@ class DatabaseJob(typing.Protocol):
 
 
 class DatabaseClient(typing.Protocol):
-    def create_dataset(self, dataset_name: str):
+    def create_dataset(self, dataset_name: str, storage_billing_mode: str = "LOGICAL"):
         pass
 
     def delete_dataset(self, dataset_name: str):
@@ -141,12 +141,13 @@ class BigQueryClient:
         self.dry_run = dry_run
         self.print_mode = print_mode
 
-    def create_dataset(self, dataset_name: str):
+    def create_dataset(self, dataset_name: str, storage_billing_mode: str = "LOGICAL"):
         dataset_ref = bigquery.DatasetReference(
             project=self.write_project_id, dataset_id=dataset_name
         )
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
+        dataset.storage_billing_model = storage_billing_mode
         dataset = self.client.create_dataset(dataset, exists_ok=True)
 
     def delete_dataset(self, dataset_name: str):
