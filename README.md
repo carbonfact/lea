@@ -24,30 +24,24 @@
 </a>
 </p>
 
-lea is a minimalist alternative to tools like [dbt](https://www.getdbt.com/), [SQLMesh](https://sqlmesh.com/), and [Google's Dataform](https://cloud.google.com/dataform).
+lea is a minimalist alternative to SQL orchestrators like [dbt](https://www.getdbt.com/) and [SQLMesh](https://sqlmesh.com/).
 
-lea aims to be simple and opinionated, and yet offers the possibility to be extended. We happily use it every day at [Carbonfact](https://www.carbonfact.com/) to manage our data warehouse. We will actively maintain it and add features, while welcoming contributions.
-
-Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack quack).
+lea aims to be simple and provides sane defaults. We happily use it every day at [Carbonfact](https://www.carbonfact.com/) to manage our BigQuery data warehouse. We will actively maintain it and add features, while welcoming contributions.
 
 - [Examples](#examples)
-- [Teaser](#teaser)
 - [Installation](#installation)
+- [Configuration](#configuration)
+  - [DuckDB](#duckdb)
+  - [BigQuery](#bigquery)
 - [Usage](#usage)
-  - [Configuration](#configuration)
   - [`lea run`](#lea-run)
-    - [File structure](#file-structure)
-    - [Development vs. production](#development-vs-production)
-    - [Select which views to run](#select-which-views-to-run)
-    - [Write-Audit-Publish (WAP)](#write-audit-publish-wap)
-    - [Workflow tips](#workflow-tips)
-  - [`lea test`](#lea-test)
-  - [`lea docs`](#lea-docs)
-  - [`lea diff`](#lea-diff)
-  - [`lea teardown`](#lea-teardown)
-  - [Jinja templating](#jinja-templating)
-  - [Python scripts](#python-scripts)
-  - [Dependency freezing](#dependency-freezing)
+  - [File structure](#file-structure)
+    - [Jinja templating](#jinja-templating)
+  - [Development vs. production](#development-vs-production)
+  - [Selecting scripts](#selecting-scripts)
+  - [Write-Audit-Publish (WAP)](#write-audit-publish-wap)
+  - [Testing while running](#testing-while-running)
+  - [Skipping unmodified scripts](#skipping-unmodified-scripts)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -57,70 +51,70 @@ Right now lea is compatible with BigQuery (used at Carbonfact) and DuckDB (quack
 - [Compare development to production 👯‍♀️](examples/diff/)
 - [Using MotherDuck 🦆](examples/motherduck/)
 
-## Teaser
-
-<p align="center">
-  <img width="85%" src="https://github.com/carbonfact/lea/assets/8095957/77e3fdb8-2ea6-4771-b32a-8eea8aa0a7aa" />
-</p>
-
 ## Installation
 
 Use one of the following commands, depending on which warehouse you wish to use:
 
 ```sh
-pip install lea-cli[duckdb]
-pip install lea-cli[bigquery]
+pip install lea-cli
 ```
 
 This installs the `lea` command. It also makes the `lea` Python library available.
 
-## Usage
+## Configuration
 
-### Configuration
-
-lea is configured by setting environment variables. The following variables are available:
+lea is configured via environment variables:
 
 ```sh
 # General configuration
 LEA_USERNAME=max
+```
 
-# DuckDB 🦆
+### DuckDB
+
+```sh
 LEA_WAREHOUSE=duckdb
 LEA_DUCKDB_PATH=duckdb.db
+```
 
-# BigQuery 🦏
+### BigQuery
+
+```sh
 LEA_WAREHOUSE=bigquery
 LEA_BQ_LOCATION=EU
 LEA_BQ_PROJECT_ID=carbonfact-dwh
 LEA_BQ_DATASET_NAME=kaya
+# Not necessary if you're logged in with the gcloud CLI
 LEA_BQ_SERVICE_ACCOUNT=<JSON dump of the service account file>  # not a path ⚠️
 LEA_BQ_SCOPES=https://www.googleapis.com/auth/bigquery,https://www.googleapis.com/auth/drive
 ```
 
+## Usage
+
 These parameters can be provided in an `.env` file, or directly in the shell. Each command also has an `--env` flag to provide a path to an `.env` file.
-
-The `prepare` command has to be run once to create whatever needs creating. For instance, when using BigQuery, a dataset has to be created:
-
-```sh
-lea prepare
-```
 
 ### `lea run`
 
-This is the main command. It runs the queries in the `views` directory.
+This is the main command. It runs SQL queries stored in the `scripts` directory:
 
 ```sh
 lea run
 ```
 
-The queries are run concurrently. They are organized in a DAG, which is traversed in a topological order. The DAG's structure is determined [automatically](https://maxhalford.github.io/blog/dbt-ref-rant/) by analyzing the dependency between queries.
+You can indicate the directory where the scripts are stored:
 
-#### File structure
+```sh
+lea run --scripts /path/to/scripts
+```
 
-Each query is expected to be placed under a schema, represented by a directory. Schemas can have sub-schemas. For instance, the following file structure is valid:
+The scripts are run concurrently. They are organized in a DAG, which is traversed in a topological order. The DAG's structure is determined [automatically](https://maxhalford.github.io/blog/dbt-ref-rant/) by analyzing the dependency between queries.
+
+### File structure
+
+Each query is expected to be placed under a schema, represented by a directory. Schemas can have sub-schemas. Here's an example:
 
 ```
-views/
+scripts/
     schema_1/
         table_1.sql
         table_2.sql
@@ -132,29 +126,15 @@ views/
             table_6.sql
 ```
 
-Each view will be named according to its location, following the warehouse convention:
+Each script is materialized into a table. The table is named according to the script's name, following the warehouse convention.
 
-| Warehouse | Dataset   | Username | Schema   | Table   | Name                                         |
-| --------- | --------- | -------- | -------- | ------- | -------------------------------------------- |
-| DuckDB    | `dataset` | `user`   | `schema` | `table` | `schema.table` (stored in `dataset_user.db`) |
-| BigQuery  | `dataset` | `user`   | `schema` | `table` | `dataset_user.schema__table`                 |
+#### Jinja templating
 
-The convention in lea to reference a table in a sub-schema is to use a double underscore `__`:
+SQL queries can be templated with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/). A `.sql.jinja` extension is necessary for lea to recognise them.
 
-| Warehouse | Dataset   | Username | Schema   | Sub-schema | Table   | Name                                              |
-| --------- | --------- | -------- | -------- | ---------- | ------- | ------------------------------------------------- |
-| DuckDB    | `dataset` | `user`   | `schema` | `sub`      | `table` | `schema.sub__table` (stored in `dataset_user.db`) |
-| BigQuery  | `dataset` | `user`   | `schema` | `sub`      | `table` | `dataset_user.schema__sub__table`                 |
+You have access to an `env` variable within the template context, which is simply an access point to `os.environ`.
 
-Schemas are expected to be placed under a `views` directory. This can be changed by providing an argument to the `run` command:
-
-```sh
-lea run /path/to/views
-```
-
-This argument also applies to other commands in lea.
-
-#### Development vs. production
+### Development vs. production
 
 By default, lea appends a `_<user>` suffix to schema names. This way you can have a development schema and a production schema. Use the `--production` flag to disable this behavior.
 
@@ -164,15 +144,15 @@ lea run --production
 
 The `<user>` is determined automatically from the [login name](https://docs.python.org/3/library/getpass.html#getpass.getuser). It can be overriden by setting the `LEA_USERNAME` environment variable.
 
-#### Select which views to run
+### Selecting scripts
 
-A single view can be run:
+A single script can be run:
 
 ```sh
 lea run --select core.users
 ```
 
-Several views can be run:
+Several scripts can be run:
 
 ```sh
 lea run --select core.users --select core.orders
@@ -186,7 +166,7 @@ lea run --select +core.users   # users and everything it depends on
 lea run --select +core.users+  # users and all its dependencies
 ```
 
-You can select all views in a schema:
+You can select all scripts in a schema:
 
 ```sh
 lea run --select core/
@@ -217,54 +197,26 @@ Combinations are possible:
 lea run --select core.users+ --select +core.orders
 ```
 
-There's an Easter egg that allows selecting views that have been commited or modified in the current Git branch:
+There's an Easter egg that allows choosing scripts that have been committed or modified in the current Git branch:
 
 ```sh
 lea run --select git
 lea run --select git+  # includes all descendants
 ```
 
-This becomes very handy when using lea in continuous integration. See [dependency freezing](#dependency-freezing) for more information.
+This becomes very handy when using lea in continuous integration.
 
-#### Write-Audit-Publish (WAP)
+### Write-Audit-Publish (WAP)
 
 [WAP](https://lakefs.io/blog/data-engineering-patterns-write-audit-publish/) is a data engineering pattern that ensures data consistency and reliability. It's the data engineering equivalent of [blue-green deployment](https://en.wikipedia.org/wiki/Blue%E2%80%93green_deployment) in the software engineering world.
 
-By default, when you run a refresh, the tables gets progressively overwritten. This isn't necessarily a good idea. Let's say you refresh table A. Then you refresh table B that depends on A. If the refresh of B fails, you're left with a corrupted state. This is what the WAP pattern is trying to solve.
+lea follows the WAP pattern by default. When you execute `lea run`, it actually creates temporary tables that have an `___audit` suffix. The latter tables are promoted to replace the existing tables, once they have all been materialized without errors.
 
-With lea, the WAP patterns works by creating temporary tables in the same schema as the original tables. The temporary tables are then populated with the new data. Once the temporary tables are ready, the original tables are swapped with the temporary tables. If the refresh fails, the switch doesn't happen, and the original tables are untouched.
+This is a good default behavior. Let's say you refresh table `foo`. Then you refresh table `bar` that depends on `foo`. If the refresh of `bar` fails, you're left with a corrupt state. This is what the WAP pattern solves. In WAP mode, when you run `foo`'s script, it creates a `foo___audit` table. If `bar`'s script fails, then the run stops and `foo` is not modified.
 
-```sh
-lea run --wap
-```
+### Testing while running
 
-#### Workflow tips
-
-The `lea run` command creates a `.cache.pkl` file during the run. This file is a checkpoint containing the state of the DAG. It is used to determine which queries to run next time. That is, if some queries have failed, only those queries and their descendants will be run again next time. The `.cache.pkl` is deleted once all queries have succeeded.
-
-This checkpointing logic can be disabled with the `--fresh` flag.
-
-```sh
-lea run --fresh
-```
-
-The `--fail-fast` flag can be used to immediately stop if a query fails:
-
-```sh
-lea run --fail-fast
-```
-
-For debugging purposes, it is possible to print out a query and copy it to the clipboard:
-
-```sh
-lea run --select core.users --print | pbcopy
-```
-
-### `lea test`
-
-```sh
-lea test
-```
+There is not `lea test` command. Tests are run together with the regular script when `lea run` is executed. The run stops whenever a test fails.
 
 There are two types of tests:
 
@@ -291,115 +243,42 @@ SELECT
 FROM core.users
 ```
 
-As with the `run` command, there is a `--production` flag to disable the `<user>` suffix, and therefore target production data.
-
-You can select a subset views, which will thus run the tests that depend on them:
+You can run a single test via the `--select` flag:
 
 ```sh
-lea test --select-views core.users
+lea run --select tests.check_n_users
 ```
 
-### `lea docs`
-
-It is possible to generate documentation for the queries. This is done by inspecting the schema of the generated views and extracting the comments in the queries.
+Or even run all the tests, as so:
 
 ```sh
-lea docs
-    --output-dir docs  # where to put the generated files
+lea run --select tests/
 ```
 
-This will also create a Mermaid diagram in the `docs` directory. This diagram is a visualization of the DAG. See [here](https://github.com/carbonfact/kaya/tree/main/lea/examples/jaffle_shop/docs) for an example.
-
-### `lea diff`
+You may decide to run all scripts without executing tests, which is obviously not advisable:
 
 ```sh
-lea diff
+lea run --unselect tests/
 ```
 
-This prints out a summary of the difference between development and production. Here is an example output:
+### Skipping unmodified scripts
 
-```diff
-  core__users
-+ 42 rows
-+ age
-+ email
+lea doesn't run scripts that have been modified before the last time the associated table was materialized. For instance:
 
-- core__coupons
-- 129 rows
-- coupon_id
-- amount
-- user_id
-- has_aggregation_key
+1. You add a script named `core/expenses.sql`
+2. You execute `lea run --select core.expenses`
+3. `core__expenses` is materialized in your data warehouse
+4. You execute `lea run`
+5. The `core/expenses.sql` script is skipped because it was modified before `core__expenses` was last materialized
+6. You edit `core/expenses.sql`
+7. You execute `lea run`
+8. The `core/expenses.sql` script is run because it was modified after `core__expenses` was last materialized
 
-  core__orders
-- discount
-+ supplier
-
-  core__sales
-+ 100 rows
-```
-
-This is handy in pull requests. For instance, at Carbonfact, we have a dataset for each pull request. We compare it to the production dataset and post the diff as a comment in the pull request. The diff is updated every time the pull request is updated. Check out [this example](examples/diff) for more information.
-
-### `lea teardown`
+You can disable this default behavior to guarantee each script runs:
 
 ```sh
-lea teardown
+lea run --restart
 ```
-
-This deletes the schema created by `lea prepare`. This is handy during continuous integration. For example, you might create a temporary schema in a branch. You would typically want to delete it after testing is finished and/or when the branch is merged.
-
-### Jinja templating
-
-SQL queries can be templated with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/). A `.sql.jinja` extension is necessary for lea to recognise them.
-
-You have access to an `env` variable within the template context, which is simply an access point to `os.environ`.
-
-### Python scripts
-
-You can write views with Python scripts. The only requirement is that the script contains a dataframe with a pandas DataFrame with the same name as the script. For instance, `users.py` should contain a `users` variable.
-
-```python
-import pandas as pd
-
-users = pd.DataFrame(
-    [
-        {"id": 1, "name": "Max"},
-        {"id": 2, "name": "Angie"},
-    ]
-)
-```
-
-### Dependency freezing
-
-The `lea run` command can be used to only refresh a subset of views. Let's say we have this DAG:
-
-```
-fee -> fi -> fo -> fum
-```
-
-Assuming `LEA_USERNAME=max`, running `lea run --select fo+` will
-
-1. Execute `fo` and materialize it to `fo_max`.
-2. Execute `fum` and materialize it to `fum_max`.
-
-This only works if `fee_max` and `fi_max` already exist. This might be the case if you've run a full refresh before. But if you're running a first refresh, then `fee_max` and `fi_max` won't exist! This is where the `freeze-unselected` flag comes into play:
-
-```sh
-lea run --select fo+ --freeze-unselected
-```
-
-This means the main `fee` and `fi` tables will be used instead of `fee_max` and `fi_max`.
-
-Dependency freezing is particularly useful when using lea in a CI/CD context. You can run the following command in a pull request:
-
-```sh
-lea run --select git+ --freeze-unselected
-```
-
-This will only run the modified views and their descendants. The dependencies of these modified will be taken from production. This is akin to dbt't [defer](https://docs.getdbt.com/reference/node-selection/defer) command, but without the need for managing artifacts.
-
-The added benefit is that you are guaranteed to do a comparison with the same base tables when running [`lea diff`](#lea-diff). Check out [this](https://maxhalford.github.io/blog/efficient-data-transformation/) article to learn more.
 
 ## Contributing
 
