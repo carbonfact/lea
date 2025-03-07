@@ -216,7 +216,7 @@ This is a good default behavior. Let's say you refresh table `foo`. Then you ref
 
 ### Testing while running
 
-There is not `lea test` command. Tests are run together with the regular script when `lea run` is executed. The run stops whenever a test fails.
+There is no `lea test` command. Tests are run together with the regular script when `lea run` is executed. The run stops whenever a test fails.
 
 There are two types of tests:
 
