@@ -9,15 +9,14 @@ import lea
 
 
 @click.group()
-def app():
-    ...
+def app(): ...
 
 
 @app.command()
 @click.option("--select", "-m", multiple=True, default=["*"], help="Scripts to materialize.")
 @click.option("--unselect", "-m", multiple=True, default=[], help="Scripts to unselect.")
 @click.option("--dataset", default=None, help="Name of the base dataset.")
-@click.option("--scripts", default="views", help="Directory where the scripts are located.")
+@click.option("--scripts", default="scripts", help="Directory where the scripts are located.")
 @click.option(
     "--incremental", nargs=2, type=str, multiple=True, help="Incremental field name and value."
 )
