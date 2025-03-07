@@ -20,11 +20,7 @@ from lea.table_ref import AUDIT_TABLE_SUFFIX, TableRef
 
 class Conductor:
     def __init__(
-        self,
-        scripts_dir: str,
-        dataset_name: str | None = None,
-        project_name: str | None = None,
-        storage_billing_mode: str = "LOGICAL",
+        self, scripts_dir: str, dataset_name: str | None = None, project_name: str | None = None
     ):
         # Load environment variables from .env file
         # TODO: is is Pythonic to do this here?
@@ -49,8 +45,6 @@ class Conductor:
         if project_name is None:
             raise ValueError("Project name could not be inferred")
         self.project_name = project_name
-
-        self.storage_billing_mode = storage_billing_mode
 
         lea.log.info("📝 Reading scripts")
 
@@ -120,9 +114,7 @@ class Conductor:
         # We need a dataset to materialize the scripts. If we're in production mode, we use the
         # base dataset. If we're in user mode, we use a dataset named after the user.
         write_dataset = self.dataset_name if production else self.name_user_dataset()
-        database_client.create_dataset(
-            write_dataset, storage_billing_mode=self.storage_billing_mode
-        )
+        database_client.create_dataset(write_dataset)
 
         # When the scripts run, they are materialized into side-tables which we call "audit"
         # tables. When a run stops because of an error, the audit tables are left behind. If we
@@ -205,6 +197,7 @@ class Conductor:
                     "LEA_BQ_COMPUTE_PROJECT_ID",
                     credentials.project_id if credentials is not None else None,
                 ),
+                storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL"),
                 dry_run=dry_run,
                 print_mode=print_mode,
             )

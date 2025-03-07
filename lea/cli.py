@@ -9,8 +9,7 @@ import lea
 
 
 @click.group()
-def app():
-    ...
+def app(): ...
 
 
 @app.command()
@@ -27,11 +26,6 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-@click.option(
-    "--storage-billing-mode",
-    type=click.Choice(["LOGICAL", "PHYSICAL"], case_sensitive=False),
-    help="BigQuery storage billing mode for created datasets.",
-)
 def run(
     select,
     unselect,
@@ -42,7 +36,6 @@ def run(
     print,
     production,
     restart,
-    storage_billing_mode,
 ):
     if select in {"", "Ø"}:
         select = []
@@ -59,14 +52,7 @@ def run(
     incremental_field_name = next(iter(incremental_field_values), None)
     incremental_field_values = incremental_field_values[incremental_field_name]
 
-    conductor_params = {
-        "scripts_dir": scripts,
-        "dataset_name": dataset,
-    }
-    if storage_billing_mode is not None:
-        conductor_params["storage_billing_mode"] = storage_billing_mode
-
-    conductor = lea.Conductor(**conductor_params)
+    conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
     conductor.run(
         select=select,
         unselect=unselect,

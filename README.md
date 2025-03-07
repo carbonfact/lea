@@ -80,13 +80,22 @@ LEA_DUCKDB_PATH=duckdb.db
 ### BigQuery
 
 ```sh
+# Required
 LEA_WAREHOUSE=bigquery
+# Required
 LEA_BQ_LOCATION=EU
-LEA_BQ_PROJECT_ID=carbonfact-dwh
+# Required
 LEA_BQ_DATASET_NAME=kaya
+# Required, the project where the dataset is located
+LEA_BQ_PROJECT_ID=carbonfact-dwh
+# Optional, allows using a different project for compute
+LEA_BQ_COMPUTE_PROJECT_ID=carbonfact-dwh-compute
 # Not necessary if you're logged in with the gcloud CLI
 LEA_BQ_SERVICE_ACCOUNT=<JSON dump of the service account file>  # not a path ⚠️
+# Defaults to https://www.googleapis.com/auth/bigquery
 LEA_BQ_SCOPES=https://www.googleapis.com/auth/bigquery,https://www.googleapis.com/auth/drive
+# LOGICAL or PHYSICAL, defaults to LOGICAL
+LEA_BQ_STORAGE_BILLING_MODEL=LOGICAL
 ```
 
 ## Usage
