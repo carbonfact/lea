@@ -364,14 +364,13 @@ class DuckDBJob:
 
     @property
     def statistics(self) -> TableStats | None:
-        query = f"SELECT COUNT(*) AS n_rows FROM {self.destination}"
+        query = f"SELECT COUNT(*) AS n_rows, MAX(_materialized_timestamp) AS updated_at FROM {self.destination}"
         table = self.connection.execute(query).fetchdf().iloc[0]
         return TableStats(
             n_rows=int(table["n_rows"]),
             n_bytes=0,
-            updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
+            updated_at=table["updated_at"],
         )
-        # return None  # DuckDB does not provide table statistics
 
 
 class DuckDBClient:
@@ -405,9 +404,15 @@ class DuckDBClient:
         destination = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
             table_ref=sql_script.table_ref
         )
+        # add a technical field to add current timestamp to the table
         materialize_code = f"""
-        CREATE OR REPLACE TABLE {destination} AS ({sql_script.code});
+        CREATE OR REPLACE TABLE {destination} AS (
+        WITH logic_table AS ({sql_script.code}),
+        materialized_infos AS (SELECT CURRENT_LOCALTIMESTAMP() AS _materialized_timestamp)
+        SELECT * FROM logic_table, materialized_infos
+        );
         """
+
         job = DuckDBJob(query=materialize_code, connection=self.connection, destination=destination)
         return job
 
@@ -460,16 +465,16 @@ class DuckDBClient:
             table_schema = row["table_schema"]
             stats_query = f"""
             SELECT 
-                COUNT(*) AS n_rows
+                COUNT(*) AS n_rows,
+                MAX(_materialized_timestamp) AS last_modified
             FROM {table_schema}.{table_name}
             """
             stats_result = self.connection.execute(stats_query).fetchdf().iloc[0]
-            table_stats[
-                TableRef(name=table_name, dataset=self.dataset, schema=(table_schema), project=None)
-            ] = TableStats(
+            table_stats[DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}")] = TableStats(
                 n_rows=int(stats_result["n_rows"]),
-                n_bytes=int(0),
-                updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
+                n_bytes=0,
+                # need to parse to dt with TZ aware
+                updated_at=stats_result["last_modified"],
             )
         return table_stats
 

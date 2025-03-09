@@ -147,6 +147,7 @@ class Conductor:
         existing_audit_tables = self.list_existing_audit_tables(
             database_client=database_client, dataset=write_dataset
         )
+
         lea.log.info(f"{len(existing_audit_tables):,d} audit tables already exist")
 
         session = Session(
@@ -177,7 +178,7 @@ class Conductor:
 
         # If all the scripts succeeded, we can delete the audit tables.
         if not session.any_error_has_occurred and not dry_run:
-            delete_audit_tables(session)
+            # delete_audit_tables(session)
 
             # Let's also delete orphan tables, which are tables that exist but who's scripts have
             # been deleted.
@@ -403,6 +404,8 @@ def determine_table_refs_to_run(
 
     for table_ref in selected_table_refs & set(normalized_existing_audit_tables):
         script = dag.scripts[table_ref]
+        print("script", script)
+        # trouble here
         if script.updated_at > normalized_existing_audit_tables[table_ref].updated_at:
             lea.log.info(f"{table_ref} modified, re-running it")
             table_refs_to_run.add(table_ref)
