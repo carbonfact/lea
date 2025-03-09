@@ -202,13 +202,15 @@ class Session:
                 msg = f"{job.status} {job.table_ref}"
                 job.ended_at = dt.datetime.now()
                 duration_str = str(job.ended_at - job.started_at).split(".")[0]
-                msg += f", took {duration_str}"
+                if duration_str != "0:00:00":
+                    msg += f", took {duration_str}"
                 if int(job.database_job.billed_dollars) > 0:
                     msg += f", cost ${job.database_job.billed_dollars:.2f}"
                 if not job.is_test:
                     if (stats := job.database_job.statistics) is not None:
                         msg += f", contains {stats.n_rows:,d} rows"
-                        msg += f", weighs {format_bytes(stats.n_bytes)}"
+                        if stats.n_bytes > 0:
+                            msg += f", weighs {format_bytes(stats.n_bytes)}"
                 lea.log.info(msg)
 
             return
