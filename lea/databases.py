@@ -44,6 +44,9 @@ class DatabaseClient(typing.Protocol):
     def create_dataset(self, dataset_name: str):
         pass
 
+    def create_schema(self, TableRef: scripts.TableRef):
+        pass
+
     def delete_dataset(self, dataset_name: str):
         pass
 
@@ -361,24 +364,11 @@ class DuckDBJob:
 
     @property
     def statistics(self) -> TableStats | None:
-        query = f"""
-        WITH number_of_rows AS (
-            SELECT COUNT(*) AS n_rows
-            FROM {self.destination}
-        ),
-        table_size AS (
-            SELECT COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes
-            FROM pragma_storage_info('{self.destination}')
-        )
-        SELECT number_of_rows.n_rows, table_size.n_bytes
-        FROM number_of_rows, table_size
-        """
-        print(query)
+        query = f"SELECT COUNT(*) AS n_rows FROM {self.destination}"
         table = self.connection.execute(query).fetchdf().iloc[0]
-        print(table)
         return TableStats(
             n_rows=int(table["n_rows"]),
-            n_bytes=int(table["n_bytes"]),
+            n_bytes=0,
             updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
         )
         # return None  # DuckDB does not provide table statistics
@@ -403,6 +393,9 @@ class DuckDBClient:
     def create_dataset(self, dataset_name: str):
         self.database = self.database.with_stem(dataset_name)
 
+    def create_schema(self, table_ref: scripts.TableRef):
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_ref.schema[0]}")
+
     def materialize_script(self, script: scripts.Script) -> DuckDBJob:
         if isinstance(script, scripts.SQLScript):
             return self.materialize_sql_script(sql_script=script)
@@ -413,8 +406,7 @@ class DuckDBClient:
             table_ref=sql_script.table_ref
         )
         materialize_code = f"""
-        CREATE SCHEMA IF NOT EXISTS {sql_script.table_ref.schema[0]};
-        CREATE OR REPLACE TABLE {destination} AS ({sql_script.code})
+        CREATE OR REPLACE TABLE {destination} AS ({sql_script.code});
         """
         job = DuckDBJob(query=materialize_code, connection=self.connection, destination=destination)
         return job
@@ -468,21 +460,17 @@ class DuckDBClient:
             table_schema = row["table_schema"]
             stats_query = f"""
             SELECT 
-                '{table_name}' AS table_name, 
-                COUNT(*) AS n_rows, 
-                COUNT(DISTINCT block_id) * (SELECT block_size FROM pragma_database_size()) AS n_bytes 
-            FROM pragma_storage_info('{table_schema}.{table_name}')
+                COUNT(*) AS n_rows
+            FROM {table_schema}.{table_name}
             """
             stats_result = self.connection.execute(stats_query).fetchdf().iloc[0]
             table_stats[
                 TableRef(name=table_name, dataset=self.dataset, schema=(table_schema), project=None)
             ] = TableStats(
                 n_rows=int(stats_result["n_rows"]),
-                n_bytes=int(stats_result["n_bytes"]),
+                n_bytes=int(0),
                 updated_at=dt.datetime.now(),  # DuckDB does not provide last modified time
             )
-            # for table_elem, table_stat_elem in table_stats.items():
-            #     print(table_stat_elem)
         return table_stats
 
     def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:

@@ -8,6 +8,7 @@ import duckdb
 import jinja2
 import sqlglot
 from google.cloud import bigquery
+from google.cloud.bigquery import schema
 
 from lea.field import FieldTag
 from lea.table_ref import TableRef
@@ -179,17 +180,18 @@ class DuckDBDialect(SQLDialect):
         >>> DuckDBDialect.parse_table_ref("my_schema.my_table")
         TableRef(dataset=None, schema=('my_schema',), name='my_table', project=None)
 
+        >>> DuckDBDialect.parse_table_ref("my_schema.my_subschema__my_table")
+        TableRef(dataset=None, schema=('my_schema', 'my_subschema'), name='my_table', project=None)
+
         >>> DuckDBDialect.parse_table_ref("my_table")
         TableRef(dataset=None, schema=(), name='my_table', project=None)
         """
-        # as Duckdb can read csv files, detect them
-        # if table_ref.endswith(".csv"):
-        # if ".csv" in table_ref:
-        #     return TableRef(dataset=None, schema=(), name=table_ref, project=None)
         parts = table_ref.split(".")
         if len(parts) == 2:
             schema, name = parts
-            return TableRef(dataset=None, schema=(schema,), name=name, project=None)
+            # Split schema into subschema
+            full_schema = tuple(schema.split("__"))
+            return TableRef(dataset=None, schema=full_schema, name=name, project=None)
         elif len(parts) == 1:
             name = parts[0]
             return TableRef(dataset=None, schema=(), name=name, project=None)
@@ -198,8 +200,25 @@ class DuckDBDialect(SQLDialect):
 
     @staticmethod
     def format_table_ref(table_ref: TableRef) -> str:
+        """
+        Formats a TableRef object into a DuckDB table reference string.
+
+        >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=('my_schema',), name='my_table', project=None))
+        "my_schema.my_table"
+
+        >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=('my_schema', 'my_subschema'), name='my_table', project=None))
+        "my_schema.my_subschema__my_table"
+
+        >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=(), name='my_table', project=None))
+        "my_table"
+        """
         if len(table_ref.schema) > 0:
-            return f"{table_ref.schema[0]}.{table_ref.name}"
+            schema = table_ref.schema[0]
+            if len(table_ref.schema) > 1:
+                full_table_ref = f"{schema}.{'__'.join([*table_ref.schema[1:], table_ref.name])}"
+            else:
+                full_table_ref = f"{schema}.{table_ref.name}"
+            return full_table_ref
         return table_ref.name
 
     @staticmethod

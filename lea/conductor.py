@@ -130,6 +130,12 @@ class Conductor:
         write_dataset = self.dataset_name if production else self.name_user_dataset()
         database_client.create_dataset(write_dataset)
 
+        # When using Duckdb, we need to create schema for the tables
+        if self.warehouse == "duckdb":
+            for table_ref in selected_table_refs:
+                database_client.create_schema(table_ref)
+            lea.log.info("🔩 Creating schemas")
+
         # When the scripts run, they are materialized into side-tables which we call "audit"
         # tables. When a run stops because of an error, the audit tables are left behind. If we
         # want to start fresh, we have to delete the audit tables. If not, the materialized tables
@@ -181,9 +187,12 @@ class Conductor:
         session.end()
         duration_str = str(session.ended_at - session.started_at).split(".")[0]  # type: ignore[operator]
         emoji = "✅" if not session.any_error_has_occurred else "❌"
-        lea.log.info(
-            f"{emoji} Finished, took {duration_str}, cost ${session.total_billed_dollars:.2f}"
-        )
+        msg = f"{emoji} Finished"
+        if duration_str != "0:00:00":
+            msg += f", took {duration_str}"
+        if session.total_billed_dollars > 0:
+            msg += f", cost ${session.total_billed_dollars:.2f}"
+        lea.log.info(msg)
 
     def make_client(self, dry_run: bool = False, print_mode: bool = False) -> DatabaseClient:
         if self.warehouse.lower() == "bigquery":
