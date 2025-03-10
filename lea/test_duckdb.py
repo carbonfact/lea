@@ -272,7 +272,7 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
 ):
     session = Session(
         database_client=DuckDBClient(
-            database=Path("./test_duckdb"),
+            database_path=Path("./test_duckdb"),
             dry_run=False,
             print_mode=False,
         ),
