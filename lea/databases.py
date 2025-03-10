@@ -401,7 +401,10 @@ class DuckDBClient:
         destination = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
             table_ref=sql_script.table_ref
         )
-        # add a technical field to add current timestamp to the table
+        # We need to materialize the script with a timestamp to keep track of when it was materialized.
+        # DuckDB does not provide a metadata table, so we need to create one with a technical column.
+        # bear in mind that this is a workaround and not a best practice. Any change done outside
+        # lea will not be reflected in the metadata column and could break orchestration mecanism.
         materialize_code = f"""
         CREATE OR REPLACE TABLE {destination} AS (
         WITH logic_table AS ({sql_script.code}),
