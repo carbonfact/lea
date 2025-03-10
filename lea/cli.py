@@ -9,7 +9,8 @@ import lea
 
 
 @click.group()
-def app(): ...
+def app():
+    ...
 
 
 @app.command()

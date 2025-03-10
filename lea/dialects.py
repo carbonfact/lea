@@ -7,7 +7,6 @@ import textwrap
 import jinja2
 import sqlglot
 from google.cloud import bigquery
-from google.cloud.bigquery import schema  # unused
 
 from lea.field import FieldTag
 from lea.table_ref import TableRef

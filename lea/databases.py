@@ -453,7 +453,7 @@ class DuckDBClient:
         return job
 
     def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
-        tables_query = f"""
+        tables_query = """
         SELECT table_name, table_schema
         FROM information_schema.tables
         """
@@ -464,7 +464,7 @@ class DuckDBClient:
             table_name = row["table_name"]
             table_schema = row["table_schema"]
             stats_query = f"""
-            SELECT 
+            SELECT
                 COUNT(*) AS n_rows,
                 MAX(_materialized_timestamp) AS last_modified
             FROM {table_schema}.{table_name}
