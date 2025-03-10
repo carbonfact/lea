@@ -197,6 +197,7 @@ class Conductor:
                     "LEA_BQ_COMPUTE_PROJECT_ID",
                     credentials.project_id if credentials is not None else None,
                 ),
+                storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL"),
                 dry_run=dry_run,
                 print_mode=print_mode,
             )
