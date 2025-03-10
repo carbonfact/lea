@@ -27,13 +27,7 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-@click.option(
-    "--cleanup",
-    is_flag=True,
-    default=False,
-    help="Whether to cleanup the dataset at end of execution.",
-)
-def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart, cleanup):
+def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart):
     if select in {"", "Ø"}:
         select = []
 
@@ -56,7 +50,6 @@ def run(select, unselect, dataset, scripts, incremental, dry, print, production,
         production=production,
         dry_run=dry,
         restart=restart,
-        cleanup=cleanup,
         incremental_field_name=incremental_field_name,
         incremental_field_values=incremental_field_values,
         print_mode=print,

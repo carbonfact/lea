@@ -59,7 +59,7 @@ class Conductor:
                 scripts_dir=self.scripts_dir,
                 sql_dialect=BigQueryDialect(),
                 dataset_name=self.dataset_name,
-                project_name=self.project_name if self.warehouse == "bigquery" else None
+                project_name=self.project_name if self.warehouse == "bigquery" else None,
             )
         if self.warehouse == "duckdb":
             self.dag = DAGOfScripts.from_directory(
@@ -93,7 +93,7 @@ class Conductor:
         )
 
         try:
-            self.run_session(session, restart=restart, cleanup=cleanup, dry_run=dry_run)
+            self.run_session(session, restart=restart, dry_run=dry_run)
             if session.any_error_has_occurred:
                 return sys.exit(1)
         except KeyboardInterrupt:
@@ -165,7 +165,7 @@ class Conductor:
 
         return session
 
-    def run_session(self, session: Session, restart: bool, cleanup: bool, dry_run: bool):
+    def run_session(self, session: Session, restart: bool, dry_run: bool):
         if restart:
             delete_audit_tables(session)
 
@@ -178,7 +178,7 @@ class Conductor:
             promote_audit_tables(session)
 
         # If all the scripts succeeded, we can delete the audit tables.
-        if not session.any_error_has_occurred and not dry_run and cleanup:
+        if not session.any_error_has_occurred and not dry_run:
             delete_audit_tables(session)
 
             # Let's also delete orphan tables, which are tables that exist but who's scripts have
@@ -190,7 +190,7 @@ class Conductor:
         duration_str = str(session.ended_at - session.started_at).split(".")[0]  # type: ignore[operator]
         emoji = "✅" if not session.any_error_has_occurred else "❌"
         msg = f"{emoji} Finished"
-        if duration_str != "0:00:00":
+        if session.ended_at > session.started_at:
             msg += f", took {duration_str}"
         if session.total_billed_dollars > 0:
             msg += f", cost ${session.total_billed_dollars:.2f}"
@@ -227,7 +227,7 @@ class Conductor:
             )
         if self.warehouse.lower() == "duckdb":
             return databases.DuckDBClient(
-                database=pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", "")),
+                database_path=pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", "")),
                 dry_run=dry_run,
                 print_mode=print_mode,
             )
