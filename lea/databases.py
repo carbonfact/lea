@@ -375,7 +375,7 @@ class DuckDBClient:
     def __init__(self, database: Path, dry_run: bool = False, print_mode: bool = False):
         self.database = database
         if self.database == "":
-            raise ValueError("Duckdb path not configured")
+            raise ValueError("DuckDB path not configured")
         self.dry_run = dry_run
         self.print_mode = print_mode
 
