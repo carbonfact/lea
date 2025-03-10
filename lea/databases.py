@@ -429,8 +429,7 @@ class DuckDBClient:
         )
         source = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(table_ref=from_table_ref)
         clone_code = f"""
-        DROP TABLE IF EXISTS {destination};
-        CREATE TABLE {destination} AS SELECT * FROM {source}
+        CREATE OR REPLACE TABLE {destination} AS SELECT * FROM {source}
         """
         return DuckDBJob(query=clone_code, connection=self.connection, destination=destination)
 
