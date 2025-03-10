@@ -59,7 +59,7 @@ class Conductor:
                 scripts_dir=self.scripts_dir,
                 sql_dialect=BigQueryDialect(),
                 dataset_name=self.dataset_name,
-                project_name=self.project_name,
+                project_name=self.project_name if self.warehouse == "bigquery" else None
             )
         if self.warehouse == "duckdb":
             self.dag = DAGOfScripts.from_directory(
