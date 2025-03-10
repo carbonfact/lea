@@ -44,8 +44,6 @@ class DatabaseClient(typing.Protocol):
     def create_dataset(self, dataset_name: str):
         pass
 
-    def create_schema(self, TableRef: scripts.TableRef):
-        pass
 
     def delete_dataset(self, dataset_name: str):
         pass
