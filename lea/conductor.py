@@ -133,9 +133,9 @@ class Conductor:
 
         # When using Duckdb, we need to create schema for the tables
         if self.warehouse == "duckdb":
+            lea.log.info("🔩 Creating schemas")
             for table_ref in selected_table_refs:
                 database_client.create_schema(table_ref)
-            lea.log.info("🔩 Creating schemas")
 
         # When the scripts run, they are materialized into side-tables which we call "audit"
         # tables. When a run stops because of an error, the audit tables are left behind. If we
