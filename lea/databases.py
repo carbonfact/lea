@@ -470,7 +470,11 @@ class DuckDBClient:
             FROM {table_schema}.{table_name}
             """
             stats_result = self.connection.execute(stats_query).fetchdf().iloc[0]
-            table_stats[DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}")] = TableStats(
+            table_stats[
+                DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}").replace_dataset(
+                    dataset_name
+                )
+            ] = TableStats(
                 n_rows=int(stats_result["n_rows"]),
                 n_bytes=0,
                 updated_at=(
