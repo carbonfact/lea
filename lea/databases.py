@@ -453,18 +453,18 @@ class DuckDBClient:
 
     def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
         tables_query = """
-        SELECT table_name, table_schema
-        FROM information_schema.tables
+        SELECT table_name, schema_name, estimated_size
+        FROM duckdb_tables();
         """
         tables_result = self.connection.execute(tables_query).fetchdf()
 
         table_stats = {}
         for _, row in tables_result.iterrows():
             table_name = row["table_name"]
-            table_schema = row["table_schema"]
+            table_schema = row["schema_name"]
+            n_rows = int(row["estimated_size"])
             stats_query = f"""
             SELECT
-                COUNT(*) AS n_rows,
                 MAX(_materialized_timestamp) AS last_modified
             FROM {table_schema}.{table_name}
             """
@@ -474,7 +474,7 @@ class DuckDBClient:
                     dataset_name
                 )
             ] = TableStats(
-                n_rows=int(stats_result["n_rows"]),
+                n_rows=n_rows,
                 n_bytes=None,
                 updated_at=(
                     dt.datetime.fromtimestamp(
