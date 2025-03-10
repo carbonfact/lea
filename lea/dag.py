@@ -34,7 +34,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         scripts_dir: pathlib.Path,
         sql_dialect: SQLDialect,
         dataset_name: str,
-        project_name: str,
+        project_name: str | None,
     ) -> DAGOfScripts:
         scripts = read_scripts(
             scripts_dir=scripts_dir,

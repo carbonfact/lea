@@ -44,7 +44,6 @@ class DatabaseClient(typing.Protocol):
     def create_dataset(self, dataset_name: str):
         pass
 
-
     def delete_dataset(self, dataset_name: str):
         pass
 
@@ -119,7 +118,7 @@ class BigQueryJob:
 @dataclasses.dataclass(frozen=True)
 class TableStats:
     n_rows: int
-    n_bytes: int
+    n_bytes: int | None
     updated_at: dt.datetime
 
 
@@ -358,7 +357,7 @@ class DuckDBJob:
 
     @property
     def billed_dollars(self) -> float:
-        return 0.0  # DuckDB is free to use
+        return None  # DuckDB is free to use
 
     @property
     def statistics(self) -> TableStats | None:
@@ -366,29 +365,29 @@ class DuckDBJob:
         table = self.connection.execute(query).fetchdf().iloc[0]
         return TableStats(
             n_rows=int(table["n_rows"]),
-            n_bytes=0,
+            n_bytes=None,
             updated_at=table["updated_at"],
         )
 
 
 class DuckDBClient:
-    def __init__(self, database: Path, dry_run: bool = False, print_mode: bool = False):
-        self.database = database
-        if self.database == "":
+    def __init__(self, database_path: Path, dry_run: bool = False, print_mode: bool = False):
+        self.database_path = database_path
+        if self.database_path == "":
             raise ValueError("DuckDB path not configured")
         self.dry_run = dry_run
         self.print_mode = print_mode
 
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
-        return duckdb.connect(database=str(self.database))
+        return duckdb.connect(database=str(self.database_path))
 
     @property
     def dataset(self) -> str:
-        return self.database.stem
+        return self.database_path.stem
 
     def create_dataset(self, dataset_name: str):
-        self.database = self.database.with_stem(dataset_name)
+        self.database_path = self.database_path.with_stem(dataset_name)
 
     def create_schema(self, table_ref: scripts.TableRef):
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_ref.schema[0]}")
@@ -474,7 +473,7 @@ class DuckDBClient:
                 )
             ] = TableStats(
                 n_rows=int(stats_result["n_rows"]),
-                n_bytes=0,
+                n_bytes=None,
                 updated_at=(
                     dt.datetime.fromtimestamp(
                         stats_result["last_modified"].to_pydatetime().timestamp(),
