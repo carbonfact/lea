@@ -77,6 +77,7 @@ class Conductor:
         production: bool = False,
         dry_run: bool = False,
         restart: bool = False,
+        cleanup: bool = False,
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
@@ -92,7 +93,7 @@ class Conductor:
         )
 
         try:
-            self.run_session(session, restart=restart, dry_run=dry_run)
+            self.run_session(session, restart=restart, cleanup=cleanup, dry_run=dry_run)
             if session.any_error_has_occurred:
                 return sys.exit(1)
         except KeyboardInterrupt:
@@ -164,7 +165,7 @@ class Conductor:
 
         return session
 
-    def run_session(self, session: Session, restart: bool, dry_run: bool):
+    def run_session(self, session: Session, restart: bool, cleanup: bool, dry_run: bool):
         if restart:
             delete_audit_tables(session)
 
@@ -177,8 +178,8 @@ class Conductor:
             promote_audit_tables(session)
 
         # If all the scripts succeeded, we can delete the audit tables.
-        if not session.any_error_has_occurred and not dry_run:
-            # delete_audit_tables(session)
+        if not session.any_error_has_occurred and not dry_run and cleanup:
+            delete_audit_tables(session)
 
             # Let's also delete orphan tables, which are tables that exist but who's scripts have
             # been deleted.
@@ -404,8 +405,6 @@ def determine_table_refs_to_run(
 
     for table_ref in selected_table_refs & set(normalized_existing_audit_tables):
         script = dag.scripts[table_ref]
-        print("script", script)
-        # trouble here
         if script.updated_at > normalized_existing_audit_tables[table_ref].updated_at:
             lea.log.info(f"{table_ref} modified, re-running it")
             table_refs_to_run.add(table_ref)

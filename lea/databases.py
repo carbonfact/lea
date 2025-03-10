@@ -473,8 +473,12 @@ class DuckDBClient:
             table_stats[DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}")] = TableStats(
                 n_rows=int(stats_result["n_rows"]),
                 n_bytes=0,
-                # need to parse to dt with TZ aware
-                updated_at=stats_result["last_modified"],
+                updated_at=(
+                    dt.datetime.fromtimestamp(
+                        stats_result["last_modified"].to_pydatetime().timestamp(),
+                        tz=dt.timezone.utc,
+                    )
+                ),
             )
         return table_stats
 

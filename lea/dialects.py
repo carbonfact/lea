@@ -4,11 +4,10 @@ import pathlib
 import re
 import textwrap
 
-import duckdb
 import jinja2
 import sqlglot
 from google.cloud import bigquery
-from google.cloud.bigquery import schema
+from google.cloud.bigquery import schema  # unused
 
 from lea.field import FieldTag
 from lea.table_ref import TableRef
@@ -186,17 +185,14 @@ class DuckDBDialect(SQLDialect):
         >>> DuckDBDialect.parse_table_ref("my_table")
         TableRef(dataset=None, schema=(), name='my_table', project=None)
         """
-        parts = table_ref.split(".")
-        if len(parts) == 2:
-            schema, name = parts
-            # Split schema into subschema
-            full_schema = tuple(schema.split("__"))
-            return TableRef(dataset=None, schema=full_schema, name=name, project=None)
-        elif len(parts) == 1:
-            name = parts[0]
-            return TableRef(dataset=None, schema=(), name=name, project=None)
+        if "." in table_ref:
+            project, schema, leftover = None, *tuple(table_ref.rsplit(".", 1))
+            *subschema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
+            return TableRef(
+                dataset=None, schema=tuple([schema, *subschema]), name=name, project=project
+            )
         else:
-            raise ValueError(f"Invalid table reference: {table_ref}")
+            return TableRef(dataset=None, schema=(), name=table_ref, project=None)
 
     @staticmethod
     def format_table_ref(table_ref: TableRef) -> str:
@@ -204,13 +200,13 @@ class DuckDBDialect(SQLDialect):
         Formats a TableRef object into a DuckDB table reference string.
 
         >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=('my_schema',), name='my_table', project=None))
-        "my_schema.my_table"
+        'my_schema.my_table'
 
         >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=('my_schema', 'my_subschema'), name='my_table', project=None))
-        "my_schema.my_subschema__my_table"
+        'my_schema.my_subschema__my_table'
 
         >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=(), name='my_table', project=None))
-        "my_table"
+        'my_table'
         """
         if len(table_ref.schema) > 0:
             schema = table_ref.schema[0]
