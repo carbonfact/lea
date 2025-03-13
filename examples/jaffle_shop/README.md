@@ -16,7 +16,7 @@ scripts
 │   ├── orders.sql
 │   └── payments.sql
 └── tests
-    └── orders_are_dated.sqls
+    └── orders_are_dated.sql
 ```
 
 The first thing to do is create an `.env` file, as so:
