@@ -202,7 +202,7 @@ class Session:
                 msg = f"{job.status} {job.table_ref}"
                 job.ended_at = dt.datetime.now()
                 duration_str = str(job.ended_at - job.started_at).split(".")[0]
-                if duration_str != "0:00:00":
+                if job.ended_at - job.started_at >= dt.timedelta(seconds=1):
                     msg += f", took {duration_str}"
                 if job.database_job.billed_dollars is not None:
                     msg += f", cost ${job.database_job.billed_dollars:.2f}"

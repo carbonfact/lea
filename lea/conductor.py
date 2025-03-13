@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import datetime as dt
 import getpass
 import json
 import os
@@ -190,8 +191,10 @@ class Conductor:
         duration_str = str(session.ended_at - session.started_at).split(".")[0]  # type: ignore[operator]
         emoji = "✅" if not session.any_error_has_occurred else "❌"
         msg = f"{emoji} Finished"
-        if session.ended_at > session.started_at:
+        if session.ended_at - session.started_at > dt.timedelta(seconds=1):
             msg += f", took {duration_str}"
+        else:
+            msg += ", took less than a second 🚀"
         if session.total_billed_dollars > 0:
             msg += f", cost ${session.total_billed_dollars:.2f}"
         lea.log.info(msg)
@@ -402,6 +405,10 @@ def determine_table_refs_to_run(
     }
     table_refs_to_run = selected_table_refs.copy()
     table_refs_to_run -= set(normalized_existing_audit_tables)
+
+    print(f"{table_refs_to_run=}")
+    print(f"{selected_table_refs=}")
+    print(f"{normalized_existing_audit_tables=}")
 
     for table_ref in selected_table_refs & set(normalized_existing_audit_tables):
         script = dag.scripts[table_ref]

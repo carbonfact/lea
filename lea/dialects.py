@@ -219,22 +219,3 @@ class DuckDBDialect(SQLDialect):
     @staticmethod
     def convert_table_ref_to_duckdb_table_reference(table_ref: TableRef) -> str:
         return DuckDBDialect.format_table_ref(table_ref)
-
-    def make_column_test_unique(self, table_ref: TableRef, field_name: str) -> str:
-        table_ref_str = self.format_table_ref(table_ref)
-        return f"SELECT COUNT(*) FROM {table_ref_str} GROUP BY {field_name} HAVING COUNT(*) > 1"
-
-    def make_column_test_unique_by(self, table_ref: TableRef, field_name: str, by: str) -> str:
-        table_ref_str = self.format_table_ref(table_ref)
-        return (
-            f"SELECT COUNT(*) FROM {table_ref_str} GROUP BY {field_name}, {by} HAVING COUNT(*) > 1"
-        )
-
-    def make_column_test_no_nulls(self, table_ref: TableRef, field_name: str) -> str:
-        table_ref_str = self.format_table_ref(table_ref)
-        return f"SELECT COUNT(*) FROM {table_ref_str} WHERE {field_name} IS NULL"
-
-    def make_column_test_set(self, table_ref: TableRef, field_name: str, elements: set[str]) -> str:
-        table_ref_str = self.format_table_ref(table_ref)
-        elements_str = ", ".join(f"'{element}'" for element in elements)
-        return f"SELECT COUNT(*) FROM {table_ref_str} WHERE {field_name} NOT IN ({elements_str})"

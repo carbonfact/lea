@@ -342,11 +342,13 @@ class DuckDBJob:
 
     @property
     def is_done(self) -> bool:
-        # try:
-        self.execute()
-        # except Exception as e:
-        #     self.exception = repr(e)
-        return True
+        try:
+            self.execute()
+        except Exception as e:
+            self.exception = repr(e)
+            raise e
+        else:
+            return True
 
     def stop(self):
         pass  # No support for stopping queries in DuckDB
@@ -412,13 +414,20 @@ class DuckDBClient:
         SELECT * FROM logic_table, materialized_infos
         );
         """
-
-        job = DuckDBJob(query=materialize_code, connection=self.connection, destination=destination)
-        return job
+        return self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=sql_script.table_ref,
+                code=materialize_code,
+                sql_dialect=DuckDBDialect,
+                fields=[],
+            ),
+            destination=destination,
+        )
 
     def query_script(self, script: scripts.Script) -> DuckDBJob:
         if isinstance(script, scripts.SQLScript):
-            return DuckDBJob(query=script.code, connection=self.connection)
+            job = self.make_job_config(script=script)
+            return job
         raise ValueError("Unsupported script type")
 
     def clone_table(
@@ -431,23 +440,50 @@ class DuckDBClient:
         clone_code = f"""
         CREATE OR REPLACE TABLE {destination} AS SELECT * FROM {source}
         """
-        return DuckDBJob(query=clone_code, connection=self.connection, destination=destination)
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=to_table_ref, code=clone_code, sql_dialect=DuckDBDialect, fields=[]
+            ),
+            destination=destination,
+        )
+        return job
 
     def delete_and_insert(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
     ) -> DuckDBJob:
+        to_table_reference = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=to_table_ref
+        )
+        from_table_reference = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=from_table_ref
+        )
+
         delete_and_insert_code = f"""
-        DELETE FROM {to_table_ref} WHERE {on} IN (SELECT DISTINCT {on} FROM {from_table_ref});
-        INSERT INTO {to_table_ref} SELECT * FROM {from_table_ref};
+        DELETE FROM {to_table_reference} WHERE {on} IN (SELECT DISTINCT {on} FROM {from_table_reference});
+        INSERT INTO {to_table_reference} SELECT * FROM {from_table_reference};
         """
-        return DuckDBJob(query=delete_and_insert_code, connection=self.connection)
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=to_table_ref,
+                code=delete_and_insert_code,
+                sql_dialect=DuckDBDialect,
+                fields=[],
+            ),
+            destination=to_table_reference,
+        )
+        job.execute()
+        return job
 
     def delete_table(self, table_ref: scripts.TableRef) -> DuckDBJob:
         table_reference = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
             table_ref=table_ref
         )
         delete_code = f"DROP TABLE IF EXISTS {table_reference}"
-        job = DuckDBJob(query=delete_code, connection=self.connection)
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=table_ref, code=delete_code, sql_dialect=DuckDBDialect, fields=[]
+            )
+        )
         job.execute()
         return job
 
@@ -468,7 +504,14 @@ class DuckDBClient:
                 MAX(_materialized_timestamp) AS last_modified
             FROM {table_schema}.{table_name}
             """
-            stats_result = self.connection.execute(stats_query).fetchdf().iloc[0]
+            result = self.connection.execute(stats_query).fetchdf().dropna()
+            if result.empty:
+                updated_at = dt.datetime.now(dt.timezone.utc)
+            else:
+                updated_at = dt.datetime.fromtimestamp(
+                    result.iloc[0]["last_modified"].to_pydatetime().timestamp(),
+                    tz=dt.timezone.utc,
+                )
             table_stats[
                 DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}").replace_dataset(
                     dataset_name
@@ -476,12 +519,7 @@ class DuckDBClient:
             ] = TableStats(
                 n_rows=n_rows,
                 n_bytes=None,
-                updated_at=(
-                    dt.datetime.fromtimestamp(
-                        stats_result["last_modified"].to_pydatetime().timestamp(),
-                        tz=dt.timezone.utc,
-                    )
-                ),
+                updated_at=updated_at,
             )
         return table_stats
 
@@ -498,3 +536,11 @@ class DuckDBClient:
             ]
             for table_name, rows in result.groupby("table_name")
         }
+
+    def make_job_config(
+        self, script: scripts.SQLScript, destination: str | None = None
+    ) -> DuckDBJob:
+        if self.print_mode:
+            rich.print(script)
+        job = DuckDBJob(query=script.code, connection=self.connection, destination=destination)
+        return job

@@ -21,11 +21,15 @@ def scripts() -> dict[TableRef, Script]:
             Script(
                 table_ref=TableRef("read", ("raw",), "users", "test_project"),
                 code="""
-                SELECT * FROM (VALUES
-                    (1, 'Alice', 30),
-                    (2, 'Bob', 25),
-                    (3, 'Charlie', 35)
-                ) AS t(id, name, age)
+                SELECT * FROM (
+                    SELECT UNNEST(
+                        [
+                            {'id': 1, 'name': 'Alice', 'age': 30},
+                            {'id': 2, 'name': 'Bob', 'age': 25},
+                            {'id': 3, 'name': 'Charlie', 'age': 35}
+                        ], max_depth => 2
+                    )
+                )
                 """,
                 sql_dialect=DuckDBDialect(),
             ),
@@ -75,11 +79,15 @@ def test_simple_run(scripts):
             scripts[TableRef("read", ("raw",), "users", "test_project")]
         ).code,
         """
-        SELECT * FROM (VALUES
-            (1, 'Alice', 30),
-            (2, 'Bob', 25),
-            (3, 'Charlie', 35)
-        ) AS t(id, name, age)
+                        SELECT * FROM (
+                    SELECT UNNEST(
+                        [
+                            {'id': 1, 'name': 'Alice', 'age': 30},
+                            {'id': 2, 'name': 'Bob', 'age': 25},
+                            {'id': 3, 'name': 'Charlie', 'age': 35}
+                        ], max_depth => 2
+                    )
+                )
         """,
     )
     assert_queries_are_equal(
@@ -168,7 +176,7 @@ def test_incremental_field_but_no_incremental_table_selected(scripts):
     )
 
 
-@pytest.mark.current
+@pytest.mark.duckdb
 def test_incremental_field_with_just_incremental_table_selected(scripts):
     session = Session(
         database_client=None,
