@@ -32,7 +32,7 @@ Let's review some tests together.
 Vizualize students in this school :
 
 ```sh
-python -c import duckdb; print(duckdb.connect('school_emilien.db').execute('SELECT student_id, first_name, last_name, university FROM staging.students').df())
+python -c import duckdb; print(duckdb.connect('school_max.db').execute('SELECT student_id, first_name, last_name, university FROM staging.students').df())
 ```
 
 ```
@@ -49,7 +49,7 @@ python -c import duckdb; print(duckdb.connect('school_emilien.db').execute('SELE
 You can see some students, let's review their grades !
 
 ```sh
-python -c "import duckdb; print(duckdb.connect('school_emilien.db').execute('SELECT student_id, student_name, class_name, semester, average_grade FROM core.yearly_results USING SAMPLE 5').df())"
+python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT student_id, student_name, class_name, semester, average_grade FROM core.yearly_results USING SAMPLE 5').df())"
 ```
 
 ```
@@ -82,7 +82,7 @@ SELECT
 FROM raw_students;
 ```
 
-During the WAP pattern, thoses checks will ensure Data Quality making assertions tests.
+During the Write-Audit-Publish pattern, thoses checks will ensure Data Quality making assertions tests.
 
 Here for instance, the staging model during Audit step will ensure that :
 
@@ -90,11 +90,11 @@ Here for instance, the staging model during Audit step will ensure that :
 - `last_name` are unique by first_name
 - `university` values are in the exposed list
 
-## WAP and break and audit
+## WAP pattern in action - break during auditing
 
-Let's break a test on purpose for demonstratation :
+Let's break a test on purpose for demonstration :
 
-Under `seeds/raw_students`, let's add a new student university :
+Under `seeds/raw_students`, let's add a new student :
 
 ```sh
 echo "8,Andy,Bernard,Cornell University,23" >> seeds/raw_students.csv
@@ -111,9 +111,9 @@ Cornell University is not allowed here :
 ```
            ✋ Early ending because an error occurred
            😴 Ending session
-           STOPPED school_emilien.core.yearly_results___audit
-           SUCCESS school_emilien.core.yearly_results___audit, contains 112 rows
-           ERRORED school_emilien.tests.staging__students__university___set___audit
+           STOPPED school_max.core.yearly_results___audit
+           SUCCESS school_max.core.yearly_results___audit, contains 112 rows
+           ERRORED school_max.tests.staging__students__university___set___audit
                       university
            0  Cornell University
            ❌ Finished, took less than a second 🚀
@@ -129,7 +129,7 @@ sed -i '' '$d' seeds/raw_students.csv
 As audit prevented from corrupting intermediate tables, your tables
 are still healthy.
 
-## Restart to get a fresh environment
+## Restart Feature demo - Get a fresh environment
 
 However, as our audit tables are messy and not sync with source, let's rerun them:
 
@@ -139,34 +139,37 @@ lea run --restart
 
 It will flush the audit table, as if it was a fresh start.
 
-## Skipping feature
+## Skipping feature demonstration
 
 You might think now, "hey, how does lea know which audit table should be run again
 or not ?". That's an excellent question !
 
-If the script have been modified earlier than materialization date
-of the table, it will skip the auditing, as nothing changed from the logic !
+Have you noticed that `lea` automatically skip table that are not relevant to process during audits ?
 
-Let's see together with a closer look.
+Let's see together with a closer look by practicing with an example !
 
-You can vizualize the scholarships award winners :
-
-Have you noticed that `lea` automatically skip table that are not relevant to process
-dag run ?
-
-You can see by practicing. First vizualize award winner of scholarships :
-
-```sh
- python -c "import duckdb; print(duckdb.connect('school_emilien.db').execute('SELECT student_name, domain, scholarship_amount FROM analytics.scholarship_award WHERE domain = \'Economics\'').df())"
-```
+First you can vizualize award winner of scholarships:
 
 Each top performing student get a 1000$ grant and 2nd gets a 500$ grant.
 
-Review the amount of money spent :
+You can see the winners of the year in `Economics`:
+
+```sh
+python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT student_name, domain, scholarship_amount FROM analytics.scholarship_award WHERE domain = \'Economics\'').df())"
+```
+
+```
+    student_name     domain  scholarship_amount
+0   Daniel Lopez  Economics                1000
+1  Gabriel Cooke  Economics                 500
+
+```
+
+You can review the total amount of money spent :
 
 ```sh
 lea run --select analytics.finance.expenses
-python -c "import duckdb; print(duckdb.connect('school_emilien.db').execute('SELECT total_expenses FROM analytics.finance__expenses').df())"
+python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT total_expenses FROM analytics.finance__expenses').df())"
 ```
 
 ```
@@ -187,4 +190,67 @@ sed -i '' '/--comment here/s/^/--/' scripts/analytics/scholarship_award.sql
 sed -i '' '/--uncomment here/s/-- //' scripts/analytics/scholarship_award.sql
 ```
 
-Then run on
+Then run again the finance script.
+
+```sh
+lea run --select  analytics.finance.expenses
+```
+
+Oh no, the budget test is failing ! Modify the value under `scripts/tests/budget.sql` :
+
+```sh
+sed -i '' '/--comment here/s/^/--/' scripts/tests/budget.sql
+sed -i '' '/--uncomment here/s/-- //' scripts/tests/budget.sql
+```
+
+Now let's run again the scripts :
+
+```sh
+lea run
+```
+
+Everything pass 🎉
+
+Look closely : **audit tables haven't been materialized again for `school*max.core.yearly_results***audit`
+as they were already existing and the script modification date was **anterior** to materialization date !
+
+But it would has been executed, if the script was modified **prior** last table materialization.
+
+You can check the table materialization date with :
+
+```
+python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT MAX(_materialized_timestamp) AS last_materialized FROM analytics.scholarship_award').df())"
+```
+
+        last_materialized
+
+0 2025-03-14 00:31:28.114
+
+Now the school has extra budget, you can view the new scholarship award winners !
+
+There is twice more winners now, 2 at each semester :
+
+```sh
+ python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT student_name, domain, semester, scholarship_amount FROM analytics.scholarship_award WHERE domain = \'Economics\'').df())"
+```
+
+```
+    student_name     domain    semester  scholarship_amount
+0  Lauren Levine  Economics  Semester 2                1000
+1  Gabriel Cooke  Economics  Semester 2                 500
+2   Daniel Lopez  Economics  Semester 1                1000
+3  Gabriel Cooke  Economics  Semester 1                 500
+```
+
+As you can see now, the expenses have doubled :
+
+```sh
+lea run --select analytics.finance.expenses
+python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT total_expenses FROM analytics.finance__expenses').df())"
+```
+
+```
+   total_expenses
+0         24000.0
+
+```

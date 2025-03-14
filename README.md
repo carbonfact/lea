@@ -48,6 +48,8 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
 ## Examples
 
 - [Jaffle shop 🥪](examples/jaffle_shop/)
+- [Incremental 🕐](examples/incremental)
+- [School 🏫](examples/school/)
 - [Compare development to production 👯‍♀️](examples/diff/)
 - [Using MotherDuck 🦆](examples/motherduck/)
 

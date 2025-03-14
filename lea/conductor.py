@@ -406,10 +406,6 @@ def determine_table_refs_to_run(
     table_refs_to_run = selected_table_refs.copy()
     table_refs_to_run -= set(normalized_existing_audit_tables)
 
-    print(f"{table_refs_to_run=}")
-    print(f"{selected_table_refs=}")
-    print(f"{normalized_existing_audit_tables=}")
-
     for table_ref in selected_table_refs & set(normalized_existing_audit_tables):
         script = dag.scripts[table_ref]
         if script.updated_at > normalized_existing_audit_tables[table_ref].updated_at:
