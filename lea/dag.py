@@ -85,7 +85,9 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             if m := re.match(r"(?P<ancestors>\+?)git(?P<descendants>\+?)", query):
                 include_ancestors = include_ancestors or m.group("ancestors") == "+"
                 include_descendants = include_descendants or m.group("descendants") == "+"
-                for table_ref in list_table_refs_that_changed(scripts_dir=self.scripts_dir):
+                for table_ref in list_table_refs_that_changed(
+                    scripts_dir=self.scripts_dir, project_name=self.project_name
+                ):
                     yield from _select(
                         ".".join([*table_ref.schema, table_ref.name]),
                         include_ancestors=include_ancestors,
@@ -180,7 +182,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
                 yield from self.iter_descendants(node=potential_child)
 
 
-def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
+def list_table_refs_that_changed(scripts_dir: pathlib.Path, project_name: str) -> set[TableRef]:
     repo = git.Repo(search_parent_directories=True)
     repo_root = pathlib.Path(repo.working_tree_dir)
 
@@ -204,7 +206,9 @@ def list_table_refs_that_changed(scripts_dir: pathlib.Path) -> set[TableRef]:
             (".sql", ".jinja"),
         }:
             table_ref = TableRef.from_path(
-                scripts_dir=scripts_dir, relative_path=diff_path.relative_to(absolute_scripts_dir)
+                scripts_dir=scripts_dir,
+                relative_path=diff_path.relative_to(absolute_scripts_dir),
+                project_name=project_name,
             )
             table_refs.add(table_ref)
 
