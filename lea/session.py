@@ -202,11 +202,15 @@ class Session:
                 msg = f"{job.status} {job.table_ref}"
                 job.ended_at = dt.datetime.now()
                 duration_str = str(job.ended_at - job.started_at).split(".")[0]
-                msg += f", took {duration_str}, cost ${job.database_job.billed_dollars:.2f}"
+                if job.ended_at - job.started_at >= dt.timedelta(seconds=1):
+                    msg += f", took {duration_str}"
+                if job.database_job.billed_dollars is not None:
+                    msg += f", cost ${job.database_job.billed_dollars:.2f}"
                 if not job.is_test:
                     if (stats := job.database_job.statistics) is not None:
                         msg += f", contains {stats.n_rows:,d} rows"
-                        msg += f", weighs {format_bytes(stats.n_bytes)}"
+                        if stats.n_bytes is not None:
+                            msg += f", weighs {format_bytes(stats.n_bytes)}"
                 lea.log.info(msg)
 
             return
@@ -254,7 +258,11 @@ class Session:
 
     @property
     def total_billed_dollars(self) -> float:
-        return sum(job.database_job.billed_dollars for job in self.jobs)
+        return sum(
+            job.database_job.billed_dollars
+            for job in self.jobs
+            if job.database_job.billed_dollars is not None
+        )
 
 
 def replace_script_dependencies(
