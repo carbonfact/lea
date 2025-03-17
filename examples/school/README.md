@@ -117,7 +117,6 @@ Cornell University is not allowed here :
                       university
            0  Cornell University
            ❌ Finished, took less than a second 🚀
-
 ```
 
 Remove last line added to restore source:
@@ -162,7 +161,6 @@ python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT 
     student_name     domain  scholarship_amount
 0   Daniel Lopez  Economics                1000
 1  Gabriel Cooke  Economics                 500
-
 ```
 
 You can review the total amount of money spent :
@@ -175,7 +173,6 @@ python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT 
 ```
    total_expenses
 0         12000.0
-
 ```
 
 Let's modify a script and demonstrate that lea will run again only scripts that have been modified.
@@ -252,5 +249,4 @@ python -c "import duckdb; print(duckdb.connect('school_max.db').execute('SELECT 
 ```
    total_expenses
 0         24000.0
-
 ```
