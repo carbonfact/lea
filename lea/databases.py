@@ -3,13 +3,16 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import typing
+from pathlib import Path
 
+import duckdb
 import pandas as pd
 import rich
 from google.cloud import bigquery
 
 from lea import scripts
-from lea.dialects import BigQueryDialect
+from lea.dialects import BigQueryDialect, DuckDBDialect
+from lea.table_ref import TableRef
 
 
 class DatabaseJob(typing.Protocol):
@@ -115,7 +118,7 @@ class BigQueryJob:
 @dataclasses.dataclass(frozen=True)
 class TableStats:
     n_rows: int
-    n_bytes: int
+    n_bytes: int | None
     updated_at: dt.datetime
 
 
@@ -325,3 +328,219 @@ class BigQueryClient:
             dry_run=self.dry_run,
             **kwargs,
         )
+
+
+@dataclasses.dataclass
+class DuckDBJob:
+    query: str
+    connection: duckdb.DuckDBPyConnection
+    destination: str | None = None
+    exception: str | None = None
+
+    def execute(self):
+        self.connection.execute(self.query)
+
+    @property
+    def is_done(self) -> bool:
+        try:
+            self.execute()
+        except Exception as e:
+            self.exception = repr(e)
+            raise e
+        else:
+            return True
+
+    def stop(self):
+        pass  # No support for stopping queries in DuckDB
+
+    @property
+    def result(self) -> pd.DataFrame:
+        return self.connection.execute(self.query).fetchdf()
+
+    @property
+    def billed_dollars(self) -> float:
+        return None  # DuckDB is free to use
+
+    @property
+    def statistics(self) -> TableStats | None:
+        query = f"SELECT COUNT(*) AS n_rows, MAX(_materialized_timestamp) AS updated_at FROM {self.destination}"
+        table = self.connection.execute(query).fetchdf().iloc[0]
+        return TableStats(
+            n_rows=int(table["n_rows"]),
+            n_bytes=None,
+            updated_at=table["updated_at"],
+        )
+
+
+class DuckDBClient:
+    def __init__(self, database_path: Path, dry_run: bool = False, print_mode: bool = False):
+        self.database_path = database_path
+        if self.database_path == "":
+            raise ValueError("DuckDB path not configured")
+        self.dry_run = dry_run
+        self.print_mode = print_mode
+
+    @property
+    def connection(self) -> duckdb.DuckDBPyConnection:
+        return duckdb.connect(database=str(self.database_path))
+
+    @property
+    def dataset(self) -> str:
+        return self.database_path.stem
+
+    def create_dataset(self, dataset_name: str):
+        self.database_path = self.database_path.with_stem(dataset_name)
+
+    def create_schema(self, table_ref: scripts.TableRef):
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_ref.schema[0]}")
+
+    def materialize_script(self, script: scripts.Script) -> DuckDBJob:
+        if isinstance(script, scripts.SQLScript):
+            return self.materialize_sql_script(sql_script=script)
+        raise ValueError("Unsupported script type")
+
+    def materialize_sql_script(self, sql_script: scripts.SQLScript) -> DuckDBJob:
+        destination = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=sql_script.table_ref
+        )
+        # We need to materialize the script with a timestamp to keep track of when it was materialized.
+        # DuckDB does not provide a metadata table, so we need to create one with a technical column.
+        # bear in mind that this is a workaround and not a best practice. Any change done outside
+        # lea will not be reflected in the metadata column and could break orchestration mecanism.
+        materialize_code = f"""
+        CREATE OR REPLACE TABLE {destination} AS (
+        WITH logic_table AS ({sql_script.code}),
+        materialized_infos AS (SELECT CURRENT_LOCALTIMESTAMP() AS _materialized_timestamp)
+        SELECT * FROM logic_table, materialized_infos
+        );
+        """
+        return self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=sql_script.table_ref,
+                code=materialize_code,
+                sql_dialect=DuckDBDialect,
+                fields=[],
+            ),
+            destination=destination,
+        )
+
+    def query_script(self, script: scripts.Script) -> DuckDBJob:
+        if isinstance(script, scripts.SQLScript):
+            job = self.make_job_config(script=script)
+            return job
+        raise ValueError("Unsupported script type")
+
+    def clone_table(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
+    ) -> DuckDBJob:
+        destination = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=to_table_ref
+        )
+        source = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(table_ref=from_table_ref)
+        clone_code = f"""
+        CREATE OR REPLACE TABLE {destination} AS SELECT * FROM {source}
+        """
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=to_table_ref, code=clone_code, sql_dialect=DuckDBDialect, fields=[]
+            ),
+            destination=destination,
+        )
+        return job
+
+    def delete_and_insert(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
+    ) -> DuckDBJob:
+        to_table_reference = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=to_table_ref
+        )
+        from_table_reference = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=from_table_ref
+        )
+
+        delete_and_insert_code = f"""
+        DELETE FROM {to_table_reference} WHERE {on} IN (SELECT DISTINCT {on} FROM {from_table_reference});
+        INSERT INTO {to_table_reference} SELECT * FROM {from_table_reference};
+        """
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=to_table_ref,
+                code=delete_and_insert_code,
+                sql_dialect=DuckDBDialect,
+                fields=[],
+            ),
+            destination=to_table_reference,
+        )
+        job.execute()
+        return job
+
+    def delete_table(self, table_ref: scripts.TableRef) -> DuckDBJob:
+        table_reference = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
+            table_ref=table_ref
+        )
+        delete_code = f"DROP TABLE IF EXISTS {table_reference}"
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=table_ref, code=delete_code, sql_dialect=DuckDBDialect, fields=[]
+            )
+        )
+        job.execute()
+        return job
+
+    def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
+        tables_query = """
+        SELECT table_name, schema_name, estimated_size
+        FROM duckdb_tables();
+        """
+        tables_result = self.connection.execute(tables_query).fetchdf()
+
+        table_stats = {}
+        for _, row in tables_result.iterrows():
+            table_name = row["table_name"]
+            table_schema = row["schema_name"]
+            n_rows = int(row["estimated_size"])
+            stats_query = f"""
+            SELECT
+                MAX(_materialized_timestamp) AS last_modified
+            FROM {table_schema}.{table_name}
+            """
+            result = self.connection.execute(stats_query).fetchdf().dropna()
+            if result.empty:
+                updated_at = dt.datetime.now(dt.timezone.utc)
+            else:
+                updated_at = dt.datetime.fromtimestamp(
+                    result.iloc[0]["last_modified"].to_pydatetime().timestamp(),
+                    tz=dt.timezone.utc,
+                )
+            table_stats[
+                DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}").replace_dataset(
+                    dataset_name
+                )
+            ] = TableStats(
+                n_rows=n_rows,
+                n_bytes=None,
+                updated_at=updated_at,
+            )
+        return table_stats
+
+    def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:
+        query = f"""
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = '{dataset_name}'
+        """
+        result = self.connection.execute(query).fetchdf()
+        return {
+            scripts.TableRef(name=table_name): [
+                scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()
+            ]
+            for table_name, rows in result.groupby("table_name")
+        }
+
+    def make_job_config(
+        self, script: scripts.SQLScript, destination: str | None = None
+    ) -> DuckDBJob:
+        if self.print_mode:
+            rich.print(script)
+        job = DuckDBJob(query=script.code, connection=self.connection, destination=destination)
+        return job

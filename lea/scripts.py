@@ -172,7 +172,9 @@ class SQLScript:
                     code=self.sql_dialect.make_column_test_unique_by(table_ref, field.name, by),
                     sql_dialect=self.sql_dialect,
                 )
-            elif set_ := re.fullmatch(FieldTag.SET + r"\{(?P<elements>\w+(?:,\s*\w+)*)\}", tag):
+            elif set_ := re.fullmatch(
+                FieldTag.SET + r"\{(?P<elements>'[^']+'(?:,\s*'[^']+')*)\}", tag
+            ):
                 elements = {element.strip() for element in set_.group("elements").split(",")}
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.SET),

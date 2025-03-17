@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import datetime as dt
 import getpass
 import json
 import os
@@ -13,7 +14,7 @@ import lea
 from lea import databases
 from lea.dag import DAGOfScripts
 from lea.databases import DatabaseClient, TableStats
-from lea.dialects import BigQueryDialect
+from lea.dialects import BigQueryDialect, DuckDBDialect
 from lea.session import Session
 from lea.table_ref import AUDIT_TABLE_SUFFIX, TableRef
 
@@ -35,6 +36,10 @@ class Conductor:
         if dataset_name is None:
             if self.warehouse == "bigquery":
                 dataset_name = os.environ.get("LEA_BQ_DATASET_NAME")
+
+            if self.warehouse == "duckdb":
+                duckdb_path = pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", ""))
+                dataset_name = duckdb_path.stem
         if dataset_name is None:
             raise ValueError("Dataset name could not be inferred")
         self.dataset_name = dataset_name
@@ -42,18 +47,28 @@ class Conductor:
         if project_name is None:
             if self.warehouse == "bigquery":
                 project_name = os.environ.get("LEA_BQ_PROJECT_ID")
+            if self.warehouse == "duckdb":
+                project_name = dataset_name
         if project_name is None:
             raise ValueError("Project name could not be inferred")
         self.project_name = project_name
 
         lea.log.info("📝 Reading scripts")
 
-        self.dag = DAGOfScripts.from_directory(
-            scripts_dir=self.scripts_dir,
-            sql_dialect=BigQueryDialect(),
-            dataset_name=self.dataset_name,
-            project_name=self.project_name,
-        )
+        if self.warehouse == "bigquery":
+            self.dag = DAGOfScripts.from_directory(
+                scripts_dir=self.scripts_dir,
+                sql_dialect=BigQueryDialect(),
+                dataset_name=self.dataset_name,
+                project_name=self.project_name if self.warehouse == "bigquery" else None,
+            )
+        if self.warehouse == "duckdb":
+            self.dag = DAGOfScripts.from_directory(
+                scripts_dir=self.scripts_dir,
+                sql_dialect=DuckDBDialect(),
+                dataset_name=self.dataset_name,
+                project_name=None,
+            )
         lea.log.info(f"{len(self.dag.scripts):,d} scripts found")
 
     def run(
@@ -63,6 +78,7 @@ class Conductor:
         production: bool = False,
         dry_run: bool = False,
         restart: bool = False,
+        cleanup: bool = False,
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
@@ -116,6 +132,12 @@ class Conductor:
         write_dataset = self.dataset_name if production else self.name_user_dataset()
         database_client.create_dataset(write_dataset)
 
+        # When using Duckdb, we need to create schema for the tables
+        if self.warehouse == "duckdb":
+            lea.log.info("🔩 Creating schemas")
+            for table_ref in selected_table_refs:
+                database_client.create_schema(table_ref)
+
         # When the scripts run, they are materialized into side-tables which we call "audit"
         # tables. When a run stops because of an error, the audit tables are left behind. If we
         # want to start fresh, we have to delete the audit tables. If not, the materialized tables
@@ -127,6 +149,7 @@ class Conductor:
         existing_audit_tables = self.list_existing_audit_tables(
             database_client=database_client, dataset=write_dataset
         )
+
         lea.log.info(f"{len(existing_audit_tables):,d} audit tables already exist")
 
         session = Session(
@@ -167,9 +190,14 @@ class Conductor:
         session.end()
         duration_str = str(session.ended_at - session.started_at).split(".")[0]  # type: ignore[operator]
         emoji = "✅" if not session.any_error_has_occurred else "❌"
-        lea.log.info(
-            f"{emoji} Finished, took {duration_str}, cost ${session.total_billed_dollars:.2f}"
-        )
+        msg = f"{emoji} Finished"
+        if session.ended_at - session.started_at > dt.timedelta(seconds=1):
+            msg += f", took {duration_str}"
+        else:
+            msg += ", took less than a second 🚀"
+        if session.total_billed_dollars > 0:
+            msg += f", cost ${session.total_billed_dollars:.2f}"
+        lea.log.info(msg)
 
     def make_client(self, dry_run: bool = False, print_mode: bool = False) -> DatabaseClient:
         if self.warehouse.lower() == "bigquery":
@@ -188,7 +216,6 @@ class Conductor:
                 is not None
                 else None
             )
-
             return databases.BigQueryClient(
                 credentials=credentials,
                 location=os.environ["LEA_BQ_LOCATION"],
@@ -198,6 +225,12 @@ class Conductor:
                     credentials.project_id if credentials is not None else None,
                 ),
                 storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL"),
+                dry_run=dry_run,
+                print_mode=print_mode,
+            )
+        if self.warehouse.lower() == "duckdb":
+            return databases.DuckDBClient(
+                database_path=pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", "")),
                 dry_run=dry_run,
                 print_mode=print_mode,
             )
@@ -310,11 +343,10 @@ def delete_audit_tables(session: Session):
 
 
 def delete_orphan_tables(session: Session):
-    tables_with_script = {
+    table_refs_to_delete = set(session.existing_tables) - {
         session.add_write_context_to_table_ref(table_ref).remove_audit_suffix()
         for table_ref in session.scripts
     }
-    table_refs_to_delete = set(session.existing_tables) - tables_with_script
     if table_refs_to_delete:
         lea.log.info("🧹 Deleting orphan tables")
         delete_table_refs(

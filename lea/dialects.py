@@ -165,3 +165,57 @@ class BigQueryDialect(SQLDialect):
             dataset_ref=bigquery.DatasetReference(project=project, dataset_id=table_ref.dataset),
             table_id=f"{'__'.join([*table_ref.schema, table_ref.name])}",
         )
+
+
+class DuckDBDialect(SQLDialect):
+    sqlglot_dialect = sqlglot.dialects.Dialects.DUCKDB
+
+    @staticmethod
+    def parse_table_ref(table_ref: str) -> TableRef:
+        """
+        Parses a DuckDB table reference string into a TableRef object.
+
+        >>> DuckDBDialect.parse_table_ref("my_schema.my_table")
+        TableRef(dataset=None, schema=('my_schema',), name='my_table', project=None)
+
+        >>> DuckDBDialect.parse_table_ref("my_schema.my_subschema__my_table")
+        TableRef(dataset=None, schema=('my_schema', 'my_subschema'), name='my_table', project=None)
+
+        >>> DuckDBDialect.parse_table_ref("my_table")
+        TableRef(dataset=None, schema=(), name='my_table', project=None)
+        """
+        if "." in table_ref:
+            project, schema, leftover = None, *tuple(table_ref.rsplit(".", 1))
+            *subschema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
+            return TableRef(
+                dataset=None, schema=tuple([schema, *subschema]), name=name, project=project
+            )
+        else:
+            return TableRef(dataset=None, schema=(), name=table_ref, project=None)
+
+    @staticmethod
+    def format_table_ref(table_ref: TableRef) -> str:
+        """
+        Formats a TableRef object into a DuckDB table reference string.
+
+        >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=('my_schema',), name='my_table', project=None))
+        'my_schema.my_table'
+
+        >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=('my_schema', 'my_subschema'), name='my_table', project=None))
+        'my_schema.my_subschema__my_table'
+
+        >>> DuckDBDialect.format_table_ref(TableRef(dataset=None, schema=(), name='my_table', project=None))
+        'my_table'
+        """
+        if len(table_ref.schema) > 0:
+            schema = table_ref.schema[0]
+            if len(table_ref.schema) > 1:
+                full_table_ref = f"{schema}.{'__'.join([*table_ref.schema[1:], table_ref.name])}"
+            else:
+                full_table_ref = f"{schema}.{table_ref.name}"
+            return full_table_ref
+        return table_ref.name
+
+    @staticmethod
+    def convert_table_ref_to_duckdb_table_reference(table_ref: TableRef) -> str:
+        return DuckDBDialect.format_table_ref(table_ref)
