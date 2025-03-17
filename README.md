@@ -65,12 +65,7 @@ This installs the `lea` command. It also makes the `lea` Python library availabl
 
 ## Configuration
 
-lea is configured via environment variables:
-
-```sh
-# General configuration
-LEA_USERNAME=max
-```
+lea is configured via environment variables.
 
 ### DuckDB
 
