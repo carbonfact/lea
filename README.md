@@ -142,7 +142,12 @@ You have access to an `env` variable within the template context, which is simpl
 
 ### Development vs. production
 
-By default, lea appends a `_<user>` suffix to schema names. This way you can have a development schema and a production schema. Use the `--production` flag to disable this behavior.
+By default, lea create an isolation layer with production in various way depending on your warehouse choicea :
+
+- BigQuery : by appending a `_<user>` suffix to schema names
+- DuckDB : by adding a suffix `_<user>` to database file.
+
+This way you can have a development schema and a production schema. Use the `--production` flag to disable this behavior.
 
 ```sh
 lea run --production
