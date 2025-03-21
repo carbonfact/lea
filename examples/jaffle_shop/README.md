@@ -123,10 +123,12 @@ sed -i '' '/--uncomment here/s/-- //' scripts/core/expenses.sql
 - Run again scripts, you should see that all stagings audit tables are not executed again.
 - `core.expenses` is executed as lea detected modification on the script
 - All tests are now passing 🎉
+- Audit tables are wipped out from development warehouse.
 
 ## Publish
 
-Now, if you were running in production and not in development mode, you would add a `--production` flag to each command:
+- As all tests passed, tables are materialized in the development warehouse.
+- If you want now to run it against production and not development warehouse, you would add a `--production` flag to each command:
 
 ```sh
 lea run --production
