@@ -123,7 +123,7 @@ sed -i '' '/--uncomment here/s/-- //' scripts/core/expenses.sql
 - Run again scripts, you should see that all stagings audit tables are not executed again.
 - `core.expenses` is executed as lea detected modification on the script
 - All tests are now passing 🎉
-- Audit tables are wipped out from development warehouse.
+- Audit tables are wiped out from development warehouse.
 
 ## Publish
 

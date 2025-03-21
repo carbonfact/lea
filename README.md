@@ -142,12 +142,12 @@ You have access to an `env` variable within the template context, which is simpl
 
 ### Development vs. production
 
-By default, lea create an isolation layer with production in various way depending on your warehouse choicea :
+By default, lea create an isolation layer with production. The way this is done depends on your warehouse:
 
 - BigQuery : by appending a `_<user>` suffix to schema names
 - DuckDB : by adding a suffix `_<user>` to database file.
 
-This way you can have a development schema and a production schema. Use the `--production` flag to disable this behavior.
+In other words, a development environment is used by default. Use the `--production` flag when executing `lea run` to disable this behaviour, and instead target the product environment.
 
 ```sh
 lea run --production
