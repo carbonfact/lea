@@ -267,20 +267,24 @@ You may decide to run all scripts without executing tests, which is obviously no
 lea run --unselect tests/
 ```
 
-### Skipping unmodified scripts
+### Skipping unmodified scripts during development
 
-lea doesn't run scripts that have been modified before the last time the associated table was materialized. For instance:
+lea doesn't run scripts that have been modified before the last time the associated table was materialized, given that audit
+tables still exists (e.g you are still under **Write** and **Audit** loop of the WAP Pattern).
 
-1. You add a script named `core/expenses.sql`
-2. You execute `lea run --select core.expenses`
-3. `core__expenses` is materialized in your data warehouse
-4. You execute `lea run`
-5. The `core/expenses.sql` script is skipped because it was modified before `core__expenses` was last materialized
-6. You edit `core/expenses.sql`
-7. You execute `lea run`
-8. The `core/expenses.sql` script is run because it was modified after `core__expenses` was last materialized
+For instance:
 
-You can disable this default behavior to guarantee each script runs:
+1. You execute `lea run` to sync all tables from sources, no errors, all tables are materialized.
+1. You modify a script named `core/expenses.sql` depending on `staging/customers.sql` and `staging/orders.sql`
+1. You execute `lea run core.expenses+` to run again all impacted tables
+1. `core__expenses___audit` is materialized in your data warehouse but the `-- #NO_NULLS` assertion test on a column fails
+1. After reviewing data in `core__expenses___audit`, you edit and fix `core/expenses.sql` to filter out results where NULLs are appearing
+1. You execute `lea run`
+1. The `staging/customers.sql` and `staging/orders.sql` scripts are skipped because they were modified before `staging__customers` and `staging__orders` was last materialized
+1. The `core/expenses.sql` script is run because it was modified after `core__expenses` was last materialized
+1. All audit tables are wipped out from database as the whole DAG has run successfully ! 🎉
+
+**NB**: You can disable this default behavior to guarantee each script runs:
 
 ```sh
 lea run --restart
