@@ -142,7 +142,7 @@ You have access to an `env` variable within the template context, which is simpl
 
 ### Development vs. production
 
-By default, lea create an isolation layer with production. The way this is done depends on your warehouse:
+By default, lea creates an isolation layer with production. The way this is done depends on your warehouse:
 
 - BigQuery : by appending a `_<user>` suffix to schema names
 - DuckDB : by adding a suffix `_<user>` to database file.
