@@ -43,9 +43,92 @@ There are a couple of cool things:
 
 1. The staging schema is populated using SQL scripts and native DuckDB parsing of CSV files.
 2. The `core.orders` table is created using a Jinja SQL script. lea will automatically run the script through Jinja, and then execute the resulting SQL.
-3. Skip feature (TBC)
+3. Skip feature can help fasten development cycle during WAP pattern. If a table is not passing through audit, all materialized tables won't be run again if the associated SQL script has'nt changed.
+   If the script has changed, the audit table will be generated again, and all it's related childs in the DAG.
 
-Now, if you were running in production and not in development mode, you would add a `--production` flag to each command:
+Let's take the example given in [README.md](README.md).
+
+- Tables are materialized since you ran earlier `lea run`
+
+## Write
+
+- Add a new script `core/expenses.sql`
+
+```sh
+echo '''
+with customer_orders as (
+
+    select
+        customer_id,
+
+        min(order_date) as first_order,
+        max(order_date) as most_recent_order,
+        count(order_id) as number_of_orders
+    from staging.orders
+
+    group by customer_id
+
+),
+
+customer_payments as (
+
+    select
+        orders.customer_id,
+        sum(payments.amount) as total_amount
+
+    from staging.payments as payments
+
+    left join staging.orders as orders
+        on payments.order_id = orders.order_id
+
+    group by orders.customer_id
+
+),
+
+expenses as (
+    select
+    -- #UNIQUE
+        customers.customer_id,
+        customers.first_name,
+        customers.last_name,
+        customer_orders.first_order,
+        customer_orders.most_recent_order,
+        customer_orders.number_of_orders,
+        -- #NO_NULLS
+        customer_payments.total_amount as customer_lifetime_value
+    from staging.customers as customers --comment here
+    left join customer_orders  --comment here
+      on customers.customer_id = customer_orders.customer_id  --comment here
+    -- FROM customer_orders  --uncomment here
+    -- left join staging.customers as customers  --uncomment here
+    --     on  customer_orders.customer_id = customers.customer_id  --uncomment here
+    left join customer_payments
+        on customers.customer_id = customer_payments.customer_id
+)
+
+select * from expenses
+''' > scripts/core/expenses.sql
+```
+
+## Audit
+
+- Run the scripts `lea run` : `lea_duckdb_max.tests.core__expenses__customer_lifetime_value___no_nulls___audit` is failing ❌
+- Uncomment and comment lines to reverse the JOIN orders, and exclude customers absent from orders tables.
+
+```sh
+sed -i '' '/--comment here/s/^/--/' scripts/core/expenses.sql
+sed -i '' '/--uncomment here/s/-- //' scripts/core/expenses.sql
+```
+
+- Run again scripts, you should see that all stagings audit tables are not executed again.
+- `core.expenses` is executed as lea detected modification on the script
+- All tests are now passing 🎉
+- Audit tables are wiped out from development warehouse.
+
+## Publish
+
+- As all tests passed, tables are materialized in the development warehouse.
+- If you want now to run it against production and not development warehouse, you would add a `--production` flag to each command:
 
 ```sh
 lea run --production
