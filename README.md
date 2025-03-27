@@ -41,7 +41,7 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
   - [Selecting scripts](#selecting-scripts)
   - [Write-Audit-Publish (WAP)](#write-audit-publish-wap)
   - [Testing while running](#testing-while-running)
-  - [Skipping unmodified scripts](#skipping-unmodified-scripts)
+  - [Skipping unmodified scripts during development](#skipping-unmodified-scripts-during-development)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -274,22 +274,21 @@ lea run --unselect tests/
 
 ### Skipping unmodified scripts during development
 
-lea doesn't run scripts that have been modified before the last time the associated table was materialized, given that audit
-tables still exists (e.g you are still under **Write** and **Audit** loop of the WAP Pattern).
+When you call `lea run`, it generates audit tables, which are then promoted to replace the original tables. This is done to ensure that the data is consistent and reliable. lea doesn't run scripts when the audit table already exists, and when the script hasn't modified since the last time the audit table was created. This is to avoid unnecessary re-runs of scripts that haven't changed.
 
 For instance:
 
 1. You execute `lea run` to sync all tables from sources, no errors, all tables are materialized.
-1. You modify a script named `core/expenses.sql` depending on `staging/customers.sql` and `staging/orders.sql`
-1. You execute `lea run core.expenses+` to run again all impacted tables
-1. `core__expenses___audit` is materialized in your data warehouse but the `-- #NO_NULLS` assertion test on a column fails
-1. After reviewing data in `core__expenses___audit`, you edit and fix `core/expenses.sql` to filter out results where NULLs are appearing
-1. You execute `lea run`
-1. The `staging/customers.sql` and `staging/orders.sql` scripts are skipped because they were modified before `staging__customers` and `staging__orders` was last materialized
-1. The `core/expenses.sql` script is run because it was modified after `core__expenses` was last materialized
-1. All audit tables are wipped out from database as the whole DAG has run successfully ! 🎉
+2. You modify a script named `core/expenses.sql` depending on `staging/customers.sql` and `staging/orders.sql`
+3. You execute `lea run core.expenses+` to run again all impacted tables
+4. `core__expenses___audit` is materialized in your data warehouse but the `-- #NO_NULLS` assertion test on a column fails
+5. After reviewing data in `core__expenses___audit`, you edit and fix `core/expenses.sql` to filter out results where NULLs are appearing
+6. You execute `lea run`
+7. The `staging/customers.sql` and `staging/orders.sql` scripts are skipped because they were modified before `staging__customers` and `staging__orders` was last materialized
+8. The `core/expenses.sql` script is run because it was modified after `core__expenses` was last materialized
+9. All audit tables are wipped out from database as the whole DAG has run successfully ! 🎉
 
-**NB**: You can disable this default behavior to guarantee each script runs:
+You can disable this behavior altogether:
 
 ```sh
 lea run --restart
