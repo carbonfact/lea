@@ -353,7 +353,7 @@ def delete_orphan_tables(session: Session):
             table_refs=table_refs_to_delete,
             database_client=session.database_client,
             executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
-            verbose=False,
+            verbose=True,
         )
         session.existing_audit_tables = {}
 
