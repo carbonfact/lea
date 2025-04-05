@@ -45,6 +45,7 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
 - [Warehouse specific features](#warehouse-specific-features)
   - [BigQuery](#bigquery-1)
     - [Default clustering](#default-clustering)
+    - [Big Blue Pick API](#big-blue-pick-api)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -320,6 +321,19 @@ You can also specify multiple fields, meaning that tables which contain both fie
 
 ```sh
 LEA_BQ_DEFAULT_CLUSTERING_FIELDS=account_slug,brand_slug
+```
+
+#### Big Blue Pick API
+
+[Big Blue](https://biq.blue/) is a SaaS product to monitor and optimize BigQuery costs. As part of their offering, they provide a [Pick API](https://biq.blue/blog/compute/how-to-implement-bigquery-autoscaling-reservation-in-10-minutes). The idea is that some queries should be run on-demand, while others should be run on a reservation. Big Blue's Pick API suggests which billing model to use for each query.
+
+We use this at Carbonfact, and so this API is available out of the box in lea. You can enable it by setting the following environment variables:
+
+```sh
+LEA_BQ_BIG_BLUE_PICK_API_KEY=<get is from https://your-company.biq.blue/settings.html>
+LEA_BQ_BIG_BLUE_PICK_API_URL=https://pick.biq.blue
+LEA_BQ_BIG_BLUE_PICK_API_ON_DEMAND_PROJECT_ID=on-demand-compute-project-id
+LEA_BQ_BIG_BLUE_PICK_API_REVERVATION_PROJECT_ID=reservation-compute-project-id
 ```
 
 ## Contributing

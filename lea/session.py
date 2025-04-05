@@ -204,6 +204,9 @@ class Session:
                 job.status = JobStatus.SUCCESS
                 msg = f"{job.status} {job.table_ref}"
                 job.ended_at = dt.datetime.now()
+                # Depending on the warehouse in use, jobs may have a conclude() method, for example
+                # for recording job statistics.
+                job.database_job.conclude()
                 duration_str = str(job.ended_at - job.started_at).split(".")[0]
                 if job.ended_at - job.started_at >= dt.timedelta(seconds=1):
                     msg += f", took {duration_str}"

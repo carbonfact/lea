@@ -48,6 +48,9 @@ class DatabaseJob(typing.Protocol):
     def metadata(self) -> list[str]:
         return []
 
+    def conclude(self):
+        pass
+
 
 class DatabaseClient(typing.Protocol):
     def create_dataset(self, dataset_name: str):
@@ -87,23 +90,11 @@ class BigQueryJob:
     client: BigQueryClient
     query_job: bigquery.QueryJob
     destination: bigquery.TableReference | None = None
+    script: scripts.SQLScript | None = None
 
     @property
     def is_done(self) -> bool:
         return self.query_job.done()
-
-    @property
-    def is_using_bi_engine(self) -> bool:
-        return getattr(self.query_job.bi_engine_stats, "bi_engine_mode", None) is not None
-
-    @property
-    def is_using_reservation(self) -> bool:
-        return (
-            self.query_job._properties.get("statistics", {})
-            .get("reservationUsage", [{}])[0]
-            .get("name")
-            is not None
-        )
 
     @property
     def billed_dollars(self) -> float:
@@ -137,9 +128,23 @@ class BigQueryJob:
         return self.query_job.exception()
 
     @property
+    def is_using_reservation(self) -> bool:
+        return (
+            self.query_job._properties.get("statistics", {})
+            .get("reservationUsage", [{}])[0]
+            .get("name")
+        ) is not None
+
+    @property
     def metadata(self) -> list[str]:
         billing_model = ("reservation" if self.is_using_reservation else "on-demand") + " billing"
         return [billing_model]
+
+    def conclude(self):
+        if self.client.big_blue_pick_api is not None and self.script is not None:
+            self.client.big_blue_pick_api.record_job_for_script(
+                script=self.script, job=self.query_job
+            )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -192,16 +197,20 @@ class BigBluePickAPI:
             )
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            lea.log.warning(f"Big Blue Pick API call failed: {e}")
             return None
 
-    def pick_project_id(self, script: scripts.SQLScript) -> str:
-        hash_ = hashlib.sha256(
+    @staticmethod
+    def hash_script(script: scripts.SQLScript) -> str:
+        return hashlib.sha256(
             str(script.table_ref.replace_dataset("FREEZE").replace_project("FREEZE")).encode()
         ).hexdigest()
+
+    def pick_project_id_for_script(self, script: scripts.SQLScript) -> str:
         response = self.call_pick_api(
-            "/pick",
-            {"hash": hash_},
+            path="/pick",
+            body={"hash": self.hash_script(script)},
         )
         if not response or not (pick := response.get("pick")):
             lea.log.warning("Big Blue Pick API call failed, using default project ID")
@@ -218,8 +227,32 @@ class BigBluePickAPI:
     def pick_client(
         self, script: scripts.SQLScript, credentials: service_account.Credentials, location: str
     ) -> DatabaseClient:
-        project_id = self.pick_project_id(script)
+        project_id = self.pick_project_id_for_script(script=script)
         return bigquery.Client(project=project_id, credentials=credentials, location=location)
+
+    def record_job_for_script(self, script: scripts.SQLScript, job: bigquery.QueryJob):
+        self.call_pick_api(
+            path="/write",
+            # https://github.com/biqblue/docs/blob/1ec0eae06ccfabb339cf11bc19dbcbe04b404373/examples/python/pick.py#L42
+            body={
+                "hash": self.hash_script(script),
+                "job_id": job.job_id,
+                "creation_time": str(int(job.created.timestamp() * 1000)),
+                "start_time": str(int(job.started.timestamp() * 1000)),
+                "end_time": str(int(job.ended.timestamp() * 1000)),
+                "total_slot_ms": job.slot_millis,
+                "total_bytes_billed": job.total_bytes_billed,
+                "total_bytes_processed": job.total_bytes_processed,
+                "bi_engine_mode": getattr(job, "bi_engine_statistics", {}).get(
+                    "bi_engine_mode", ""
+                ),
+                "reservation_id": (
+                    job._properties.get("statistics", {})
+                    .get("reservationUsage", [{}])[0]
+                    .get("name", "")
+                ),
+            },
+        )
 
 
 class BigQueryClient(BigBluePickAPI):
@@ -331,6 +364,7 @@ class BigQueryClient(BigBluePickAPI):
                 query=sql_script.code, job_config=job_config, location=self.location
             ),
             destination=destination,
+            script=sql_script,
         )
 
     def query_script(self, script: scripts.Script) -> BigQueryJob:
@@ -354,6 +388,7 @@ class BigQueryClient(BigBluePickAPI):
             query_job=client.query(
                 query=sql_script.code, job_config=job_config, location=self.location
             ),
+            script=sql_script,
         )
 
     def clone_table(

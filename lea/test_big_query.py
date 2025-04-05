@@ -66,6 +66,7 @@ def test_simple_run(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs=scripts.keys(),
+        unselected_table_refs=set(),
         existing_tables={},
         existing_audit_tables={},
     )
@@ -88,7 +89,7 @@ def test_simple_run(scripts):
         ).code,
         """
         SELECT COUNT(*)
-        FROM `test_project`.write.core__users___audit
+        FROM test_project.write.core__users___audit
         """,
     )
 
@@ -100,6 +101,7 @@ def test_incremental_field(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs=scripts.keys(),
+        unselected_table_refs=set(),
         existing_tables={},
         existing_audit_tables={},
         incremental_field_name="name",
@@ -114,7 +116,7 @@ def test_incremental_field(scripts):
         SELECT *
         FROM (
             SELECT id, name, age
-            FROM `test_project`.write.raw__users___audit
+            FROM test_project.write.raw__users___audit
         )
         WHERE name IN ('Alice')
         """,
@@ -127,13 +129,13 @@ def test_incremental_field(scripts):
         """
         SELECT COUNT(*) FROM (
             SELECT *
-            FROM `test_project`.write.core__users___audit
+            FROM test_project.write.core__users___audit
             WHERE name IN ('Alice')
 
             UNION ALL
 
             SELECT *
-            FROM `test_project`.write.core__users
+            FROM test_project.write.core__users
             WHERE name NOT IN ('Alice')
         )
         """,
@@ -147,6 +149,7 @@ def test_incremental_field_but_no_incremental_table_selected(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("analytics",), "n_users", "test_project")},
+        unselected_table_refs=set(),
         existing_tables={},
         existing_audit_tables={},
         incremental_field_name="name",
@@ -163,7 +166,7 @@ def test_incremental_field_but_no_incremental_table_selected(scripts):
             -- #INCREMENTAL
             name,
             age
-        FROM `test_project`.write.raw__users
+        FROM test_project.write.raw__users
         """,
     )
 
@@ -175,6 +178,7 @@ def test_incremental_field_with_just_incremental_table_selected(scripts):
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("core",), "users", "test_project")},
+        unselected_table_refs=set(),
         existing_tables={},
         existing_audit_tables={},
         incremental_field_name="name",
@@ -189,7 +193,7 @@ def test_incremental_field_with_just_incremental_table_selected(scripts):
         SELECT *
         FROM (
             SELECT id, name, age
-            FROM `test_project`.write.raw__users
+            FROM test_project.write.raw__users
         )
         WHERE name IN ('Alice')
         """,
@@ -205,6 +209,7 @@ def test_incremental_field_with_just_incremental_table_selected_and_materialized
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("core",), "users", "test_project")},
+        unselected_table_refs=set(),
         existing_tables={},
         existing_audit_tables={
             TableRef("read", ("raw",), "users", "test_project"): DUMMY_TABLE_STATS
@@ -221,7 +226,7 @@ def test_incremental_field_with_just_incremental_table_selected_and_materialized
         SELECT *
         FROM (
             SELECT id, name, age
-            FROM `test_project`.write.raw__users___audit
+            FROM test_project.write.raw__users___audit
         )
         WHERE name IN ('Alice')
         """,
@@ -237,6 +242,7 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("analytics",), "n_users", "test_project")},
+        unselected_table_refs=set(),
         existing_tables={},
         existing_audit_tables={
             TableRef("read", ("core",), "users", "test_project"): DUMMY_TABLE_STATS,
@@ -253,13 +259,13 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         SELECT COUNT(*)
         FROM (
             SELECT *
-            FROM `test_project`.write.core__users___audit
+            FROM test_project.write.core__users___audit
             WHERE name IN ('Alice')
 
             UNION ALL
 
             SELECT *
-            FROM `test_project`.write.core__users
+            FROM test_project.write.core__users
             WHERE name NOT IN ('Alice')
         )
         """,
@@ -280,6 +286,7 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         write_dataset="write",
         scripts=scripts,
         selected_table_refs={TableRef("read", ("analytics",), "n_users", "test_project")},
+        unselected_table_refs=set(),
         existing_tables={},
         existing_audit_tables={
             TableRef("read", ("core",), "users", "test_project"): DUMMY_TABLE_STATS,
@@ -296,13 +303,13 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         SELECT COUNT(*)
         FROM (
             SELECT *
-            FROM `test_project`.write.core__users___audit
+            FROM test_project.write.core__users___audit
             WHERE name IN ('Alice')
 
             UNION ALL
 
             SELECT *
-            FROM `test_project`.write.core__users
+            FROM test_project.write.core__users
             WHERE name NOT IN ('Alice')
         )
         """,
