@@ -214,6 +214,8 @@ class Session:
                         msg += f", contains {stats.n_rows:,d} rows"
                         if stats.n_bytes is not None:
                             msg += f", weighs {format_bytes(stats.n_bytes)}"
+                if job.database_job.metadata:
+                    msg += f" ({', '.join(job.database_job.metadata)})"
                 lea.log.info(msg)
 
             return

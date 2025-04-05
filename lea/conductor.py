@@ -215,7 +215,7 @@ class Conductor:
                 is not None
                 else None
             )
-            return databases.BigQueryClient(
+            client = databases.BigQueryClient(
                 credentials=credentials,
                 location=os.environ["LEA_BQ_LOCATION"],
                 write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
@@ -233,7 +233,19 @@ class Conductor:
                     ).split(",")
                     if clustering_field.strip()
                 ],
+                big_blue_pick_api_url=os.environ.get("LEA_BQ_BIG_BLUE_PICK_API_URL"),
+                big_blue_pick_api_key=os.environ.get("LEA_BQ_BIG_BLUE_PICK_API_KEY"),
+                big_blue_pick_api_on_demand_project_id=os.environ.get(
+                    "LEA_BQ_BIG_BLUE_PICK_API_ON_DEMAND_PROJECT_ID"
+                ),
+                big_blue_pick_api_reservation_project_id=os.environ.get(
+                    "LEA_BQ_BIG_BLUE_PICK_API_REVERVATION_PROJECT_ID"
+                ),
             )
+            if client.big_blue_pick_api is not None:
+                lea.log.info("🧔‍♂️ Using Big Blue Pick API")
+            return client
+
         if self.warehouse.lower() == "duckdb":
             return databases.DuckDBClient(
                 database_path=pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", "")),
@@ -295,6 +307,10 @@ def materialize_scripts(dag: DAGOfScripts, session: Session):
             # Before executing a script, we need to contextualize it. We have to edit its
             # dependencies, add incremental logic, and set the write context.
             script_to_run = session.add_context_to_script(script_to_run)
+            # 🔨 if you're developping on lea, you can call session.run_script(script_to_run) here
+            # to get a better stack trace. This is because the executor will run the script in a
+            # different thread, and the exception will be raised in that thread, not in the main
+            # thread.
             future = session.executor.submit(session.run_script, script_to_run)
             session.run_script_futures[future] = script_to_run
 
@@ -345,7 +361,7 @@ def delete_audit_tables(session: Session):
         session.add_write_context_to_table_ref(table_ref)
         for table_ref in session.selected_table_refs
     }
-    if session.existing_audit_tables:
+    if table_refs_to_delete:
         lea.log.info("🧹 Deleting audit tables")
         delete_table_refs(
             table_refs=table_refs_to_delete,
