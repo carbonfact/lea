@@ -24,6 +24,7 @@ class Session:
         write_dataset: str,
         scripts: dict[TableRef, Script],
         selected_table_refs: set[TableRef],
+        unselected_table_refs: set[TableRef],
         existing_tables: dict[TableRef, TableStats],
         existing_audit_tables: dict[TableRef, TableStats],
         incremental_field_name=None,
@@ -34,6 +35,7 @@ class Session:
         self.write_dataset = write_dataset
         self.scripts = scripts
         self.selected_table_refs = selected_table_refs
+        self.unselected_table_refs = unselected_table_refs
         self.existing_tables = existing_tables
         self.existing_audit_tables = existing_audit_tables
         self.incremental_field_name = incremental_field_name
@@ -84,7 +86,8 @@ class Session:
 
     def add_context_to_script(self, script: Script) -> Script:
         def add_context_to_dependency(dependency: TableRef) -> TableRef | None:
-            if dependency.project != script.table_ref.project:
+            # We don't modify the project if is has been deliberately set
+            if dependency.project is not None and dependency.project != script.table_ref.project:
                 return None
 
             if (
@@ -201,6 +204,9 @@ class Session:
                 job.status = JobStatus.SUCCESS
                 msg = f"{job.status} {job.table_ref}"
                 job.ended_at = dt.datetime.now()
+                # Depending on the warehouse in use, jobs may have a conclude() method, for example
+                # for recording job statistics.
+                job.database_job.conclude()
                 duration_str = str(job.ended_at - job.started_at).split(".")[0]
                 if job.ended_at - job.started_at >= dt.timedelta(seconds=1):
                     msg += f", took {duration_str}"
@@ -211,6 +217,8 @@ class Session:
                         msg += f", contains {stats.n_rows:,d} rows"
                         if stats.n_bytes is not None:
                             msg += f", weighs {format_bytes(stats.n_bytes)}"
+                if job.database_job.metadata:
+                    msg += f" ({', '.join(job.database_job.metadata)})"
                 lea.log.info(msg)
 
             return

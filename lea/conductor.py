@@ -69,7 +69,8 @@ class Conductor:
                 dataset_name=self.dataset_name,
                 project_name=None,
             )
-        lea.log.info(f"{len(self.dag.scripts):,d} scripts found")
+        lea.log.info(f"{sum(1 for s in self.dag.scripts if not s.is_test):,d} table scripts")
+        lea.log.info(f"{sum(1 for s in self.dag.scripts if s.is_test):,d} test scripts")
 
     def run(
         self,
@@ -78,7 +79,6 @@ class Conductor:
         production: bool = False,
         dry_run: bool = False,
         restart: bool = False,
-        cleanup: bool = False,
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
@@ -118,24 +118,22 @@ class Conductor:
         # We need to select the scripts we want to run. We do this by querying the DAG.
         selected_table_refs = self.dag.select(*select)
         unselected_table_refs = self.dag.select(*unselect)
-        selected_table_refs -= unselected_table_refs
-        if not selected_table_refs:
+        if not selected_table_refs - unselected_table_refs:
             msg = "Nothing found for select " + ", ".join(select)
             if unselect:
                 msg += " and unselect: " + ", ".join(unselect)
             lea.log.error(msg)
             return sys.exit(1)
-        lea.log.info(f"{len(selected_table_refs):,d} scripts selected")
 
         # We need a dataset to materialize the scripts. If we're in production mode, we use the
         # base dataset. If we're in user mode, we use a dataset named after the user.
         write_dataset = self.dataset_name if production else self.name_user_dataset()
         database_client.create_dataset(write_dataset)
 
-        # When using Duckdb, we need to create schema for the tables
+        # When using DuckDB, we need to create schema for the tables
         if self.warehouse == "duckdb":
             lea.log.info("🔩 Creating schemas")
-            for table_ref in selected_table_refs:
+            for table_ref in selected_table_refs - unselected_table_refs:
                 database_client.create_schema(table_ref)
 
         # When the scripts run, they are materialized into side-tables which we call "audit"
@@ -158,6 +156,7 @@ class Conductor:
             write_dataset=write_dataset,
             scripts=self.dag.scripts,
             selected_table_refs=selected_table_refs,
+            unselected_table_refs=unselected_table_refs,
             existing_tables=existing_tables,
             existing_audit_tables=existing_audit_tables,
             incremental_field_name=incremental_field_name,
@@ -171,7 +170,7 @@ class Conductor:
             delete_audit_tables(session)
 
         # Loop over table references in topological order
-        run_scripts(dag=self.dag, session=session)
+        materialize_scripts(dag=self.dag, session=session)
 
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.
@@ -216,7 +215,7 @@ class Conductor:
                 is not None
                 else None
             )
-            return databases.BigQueryClient(
+            client = databases.BigQueryClient(
                 credentials=credentials,
                 location=os.environ["LEA_BQ_LOCATION"],
                 write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
@@ -227,7 +226,26 @@ class Conductor:
                 storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL"),
                 dry_run=dry_run,
                 print_mode=print_mode,
+                default_clustering_fields=[
+                    clustering_field.strip()
+                    for clustering_field in os.environ.get(
+                        "LEA_BQ_DEFAULT_CLUSTERING_FIELDS", ""
+                    ).split(",")
+                    if clustering_field.strip()
+                ],
+                big_blue_pick_api_url=os.environ.get("LEA_BQ_BIG_BLUE_PICK_API_URL"),
+                big_blue_pick_api_key=os.environ.get("LEA_BQ_BIG_BLUE_PICK_API_KEY"),
+                big_blue_pick_api_on_demand_project_id=os.environ.get(
+                    "LEA_BQ_BIG_BLUE_PICK_API_ON_DEMAND_PROJECT_ID"
+                ),
+                big_blue_pick_api_reservation_project_id=os.environ.get(
+                    "LEA_BQ_BIG_BLUE_PICK_API_REVERVATION_PROJECT_ID"
+                ),
             )
+            if client.big_blue_pick_api is not None:
+                lea.log.info("🧔‍♂️ Using Big Blue Pick API")
+            return client
+
         if self.warehouse.lower() == "duckdb":
             return databases.DuckDBClient(
                 database_path=pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", "")),
@@ -264,14 +282,18 @@ class Conductor:
         return existing_audit_tables
 
 
-def run_scripts(dag: DAGOfScripts, session: Session):
+def materialize_scripts(dag: DAGOfScripts, session: Session):
     table_refs_to_run = determine_table_refs_to_run(
         selected_table_refs=session.selected_table_refs,
+        unselected_table_refs=session.unselected_table_refs,
         existing_audit_tables=session.existing_audit_tables,
         dag=dag,
         base_dataset=session.base_dataset,
     )
-    lea.log.info("🔵 Creating audit tables")
+    if not table_refs_to_run:
+        lea.log.info("✅ Nothing needs materializing")
+        return
+    lea.log.info(f"🔵 Running {len(table_refs_to_run):,d} scripts")
     dag.prepare()
     while dag.is_active():
         # If we're in early end mode, we need to check if any script errored, in which case we
@@ -285,6 +307,10 @@ def run_scripts(dag: DAGOfScripts, session: Session):
             # Before executing a script, we need to contextualize it. We have to edit its
             # dependencies, add incremental logic, and set the write context.
             script_to_run = session.add_context_to_script(script_to_run)
+            # 🔨 if you're developping on lea, you can call session.run_script(script_to_run) here
+            # to get a better stack trace. This is because the executor will run the script in a
+            # different thread, and the exception will be raised in that thread, not in the main
+            # thread.
             future = session.executor.submit(session.run_script, script_to_run)
             session.run_script_futures[future] = script_to_run
 
@@ -327,6 +353,10 @@ def promote_audit_tables(session: Session):
 
 
 def delete_audit_tables(session: Session):
+    # Depending on when delete_audit_tables is called, there might be new audit tables that have
+    # been created. We need to delete them too. We do this by adding the write context to the
+    # table references. This will add the audit suffix to the table reference, which will make
+    # it match the audit tables that have been created.
     table_refs_to_delete = set(session.existing_audit_tables) | {
         session.add_write_context_to_table_ref(table_ref)
         for table_ref in session.selected_table_refs
@@ -379,6 +409,7 @@ def delete_table_refs(
 
 def determine_table_refs_to_run(
     selected_table_refs: set[TableRef],
+    unselected_table_refs: set[TableRef],
     existing_audit_tables: dict[TableRef, TableStats],
     dag: DAGOfScripts,
     base_dataset: str,
@@ -397,20 +428,46 @@ def determine_table_refs_to_run(
     table (if it exists): a script that has been modified since the last time it was run needs to
     be run again. All the descendants of this script also need to be run.
 
-    """
+    On top of this, we also include each test script that is associated with the selected table
+    references. We do this because it's a good default behavior.
 
-    normalized_existing_audit_tables = {
+    """
+    table_refs_to_run = selected_table_refs.copy()
+
+    # By default, we do not run scripts that have an audit table materialized. We will determine
+    # afterwards, based on each script's modified_at, if we need to run them again.
+    existing_audit_table_refs = {
         table_ref.remove_audit_suffix().replace_dataset(base_dataset): stats
         for table_ref, stats in existing_audit_tables.items()
     }
-    table_refs_to_run = selected_table_refs.copy()
-    table_refs_to_run -= set(normalized_existing_audit_tables)
+    table_refs_to_run -= set(existing_audit_table_refs)
 
-    for table_ref in selected_table_refs & set(normalized_existing_audit_tables):
+    # Now we check if any of the audit tables have had their script modified since the last time
+    # they were materialized. If so, we need to run them again, as well as their descendants.
+    for table_ref in selected_table_refs & set(existing_audit_table_refs):
         script = dag.scripts[table_ref]
-        if script.updated_at > normalized_existing_audit_tables[table_ref].updated_at:
-            lea.log.info(f"{table_ref} modified, re-running it")
+        if script.updated_at > existing_audit_table_refs[table_ref].updated_at:
+            lea.log.info(f"📝 {table_ref} was modified, re-materializing it")
             table_refs_to_run.add(table_ref)
             table_refs_to_run |= set(dag.iter_descendants(table_ref)) & selected_table_refs
+
+    # Include applicable tests. That is, test scripts whose dependencies are all in the set of
+    # selected table references.
+    applicable_test_scripts_table_refs = {
+        script.table_ref
+        for script in dag.scripts.values()
+        if script.is_test
+        and all(dependency in table_refs_to_run for dependency in script.dependencies)
+    }
+    table_refs_to_run |= applicable_test_scripts_table_refs
+
+    # Now we remove the unselected table references from the set of table references to run. We do
+    # this at the very end, because of the above logic which adds table references to the set of
+    # table references to run. For instance, if we run
+    #
+    # lea --select core.accounts --unselect tests
+    #
+    # we don't want the tests which are applicable to core.accounts to be run.
+    table_refs_to_run -= unselected_table_refs
 
     return table_refs_to_run

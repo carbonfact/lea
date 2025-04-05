@@ -138,20 +138,25 @@ class BigQueryDialect(SQLDialect):
         TableRef(dataset='my_dataset', schema=('my_schema',), name='my_table___audit', project='my_project')
 
         >>> BigQueryDialect.parse_table_ref("`carbonfact-gsheet`.hubspot.company")
-        TableRef(dataset='hubspot', schema=(), name='company', project='`carbonfact-gsheet`')
+        TableRef(dataset='hubspot', schema=(), name='company', project='carbonfact-gsheet')
 
         """
         project, dataset, leftover = None, *tuple(table_ref.rsplit(".", 1))
         if "." in dataset:
             project, dataset = dataset.split(".")
         *schema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
-        return TableRef(dataset=dataset, schema=tuple(schema), name=name, project=project)
+        return TableRef(
+            dataset=strip_quotes(dataset),
+            schema=tuple([strip_quotes(s) for s in schema]),
+            name=strip_quotes(name),
+            project=strip_quotes(project) if project else None,
+        )
 
     @staticmethod
     def format_table_ref(table_ref: TableRef) -> str:
         table_ref_str = ""
         if table_ref.project:
-            table_ref_str += f"`{table_ref.project}`."
+            table_ref_str += f"{table_ref.project}."
         if table_ref.dataset:
             table_ref_str += f"{table_ref.dataset}."
         table_ref_str += f"{'__'.join([*table_ref.schema, table_ref.name])}"
@@ -187,11 +192,14 @@ class DuckDBDialect(SQLDialect):
         if "." in table_ref:
             project, schema, leftover = None, *tuple(table_ref.rsplit(".", 1))
             *subschema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
+
             return TableRef(
-                dataset=None, schema=tuple([schema, *subschema]), name=name, project=project
+                dataset=None,
+                schema=tuple([strip_quotes(schema), *[strip_quotes(ss) for ss in subschema]]),
+                name=strip_quotes(name),
+                project=strip_quotes(project) if project else None,
             )
-        else:
-            return TableRef(dataset=None, schema=(), name=table_ref, project=None)
+        return TableRef(dataset=None, schema=(), name=table_ref, project=None)
 
     @staticmethod
     def format_table_ref(table_ref: TableRef) -> str:
@@ -219,3 +227,7 @@ class DuckDBDialect(SQLDialect):
     @staticmethod
     def convert_table_ref_to_duckdb_table_reference(table_ref: TableRef) -> str:
         return DuckDBDialect.format_table_ref(table_ref)
+
+
+def strip_quotes(x: str) -> str:
+    return x.strip('"').strip("`")
