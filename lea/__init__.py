@@ -5,7 +5,7 @@ import logging
 import click
 from rich.logging import RichHandler
 
-from lea import cli, databases, scripts
+from lea import cli, databases
 from lea.conductor import Conductor
 
 logging.basicConfig(
