@@ -118,17 +118,26 @@ class SQLScript:
                 return table_ref.replace_project(self.table_ref.project)
             return table_ref
 
-        return {
-            add_default_project(
-                self.sql_dialect.parse_table_ref(table_ref=sqlglot.exp.table_name(table))
-            )
-            for scope in sqlglot.optimizer.scope.traverse_scope(self.ast)
-            for table in scope.tables
-            if (
-                not isinstance(table.this, sqlglot.exp.Func)
-                and sqlglot.exp.table_name(table) not in scope.cte_sources
-            )
-        }
+        dependencies = set()
+
+        for scope in sqlglot.optimizer.scope.traverse_scope(self.ast):
+            for table in scope.tables:
+                if (
+                    not isinstance(table.this, sqlglot.exp.Func)
+                    and sqlglot.exp.table_name(table) not in scope.cte_sources
+                ):
+                    try:
+                        table_ref = self.sql_dialect.parse_table_ref(
+                            table_ref=sqlglot.exp.table_name(table)
+                        )
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Unable to parse table reference {sqlglot.exp.table_name(table)!r} "
+                            f"in {self.table_ref.replace_project(None)}"
+                        ) from e
+                    dependencies.add(add_default_project(table_ref))
+
+        return dependencies
 
     @property
     def assertion_tests(self) -> list[SQLScript]:

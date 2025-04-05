@@ -42,6 +42,9 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
   - [Write-Audit-Publish (WAP)](#write-audit-publish-wap)
   - [Testing while running](#testing-while-running)
   - [Skipping unmodified scripts during development](#skipping-unmodified-scripts-during-development)
+- [Warehouse specific features](#warehouse-specific-features)
+  - [BigQuery](#bigquery-1)
+    - [Default clustering](#default-clustering)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -180,7 +183,7 @@ lea run --select +core.users+  # users and all its dependencies
 You can select all scripts in a schema:
 
 ```sh
-lea run --select core/
+lea run --select core/  # the trailing slash matters
 ```
 
 This also work with sub-schemas:
@@ -263,13 +266,20 @@ lea run --select tests.check_n_users
 Or even run all the tests, as so:
 
 ```sh
-lea run --select tests/
+lea run --select tests/  # the trailing slash matters
+```
+
+☝️ When you run a script that is not a test, all the applicable tests are run as well. For instance, the following command will run the `core.users` script and all the tests that are applicable to it:
+
+```sh
+lea run --select core.users
 ```
 
 You may decide to run all scripts without executing tests, which is obviously not advisable:
 
 ```sh
 lea run --unselect tests/
+lea run --select core.users --unselect tests/
 ```
 
 ### Skipping unmodified scripts during development
@@ -292,6 +302,24 @@ You can disable this behavior altogether:
 
 ```sh
 lea run --restart
+```
+
+## Warehouse specific features
+
+### BigQuery
+
+#### Default clustering
+
+At Carbonfact, we cluster most of our tables by customer. This is done to optimize query performance and reduce costs. lea allows you to automatically cluster tables that contain a given field:
+
+```sh
+LEA_BQ_DEFAULT_CLUSTERING_FIELDS=account_slug
+```
+
+You can also specify multiple fields, meaning that tables which contain both fields will be clustered:
+
+```sh
+LEA_BQ_DEFAULT_CLUSTERING_FIELDS=account_slug,brand_slug
 ```
 
 ## Contributing

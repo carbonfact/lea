@@ -132,6 +132,7 @@ class BigQueryClient:
         storage_billing_model: str = "PHYSICAL",
         dry_run: bool = False,
         print_mode: bool = False,
+        default_clustering_fields: list[str] = None,
     ):
         self.credentials = credentials
         self.write_project_id = write_project_id
@@ -145,6 +146,7 @@ class BigQueryClient:
         )
         self.dry_run = dry_run
         self.print_mode = print_mode
+        self.default_clustering_fields = default_clustering_fields or []
 
     def create_dataset(self, dataset_name: str):
         dataset_ref = bigquery.DatasetReference(
@@ -177,7 +179,19 @@ class BigQueryClient:
             table_ref=sql_script.table_ref, project=self.write_project_id
         )
         job_config = self.make_job_config(
-            script=sql_script, destination=destination, write_disposition="WRITE_TRUNCATE"
+            script=sql_script,
+            destination=destination,
+            write_disposition="WRITE_TRUNCATE",
+            clustering_fields=(
+                self.default_clustering_fields
+                if self.default_clustering_fields
+                and not sql_script.table_ref.is_test
+                and all(
+                    clustering_field in {field.name for field in sql_script.fields}
+                    for clustering_field in self.default_clustering_fields
+                )
+                else None
+            ),
         )
         return BigQueryJob(
             client=self,
