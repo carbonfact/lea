@@ -93,7 +93,7 @@ class SQLDialect:
             dependency_with_wap_suffix_str = cls.format_table_ref(dependency_with_wap_suffix)
             code = re.sub(
                 # We could use \b, but it doesn't work with backticks
-                rf"(?<!\S){re.escape(dependency_with_wap_suffix_str)}(?!\S)",
+                rf"(?<!\S){re.escape(dependency_with_wap_suffix_str)}(?=[,\s]|$)",
                 f"""
                 (
                     SELECT * FROM {dependency_with_wap_suffix_str}

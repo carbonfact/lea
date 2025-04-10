@@ -49,6 +49,14 @@ def scripts() -> dict[TableRef, Script]:
                 """,
                 sql_dialect=BigQueryDialect(),
             ),
+            Script(
+                table_ref=TableRef("read", ("analytics",), "n_users_with_unnest", "test_project"),
+                code="""
+                SELECT COUNT(*)
+                FROM read.core__users, UNNEST([1, 2, 3]) AS n
+                """,
+                sql_dialect=BigQueryDialect(),
+            ),
         ]
     }
 
@@ -138,6 +146,54 @@ def test_incremental_field(scripts):
             FROM test_project.write.core__users
             WHERE name NOT IN ('Alice')
         )
+        """,
+    )
+
+
+def test_incremental_field_with_comma(scripts):
+    session = Session(
+        database_client=None,
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs=scripts.keys(),
+        unselected_table_refs=set(),
+        existing_tables={},
+        existing_audit_tables={},
+        incremental_field_name="name",
+        incremental_field_values={"Alice"},
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(
+            scripts[TableRef("read", ("core",), "users", "test_project")]
+        ).code,
+        """
+        SELECT *
+        FROM (
+            SELECT id, name, age
+            FROM test_project.write.raw__users___audit
+        )
+        WHERE name IN ('Alice')
+        """,
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(
+            scripts[TableRef("read", ("analytics",), "n_users_with_unnest", "test_project")]
+        ).code,
+        """
+        SELECT COUNT(*) FROM (
+            SELECT *
+            FROM test_project.write.core__users___audit
+            WHERE name IN ('Alice')
+
+            UNION ALL
+
+            SELECT *
+            FROM test_project.write.core__users
+            WHERE name NOT IN ('Alice')
+        ) , UNNEST([1, 2, 3]) AS n
         """,
     )
 
