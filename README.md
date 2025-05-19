@@ -323,6 +323,8 @@ You can also specify multiple fields, meaning that tables which contain both fie
 LEA_BQ_DEFAULT_CLUSTERING_FIELDS=account_slug,brand_slug
 ```
 
+For each table, lea will use the clustering fields it can and ignore the others. With the previous configuration, if your table defines `account_slug` and not `brand_slug`, it will cluster by `account_slug`.
+
 #### Big Blue Pick API
 
 [Big Blue](https://biq.blue/) is a SaaS product to monitor and optimize BigQuery costs. As part of their offering, they provide a [Pick API](https://biq.blue/blog/compute/how-to-implement-bigquery-autoscaling-reservation-in-10-minutes). The idea is that some queries should be run on-demand, while others should be run on a reservation. Big Blue's Pick API suggests which billing model to use for each query.
