@@ -60,7 +60,7 @@ class Session:
                 )
             }
             self.incremental_table_refs = {
-                table_ref.replace_dataset(self.write_dataset)
+                table_ref.replace_dataset(self.write_dataset).remove_audit_suffix()
                 for table_ref in selected_table_refs | set(existing_audit_tables)
                 if any(
                     field.name == incremental_field_name and FieldTag.INCREMENTAL in field.tags
