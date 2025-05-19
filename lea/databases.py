@@ -337,13 +337,12 @@ class BigQueryClient(BigBluePickAPI):
             destination=destination,
             write_disposition="WRITE_TRUNCATE",
             clustering_fields=(
-                self.default_clustering_fields
-                if self.default_clustering_fields
-                and not sql_script.table_ref.is_test
-                and all(
-                    clustering_field in {field.name for field in sql_script.fields}
+                [
+                    clustering_field
                     for clustering_field in self.default_clustering_fields
-                )
+                    if clustering_field in {field.name for field in sql_script.fields}
+                ]
+                if self.default_clustering_fields and not sql_script.table_ref.is_test
                 else None
             ),
         )
