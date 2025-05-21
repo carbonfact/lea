@@ -332,19 +332,24 @@ class BigQueryClient(BigBluePickAPI):
         destination = BigQueryDialect.convert_table_ref_to_bigquery_table_reference(
             table_ref=sql_script.table_ref, project=self.write_project_id
         )
-        job_config = self.make_job_config(
-            script=sql_script,
-            destination=destination,
-            write_disposition="WRITE_TRUNCATE",
-            clustering_fields=(
+        clustering_fields = (
+            (
                 [
                     clustering_field
                     for clustering_field in self.default_clustering_fields
                     if clustering_field in {field.name for field in sql_script.fields}
                 ]
-                if self.default_clustering_fields and not sql_script.table_ref.is_test
-                else None
-            ),
+            )
+            if self.default_clustering_fields
+            else None
+        )
+        job_config = self.make_job_config(
+            script=sql_script,
+            destination=destination,
+            write_disposition="WRITE_TRUNCATE",
+            clustering_fields=clustering_fields
+            if clustering_fields and not sql_script.table_ref.is_test
+            else None,
         )
 
         client = (
