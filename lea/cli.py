@@ -10,12 +10,12 @@ import lea
 
 @click.group()
 def app():
-    ...
+    pass
 
 
 @app.command()
-@click.option("--select", "-m", multiple=True, default=["*"], help="Scripts to materialize.")
-@click.option("--unselect", "-m", multiple=True, default=[], help="Scripts to unselect.")
+@click.option("--select", multiple=True, default=["*"], help="Scripts to materialize.")
+@click.option("--unselect", multiple=True, default=[], help="Scripts to skip materializing.")
 @click.option("--dataset", default=None, help="Name of the base dataset.")
 @click.option("--scripts", default="scripts", help="Directory where the scripts are located.")
 @click.option(
