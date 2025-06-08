@@ -158,12 +158,14 @@ class Conductor:
                 lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
                 database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
 
-            database_client.connection.execute(f"""
+            database_client.connection.execute(
+                f"""
             ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
                 DATA_PATH '{os.environ["LEA_DUCKLAKE_DATA_PATH"]}'
             );
             USE my_ducklake;
-            """)
+            """
+            )
 
         # When using DuckDB, we need to create schema for the tables
         if self.warehouse in {
