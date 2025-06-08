@@ -27,7 +27,8 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart):
+@click.option("--env-file", type=click.Path(exists=True), help="Path to the environment file.")
+def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart, env_file):
     if select in {"", "Ø"}:
         select = []
 
@@ -43,7 +44,7 @@ def run(select, unselect, dataset, scripts, incremental, dry, print, production,
     incremental_field_name = next(iter(incremental_field_values), None)
     incremental_field_values = incremental_field_values[incremental_field_name]
 
-    conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
+    conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset, env_file_path=env_file)
     conductor.run(
         select=select,
         unselect=unselect,

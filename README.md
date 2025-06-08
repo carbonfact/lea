@@ -31,8 +31,10 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
 - [Examples](#examples)
 - [Installation](#installation)
 - [Configuration](#configuration)
-  - [DuckDB](#duckdb)
   - [BigQuery](#bigquery)
+  - [DuckDB](#duckdb)
+  - [MotherDuck](#motherduck)
+  - [DuckLake](#ducklake)
 - [Usage](#usage)
   - [`lea run`](#lea-run)
   - [File structure](#file-structure)
@@ -71,13 +73,6 @@ This installs the `lea` command. It also makes the `lea` Python library availabl
 
 lea is configured via environment variables.
 
-### DuckDB
-
-```sh
-LEA_WAREHOUSE=duckdb
-LEA_DUCKDB_PATH=duckdb.db
-```
-
 ### BigQuery
 
 ```sh
@@ -98,6 +93,47 @@ LEA_BQ_SCOPES=https://www.googleapis.com/auth/bigquery,https://www.googleapis.co
 # LOGICAL or PHYSICAL, defaults to PHYSICAL
 LEA_BQ_STORAGE_BILLING_MODEL=PHYSICAL
 ```
+
+### DuckDB
+
+```sh
+# Required
+LEA_WAREHOUSE=duckdb
+# Required
+LEA_DUCKDB_PATH=duckdb.db
+# Optional
+LEA_DUCKDB_EXTENSIONS=parquet,httpfs
+```
+
+### MotherDuck
+
+```sh
+# Required
+LEA_WAREHOUSE=motherduck
+# Required
+MOTHERDUCK_TOKEN=<get this from https://app.motherduck.com/settings/tokens>
+# Required
+LEA_MOTHERDUCK_DATABASE=bike_sharing
+# Optional
+LEA_DUCKDB_EXTENSIONS=parquet,httpfs
+```
+
+### DuckLake
+
+```sh
+# Required
+LEA_WAREHOUSE=ducklake
+# Required
+LEA_DUCKLAKE_DATA_PATH=gcs://bike-sharing-analytics
+# Required
+LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
+# Optional
+LEA_DUCKLAKE_S3_ENDPOINT=storage.googleapis.com
+# Optional
+LEA_DUCKDB_EXTENSIONS=parquet,httpfs
+```
+
+DuckLake needs a database to [manage metadata](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database), which is what `LEA_DUCKLAKE_CATALOG_DATABASE` is for.
 
 ## Usage
 

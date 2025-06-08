@@ -21,54 +21,69 @@ from lea.table_ref import AUDIT_TABLE_SUFFIX, TableRef
 
 class Conductor:
     def __init__(
-        self, scripts_dir: str, dataset_name: str | None = None, project_name: str | None = None
+        self,
+        scripts_dir: str,
+        dataset_name: str | None = None,
+        project_name: str | None = None,
+        env_file_path: str | None = None,
     ):
         # Load environment variables from .env file
-        # TODO: is is Pythonic to do this here?
-        dotenv.load_dotenv(".env", verbose=True)
+        dotenv.load_dotenv(env_file_path or ".env", verbose=True)
 
-        self.warehouse = os.environ["LEA_WAREHOUSE"].lower()
+        self.warehouse = databases.Warehouse(os.environ["LEA_WAREHOUSE"].lower())
 
         self.scripts_dir = pathlib.Path(scripts_dir)
         if not self.scripts_dir.is_dir():
             raise ValueError(f"Directory {self.scripts_dir} not found")
 
         if dataset_name is None:
-            if self.warehouse == "bigquery":
-                dataset_name = os.environ.get("LEA_BQ_DATASET_NAME")
-
-            if self.warehouse == "duckdb":
-                duckdb_path = pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", ""))
-                dataset_name = duckdb_path.stem
-        if dataset_name is None:
-            raise ValueError("Dataset name could not be inferred")
+            if self.warehouse == databases.Warehouse.BIGQUERY:
+                dataset_name = os.environ["LEA_BQ_DATASET_NAME"]
+            elif self.warehouse == databases.Warehouse.DUCKDB:
+                dataset_name = pathlib.Path(os.environ["LEA_DUCKDB_PATH"]).stem
+            elif self.warehouse == databases.Warehouse.MOTHERDUCK:
+                dataset_name = pathlib.Path(os.environ["LEA_MOTHERDUCK_DATABASE"]).stem
+            elif self.warehouse == databases.Warehouse.DUCKLAKE:
+                dataset_name = pathlib.Path(os.environ["LEA_DUCKLAKE_DATA_PATH"]).stem
+            else:
+                raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
         self.dataset_name = dataset_name
 
         if project_name is None:
-            if self.warehouse == "bigquery":
-                project_name = os.environ.get("LEA_BQ_PROJECT_ID")
-            if self.warehouse == "duckdb":
+            if self.warehouse == databases.Warehouse.BIGQUERY:
+                project_name = os.environ["LEA_BQ_PROJECT_ID"]
+            elif self.warehouse in {
+                databases.Warehouse.DUCKDB,
+                databases.Warehouse.MOTHERDUCK,
+                databases.Warehouse.DUCKLAKE,
+            }:
                 project_name = dataset_name
-        if project_name is None:
-            raise ValueError("Project name could not be inferred")
+            else:
+                raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
         self.project_name = project_name
 
         lea.log.info("📝 Reading scripts")
 
-        if self.warehouse == "bigquery":
+        if self.warehouse == databases.Warehouse.BIGQUERY:
             self.dag = DAGOfScripts.from_directory(
                 scripts_dir=self.scripts_dir,
                 sql_dialect=BigQueryDialect(),
                 dataset_name=self.dataset_name,
-                project_name=self.project_name if self.warehouse == "bigquery" else None,
+                project_name=self.project_name,
             )
-        if self.warehouse == "duckdb":
+        elif self.warehouse in {
+            databases.Warehouse.DUCKDB,
+            databases.Warehouse.MOTHERDUCK,
+            databases.Warehouse.DUCKLAKE,
+        }:
             self.dag = DAGOfScripts.from_directory(
                 scripts_dir=self.scripts_dir,
                 sql_dialect=DuckDBDialect(),
                 dataset_name=self.dataset_name,
                 project_name=None,
             )
+        else:
+            raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
         lea.log.info(f"{sum(1 for s in self.dag.scripts if not s.is_test):,d} table scripts")
         lea.log.info(f"{sum(1 for s in self.dag.scripts if s.is_test):,d} test scripts")
 
@@ -130,11 +145,50 @@ class Conductor:
         write_dataset = self.dataset_name if production else self.name_user_dataset()
         database_client.create_dataset(write_dataset)
 
+        if self.warehouse == databases.Warehouse.DUCKDB:
+            lea.log.info(f"🔩 Using DuckDB database at {database_client.database_path.absolute()}")
+
+        elif self.warehouse == databases.Warehouse.MOTHERDUCK:
+            database_client.connection.execute("ATTACH 'md:';")
+            database_client.connection.execute(f"CREATE DATABASE IF NOT EXISTS {write_dataset};")
+            database_client.connection.execute(f"USE {write_dataset};")
+
+        elif self.warehouse == databases.Warehouse.DUCKLAKE:
+            if s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
+                lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
+                database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
+
+            database_client.connection.execute(f"""
+            ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
+                DATA_PATH '{os.environ["LEA_DUCKLAKE_DATA_PATH"]}'
+            );
+            USE my_ducklake;
+            """)
+
         # When using DuckDB, we need to create schema for the tables
-        if self.warehouse == "duckdb":
+        if self.warehouse in {
+            databases.Warehouse.DUCKDB,
+            databases.Warehouse.MOTHERDUCK,
+            databases.Warehouse.DUCKLAKE,
+        }:
+            # Load extensions
+            for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
+                extension = extension.strip()
+                if extension:
+                    lea.log.info(f"🔩 Loading extension {extension}")
+                    database_client.connection.execute(f"INSTALL '{extension}';")
+                    database_client.connection.execute(f"LOAD '{extension}';")
+
+            # Schemas are not created automatically in DuckDB, so we need to create them
+            # manually before running the scripts.
             lea.log.info("🔩 Creating schemas")
-            for table_ref in selected_table_refs - unselected_table_refs:
-                database_client.create_schema(table_ref)
+            schema_names = set(
+                table_ref.schema[0]
+                for table_ref in selected_table_refs | unselected_table_refs
+                if table_ref.schema is not None
+            )
+            for schema_name in schema_names:
+                database_client.create_schema(schema_name)
 
         # When the scripts run, they are materialized into side-tables which we call "audit"
         # tables. When a run stops because of an error, the audit tables are left behind. If we
@@ -147,7 +201,6 @@ class Conductor:
         existing_audit_tables = self.list_existing_audit_tables(
             database_client=database_client, dataset=write_dataset
         )
-
         lea.log.info(f"{len(existing_audit_tables):,d} audit tables already exist")
 
         session = Session(
@@ -199,7 +252,7 @@ class Conductor:
         lea.log.info(msg)
 
     def make_client(self, dry_run: bool = False, print_mode: bool = False) -> DatabaseClient:
-        if self.warehouse.lower() == "bigquery":
+        if self.warehouse == databases.Warehouse.BIGQUERY:
             # Do imports here to avoid loading them all the time
             from google.oauth2 import service_account
 
@@ -246,9 +299,23 @@ class Conductor:
                 lea.log.info("🧔‍♂️ Using Big Blue Pick API")
             return client
 
-        if self.warehouse.lower() == "duckdb":
+        elif self.warehouse == databases.Warehouse.DUCKDB:
             return databases.DuckDBClient(
-                database_path=pathlib.Path(os.environ.get("LEA_DUCKDB_PATH", "")),
+                database_path=pathlib.Path(os.environ["LEA_DUCKDB_PATH"]),
+                dry_run=dry_run,
+                print_mode=print_mode,
+            )
+
+        elif self.warehouse == databases.Warehouse.MOTHERDUCK:
+            return databases.MotherDuckClient(
+                database_path=pathlib.Path(os.environ["LEA_MOTHERDUCK_DATABASE"]),
+                dry_run=dry_run,
+                print_mode=print_mode,
+            )
+
+        elif self.warehouse == databases.Warehouse.DUCKLAKE:
+            return databases.DuckLakeClient(
+                database_path=pathlib.Path(os.environ["LEA_DUCKLAKE_DATA_PATH"]),
                 dry_run=dry_run,
                 print_mode=print_mode,
             )

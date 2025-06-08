@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import enum
 import hashlib
 import typing
 import urllib.parse
@@ -18,6 +19,13 @@ import lea
 from lea import scripts
 from lea.dialects import BigQueryDialect, DuckDBDialect
 from lea.table_ref import TableRef
+
+
+class Warehouse(enum.Enum):
+    BIGQUERY = "bigquery"
+    DUCKDB = "duckdb"
+    MOTHERDUCK = "motherduck"
+    DUCKLAKE = "ducklake"
 
 
 class DatabaseJob(typing.Protocol):
@@ -565,6 +573,13 @@ class DuckDBJob:
             updated_at=table["updated_at"],
         )
 
+    @property
+    def metadata(self) -> list[str]:
+        return []
+
+    def conclude(self):
+        pass
+
 
 class DuckDBClient:
     def __init__(self, database_path: Path, dry_run: bool = False, print_mode: bool = False):
@@ -585,8 +600,8 @@ class DuckDBClient:
     def create_dataset(self, dataset_name: str):
         self.database_path = self.database_path.with_stem(dataset_name)
 
-    def create_schema(self, table_ref: scripts.TableRef):
-        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_ref.schema[0]}")
+    def create_schema(self, schema_name: str):
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
 
     def materialize_script(self, script: scripts.Script) -> DuckDBJob:
         if isinstance(script, scripts.SQLScript):
@@ -681,12 +696,15 @@ class DuckDBClient:
         job.execute()
         return job
 
-    def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
-        tables_query = """
+    @property
+    def _tables_query(self) -> str:
+        return """
         SELECT table_name, schema_name, estimated_size
         FROM duckdb_tables();
         """
-        tables_result = self.connection.execute(tables_query).fetchdf()
+
+    def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
+        tables_result = self.connection.execute(self._tables_query).fetchdf()
 
         table_stats = {}
         for _, row in tables_result.iterrows():
@@ -738,3 +756,31 @@ class DuckDBClient:
             rich.print(script)
         job = DuckDBJob(query=script.code, connection=self.connection, destination=destination)
         return job
+
+
+class MotherDuckClient(DuckDBClient):
+    @property
+    def connection(self) -> duckdb.DuckDBPyConnection:
+        return duckdb
+
+    @property
+    def _tables_query(self) -> str:
+        return f"""
+        SELECT table_name, schema_name, estimated_size
+        FROM duckdb_tables()
+        WHERE database_name = '{self.database_path.stem}';
+        """
+
+
+class DuckLakeClient(DuckDBClient):
+    @property
+    def connection(self) -> duckdb.DuckDBPyConnection:
+        return duckdb
+
+    @property
+    def _tables_query(self) -> str:
+        return """
+        SELECT table_name, schema_name, estimated_size
+        FROM duckdb_tables()
+        WHERE NOT STARTS_WITH(table_name, 'ducklake_');
+        """
