@@ -10,12 +10,12 @@ import lea
 
 @click.group()
 def app():
-    ...
+    pass
 
 
 @app.command()
-@click.option("--select", "-m", multiple=True, default=["*"], help="Scripts to materialize.")
-@click.option("--unselect", "-m", multiple=True, default=[], help="Scripts to unselect.")
+@click.option("--select", multiple=True, default=["*"], help="Scripts to materialize.")
+@click.option("--unselect", multiple=True, default=[], help="Scripts to skip materializing.")
 @click.option("--dataset", default=None, help="Name of the base dataset.")
 @click.option("--scripts", default="scripts", help="Directory where the scripts are located.")
 @click.option(
@@ -27,7 +27,8 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart):
+@click.option("--env-file", type=click.Path(exists=True), help="Path to the environment file.")
+def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart, env_file):
     if select in {"", "Ø"}:
         select = []
 
@@ -43,7 +44,7 @@ def run(select, unselect, dataset, scripts, incremental, dry, print, production,
     incremental_field_name = next(iter(incremental_field_values), None)
     incremental_field_values = incremental_field_values[incremental_field_name]
 
-    conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset)
+    conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset, env_file_path=env_file)
     conductor.run(
         select=select,
         unselect=unselect,
