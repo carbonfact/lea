@@ -214,7 +214,8 @@ class Session:
                     msg += f", cost ${job.database_job.billed_dollars:.2f}"
                 if not job.is_test:
                     if (stats := job.database_job.statistics) is not None:
-                        msg += f", contains {stats.n_rows:,d} rows"
+                        if stats.n_rows is not None:
+                            msg += f", contains {stats.n_rows:,d} rows"
                         if stats.n_bytes is not None:
                             msg += f", weighs {format_bytes(stats.n_bytes)}"
                 if job.database_job.metadata:

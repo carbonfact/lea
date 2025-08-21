@@ -157,7 +157,7 @@ class BigQueryJob:
 
 @dataclasses.dataclass(frozen=True)
 class TableStats:
-    n_rows: int
+    n_rows: int | None
     n_bytes: int | None
     updated_at: dt.datetime
 
@@ -566,11 +566,13 @@ class DuckDBJob:
     @property
     def statistics(self) -> TableStats | None:
         query = f"SELECT COUNT(*) AS n_rows, MAX(_materialized_timestamp) AS updated_at FROM {self.destination}"
-        table = self.connection.execute(query).fetchdf().iloc[0]
+        table = self.connection.execute(query).fetchdf()
+        if table.empty:
+            return None
         return TableStats(
-            n_rows=int(table["n_rows"]),
+            n_rows=int(table.iloc[0]["n_rows"]),
             n_bytes=None,
-            updated_at=table["updated_at"],
+            updated_at=table.iloc[0]["updated_at"],
         )
 
     @property
@@ -710,7 +712,7 @@ class DuckDBClient:
         for _, row in tables_result.iterrows():
             table_name = row["table_name"]
             table_schema = row["schema_name"]
-            n_rows = int(row["estimated_size"])
+            n_rows = int(row["estimated_size"]) if not pd.isna(row["estimated_size"]) else None
             stats_query = f"""
             SELECT
                 MAX(_materialized_timestamp) AS last_modified

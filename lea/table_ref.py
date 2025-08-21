@@ -33,7 +33,7 @@ class TableRef:
     def replace_dataset(self, dataset: str) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
 
-    def replace_project(self, project: str) -> TableRef:
+    def replace_project(self, project: str | None) -> TableRef:
         return dataclasses.replace(self, project=project)
 
     def add_audit_suffix(self) -> TableRef:
