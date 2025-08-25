@@ -11,7 +11,11 @@ import textwrap
 import jinja2
 import rich.syntax
 import sqlglot
+import sqlglot.errors
+import sqlglot.expressions
 import sqlglot.optimizer
+import sqlglot.optimizer.qualify
+import sqlglot.optimizer.scope
 
 from .comment import extract_comments
 from .dialects import SQLDialect
@@ -44,6 +48,7 @@ class SQLScript:
         conditions.
 
         """
+
         if self.fields is not None:
             return
         field_names = self.ast.named_selects
@@ -76,7 +81,7 @@ class SQLScript:
         scripts_dir: pathlib.Path,
         relative_path: pathlib.Path,
         sql_dialect: SQLDialect,
-        project_name: str,
+        project_name: str | None,
     ) -> SQLScript:
         # Either the file is a Jinja template
         if relative_path.suffixes == [".sql", ".jinja"]:
@@ -104,8 +109,29 @@ class SQLScript:
         return self.table_ref.is_test
 
     @functools.cached_property
+    def expressions(self) -> list[sqlglot.Expression]:
+        return list(
+            filter(
+                None,
+                sqlglot.parse(self.code, dialect=self.sql_dialect.sqlglot_dialect),
+            )
+        )
+
+    @property
+    def header_statements(self) -> list[str]:
+        return (
+            [expr.sql(dialect=self.sql_dialect.sqlglot_dialect) for expr in self.expressions[:-1]]
+            if len(self.expressions) > 1
+            else []
+        )
+
+    @property
+    def query(self) -> str:
+        return self.expressions[-1].sql(dialect=self.sql_dialect.sqlglot_dialect)
+
+    @functools.cached_property
     def ast(self):
-        ast = sqlglot.parse_one(self.code, dialect=self.sql_dialect.sqlglot_dialect)
+        ast = self.expressions[-1]
         try:
             return sqlglot.optimizer.qualify.qualify(ast)
         except sqlglot.errors.OptimizeError:
@@ -121,18 +147,18 @@ class SQLScript:
         dependencies = set()
 
         for scope in sqlglot.optimizer.scope.traverse_scope(self.ast):
-            for table in scope.tables:
+            for table in scope.tables or []:
                 if (
-                    not isinstance(table.this, sqlglot.exp.Func)
-                    and sqlglot.exp.table_name(table) not in scope.cte_sources
+                    not isinstance(table.this, sqlglot.expressions.Func)
+                    and sqlglot.expressions.table_name(table) not in scope.cte_sources
                 ):
                     try:
                         table_ref = self.sql_dialect.parse_table_ref(
-                            table_ref=sqlglot.exp.table_name(table)
+                            table_ref=sqlglot.expressions.table_name(table)
                         )
                     except ValueError as e:
                         raise ValueError(
-                            f"Unable to parse table reference {sqlglot.exp.table_name(table)!r} "
+                            f"Unable to parse table reference {sqlglot.expressions.table_name(table)!r} "
                             f"in {self.table_ref.replace_project(None)}"
                         ) from e
                     dependencies.add(add_default_project(table_ref))
@@ -216,7 +242,7 @@ Script = SQLScript
 
 
 def read_scripts(
-    scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str, project_name: str
+    scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str, project_name: str | None
 ) -> list[Script]:
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):

@@ -6,6 +6,7 @@ import textwrap
 
 import jinja2
 import sqlglot
+import sqlglot.dialects
 from google.cloud import bigquery
 
 from lea.field import FieldTag
@@ -167,7 +168,10 @@ class BigQueryDialect(SQLDialect):
         table_ref: TableRef, project: str
     ) -> bigquery.TableReference:
         return bigquery.TableReference(
-            dataset_ref=bigquery.DatasetReference(project=project, dataset_id=table_ref.dataset),
+            dataset_ref=bigquery.DatasetReference(
+                project=project,
+                dataset_id=table_ref.dataset,  # type: ignore
+            ),
             table_id=f"{'__'.join([*table_ref.schema, table_ref.name])}",
         )
 

@@ -9,7 +9,7 @@ AUDIT_TABLE_SUFFIX = "___audit"
 
 @dataclasses.dataclass(eq=True, frozen=True)
 class TableRef:
-    dataset: str
+    dataset: str | None
     schema: tuple[str, ...]
     name: str
     project: str | None
@@ -19,7 +19,7 @@ class TableRef:
 
     @classmethod
     def from_path(
-        cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, project_name: str
+        cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, project_name: str | None
     ) -> TableRef:
         parts = list(filter(None, relative_path.parts))
         *schema, filename = parts
