@@ -278,7 +278,7 @@ class Conductor:
                     "LEA_BQ_COMPUTE_PROJECT_ID",
                     credentials.project_id if credentials is not None else None,
                 ),
-                storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL"),
+                storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL", "PHYSICAL"),
                 dry_run=dry_run,
                 print_mode=print_mode,
                 default_clustering_fields=[
@@ -515,7 +515,7 @@ def determine_table_refs_to_run(
     # they were materialized. If so, we need to run them again, as well as their descendants.
     for table_ref in selected_table_refs & set(existing_audit_table_refs):
         script = dag.scripts[table_ref]
-        if script.updated_at > existing_audit_table_refs[table_ref].updated_at:
+        if script.updated_at > existing_audit_table_refs[table_ref].updated_at:  # type: ignore
             lea.log.info(f"📝 {table_ref} was modified, re-materializing it")
             table_refs_to_run.add(table_ref)
             table_refs_to_run |= set(dag.iter_descendants(table_ref)) & selected_table_refs

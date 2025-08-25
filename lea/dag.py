@@ -182,7 +182,9 @@ class DAGOfScripts(graphlib.TopologicalSorter):
                 yield from self.iter_descendants(node=potential_child)
 
 
-def list_table_refs_that_changed(scripts_dir: pathlib.Path, project_name: str) -> set[TableRef]:
+def list_table_refs_that_changed(
+    scripts_dir: pathlib.Path, project_name: str | None
+) -> set[TableRef]:
     repo = git.Repo(search_parent_directories=True)
     repo_root = pathlib.Path(repo.working_tree_dir)
 

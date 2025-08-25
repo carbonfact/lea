@@ -157,7 +157,7 @@ The scripts are run concurrently. They are organized in a DAG, which is traverse
 
 ### File structure
 
-Each query is expected to be placed under a schema, represented by a directory. Schemas can have sub-schemas. Here's an example:
+Each script is expected to be placed under a schema, represented by a directory. Schemas can have sub-schemas. Here's an example:
 
 ```
 scripts/
@@ -173,6 +173,8 @@ scripts/
 ```
 
 Each script is materialized into a table. The table is named according to the script's name, following the warehouse convention.
+
+A script may contain multiple SQL statements, separated by semicolons. The last statement has to be a `SELECT` statement, while the previous ones are expected to be procedural statements (e.g. `DECLARE` and `SET` in BigQuery). The way it works under the hood is by creating a [session](https://cloud.google.com/bigquery/docs/sessions) for the script, and running all statements within the same session.
 
 #### Jinja templating
 

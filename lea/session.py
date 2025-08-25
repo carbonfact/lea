@@ -115,8 +115,8 @@ class Session:
                 script,
                 code=script.sql_dialect.add_dependency_filters(
                     code=script.code,
-                    incremental_field_name=self.incremental_field_name,
-                    incremental_field_values=self.incremental_field_values,
+                    incremental_field_name=self.incremental_field_name,  # type: ignore
+                    incremental_field_values=self.incremental_field_values,  # type: ignore
                     # One caveat is the dependencies which are not incremental do not have to be
                     # filtered. Indeed, they are already filtered by the fact that they are
                     # incremental.
@@ -134,8 +134,8 @@ class Session:
                 script,
                 code=script.sql_dialect.handle_incremental_dependencies(
                     code=script.code,
-                    incremental_field_name=self.incremental_field_name,
-                    incremental_field_values=self.incremental_field_values,
+                    incremental_field_name=self.incremental_field_name,  # type: ignore
+                    incremental_field_values=self.incremental_field_values,  # type: ignore
                     incremental_dependencies={
                         incremental_table_ref: incremental_table_ref.add_audit_suffix()
                         for incremental_table_ref in self.incremental_table_refs
@@ -214,7 +214,8 @@ class Session:
                     msg += f", cost ${job.database_job.billed_dollars:.2f}"
                 if not job.is_test:
                     if (stats := job.database_job.statistics) is not None:
-                        msg += f", contains {stats.n_rows:,d} rows"
+                        if stats.n_rows is not None:
+                            msg += f", contains {stats.n_rows:,d} rows"
                         if stats.n_bytes is not None:
                             msg += f", weighs {format_bytes(stats.n_bytes)}"
                 if job.database_job.metadata:
@@ -234,7 +235,7 @@ class Session:
             database_job = self.database_client.delete_and_insert(
                 from_table_ref=from_table_ref,
                 to_table_ref=to_table_ref,
-                on=self.incremental_field_name,
+                on=self.incremental_field_name,  # type: ignore
             )
         else:
             database_job = self.database_client.clone_table(
@@ -274,7 +275,7 @@ class Session:
 
 
 def replace_script_dependencies(
-    script: Script, replace_func: Callable[[TableRef], TableRef]
+    script: Script, replace_func: Callable[[TableRef], TableRef | None]
 ) -> Script:
     """
 

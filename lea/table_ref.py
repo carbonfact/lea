@@ -9,7 +9,7 @@ AUDIT_TABLE_SUFFIX = "___audit"
 
 @dataclasses.dataclass(eq=True, frozen=True)
 class TableRef:
-    dataset: str
+    dataset: str | None
     schema: tuple[str, ...]
     name: str
     project: str | None
@@ -19,7 +19,7 @@ class TableRef:
 
     @classmethod
     def from_path(
-        cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, project_name: str
+        cls, scripts_dir: pathlib.Path, relative_path: pathlib.Path, project_name: str | None
     ) -> TableRef:
         parts = list(filter(None, relative_path.parts))
         *schema, filename = parts
@@ -33,7 +33,7 @@ class TableRef:
     def replace_dataset(self, dataset: str) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
 
-    def replace_project(self, project: str) -> TableRef:
+    def replace_project(self, project: str | None) -> TableRef:
         return dataclasses.replace(self, project=project)
 
     def add_audit_suffix(self) -> TableRef:

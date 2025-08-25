@@ -31,66 +31,66 @@ class Warehouse(enum.Enum):
 class DatabaseJob(typing.Protocol):
     @property
     def is_done(self) -> bool:
-        pass
+        ...
 
     def stop(self):
-        pass
+        ...
 
     @property
     def result(self) -> pd.DataFrame:
-        pass
+        ...
 
     @property
-    def exception(self) -> Exception:
-        pass
+    def exception(self) -> Exception | None:
+        ...
 
     @property
-    def billed_dollars(self) -> float:
-        pass
+    def billed_dollars(self) -> float | None:
+        ...
 
     @property
     def statistics(self) -> TableStats | None:
-        pass
+        ...
 
     @property
     def metadata(self) -> list[str]:
         return []
 
     def conclude(self):
-        pass
+        ...
 
 
 class DatabaseClient(typing.Protocol):
     def create_dataset(self, dataset_name: str):
-        pass
+        ...
 
     def delete_dataset(self, dataset_name: str):
-        pass
+        ...
 
     def materialize_script(self, script: scripts.Script) -> DatabaseJob:
-        pass
+        ...
 
     def query_script(self, script: scripts.Script) -> DatabaseJob:
-        pass
+        ...
 
     def clone_table(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
     ) -> DatabaseJob:
-        pass
+        ...
 
     def delete_and_insert(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
     ) -> DatabaseJob:
-        pass
+        ...
 
     def delete_table(self, table_ref: scripts.TableRef) -> DatabaseJob:
-        pass
+        ...
 
     def list_table_stats(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
-        pass
+        ...
 
     def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:
-        pass
+        ...
 
 
 @dataclasses.dataclass
@@ -105,7 +105,7 @@ class BigQueryJob:
         return self.query_job.done()
 
     @property
-    def billed_dollars(self) -> float:
+    def billed_dollars(self) -> float | None:
         bytes_billed = (
             self.query_job.total_bytes_processed
             if self.client.dry_run
@@ -132,7 +132,7 @@ class BigQueryJob:
         return self.query_job.result().to_dataframe()
 
     @property
-    def exception(self) -> Exception:
+    def exception(self) -> Exception | None:
         return self.query_job.exception()
 
     @property
@@ -157,9 +157,9 @@ class BigQueryJob:
 
 @dataclasses.dataclass(frozen=True)
 class TableStats:
-    n_rows: int
+    n_rows: int | None
     n_bytes: int | None
-    updated_at: dt.datetime
+    updated_at: dt.datetime | None
 
 
 class BigBluePickAPI:
@@ -233,8 +233,11 @@ class BigBluePickAPI:
         return self.default_project_id
 
     def pick_client(
-        self, script: scripts.SQLScript, credentials: service_account.Credentials, location: str
-    ) -> DatabaseClient:
+        self,
+        script: scripts.SQLScript,
+        credentials: service_account.Credentials | None,
+        location: str,
+    ) -> bigquery.Client:
         project_id = self.pick_project_id_for_script(script=script)
         return bigquery.Client(project=project_id, credentials=credentials, location=location)
 
@@ -266,18 +269,18 @@ class BigBluePickAPI:
 class BigQueryClient(BigBluePickAPI):
     def __init__(
         self,
-        credentials: service_account.Credentials,
+        credentials: service_account.Credentials | None,
         location: str,
         write_project_id: str,
-        compute_project_id: str,
+        compute_project_id: str | None,
         storage_billing_model: str = "PHYSICAL",
         dry_run: bool = False,
         print_mode: bool = False,
-        default_clustering_fields: list[str] = None,
-        big_blue_pick_api_url: str = None,
-        big_blue_pick_api_key: str = None,
-        big_blue_pick_api_on_demand_project_id: str = None,
-        big_blue_pick_api_reservation_project_id: str = None,
+        default_clustering_fields: list[str] | None = None,
+        big_blue_pick_api_url: str | None = None,
+        big_blue_pick_api_key: str | None = None,
+        big_blue_pick_api_on_demand_project_id: str | None = None,
+        big_blue_pick_api_reservation_project_id: str | None = None,
     ):
         self.credentials = credentials
         self.write_project_id = write_project_id
@@ -345,7 +348,7 @@ class BigQueryClient(BigBluePickAPI):
                 [
                     clustering_field
                     for clustering_field in self.default_clustering_fields
-                    if clustering_field in {field.name for field in sql_script.fields}
+                    if clustering_field in {field.name for field in sql_script.fields or []}
                 ]
             )
             if self.default_clustering_fields
@@ -370,10 +373,28 @@ class BigQueryClient(BigBluePickAPI):
             else self.client
         )
 
+        # Run header statements if there are any
+        if sql_script.header_statements:
+            code = "".join(f"{hs};\n" for hs in sql_script.header_statements)
+            header_job_config = bigquery.QueryJobConfig()
+            header_job_config.create_session = True
+            job = client.query(code, job_config=header_job_config)
+            job.result()
+            session_id = job.session_info.session_id  # type: ignore
+        else:
+            session_id = None
+
+        if session_id is not None:
+            job_config.connection_properties = [
+                bigquery.ConnectionProperty(key="session_id", value=session_id)
+            ]
+
         return BigQueryJob(
             client=self,
             query_job=client.query(
-                query=sql_script.code, job_config=job_config, location=self.location
+                query=sql_script.query,
+                job_config=job_config,
+                location=self.location,
             ),
             destination=destination,
             script=sql_script,
@@ -398,7 +419,7 @@ class BigQueryClient(BigBluePickAPI):
         return BigQueryJob(
             client=self,
             query_job=client.query(
-                query=sql_script.code, job_config=job_config, location=self.location
+                query=sql_script.query, job_config=job_config, location=self.location
             ),
             script=sql_script,
         )
@@ -505,7 +526,7 @@ class BigQueryClient(BigBluePickAPI):
             for row in job.result()
         }
 
-    def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, set[scripts.Field]]:
+    def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:
         query = f"""
         SELECT table_name, column_name
         FROM `{self.write_project_id}.{dataset_name}.INFORMATION_SCHEMA.COLUMNS`
@@ -560,17 +581,19 @@ class DuckDBJob:
         return self.connection.execute(self.query).fetchdf()
 
     @property
-    def billed_dollars(self) -> float:
+    def billed_dollars(self) -> float | None:
         return None  # DuckDB is free to use
 
     @property
     def statistics(self) -> TableStats | None:
         query = f"SELECT COUNT(*) AS n_rows, MAX(_materialized_timestamp) AS updated_at FROM {self.destination}"
-        table = self.connection.execute(query).fetchdf().iloc[0]
+        table = self.connection.execute(query).fetchdf()
+        if table.empty:
+            return None
         return TableStats(
-            n_rows=int(table["n_rows"]),
+            n_rows=int(table.iloc[0]["n_rows"]),
             n_bytes=None,
-            updated_at=table["updated_at"],
+            updated_at=table.iloc[0]["updated_at"],
         )
 
     @property
@@ -609,6 +632,9 @@ class DuckDBClient:
         raise ValueError("Unsupported script type")
 
     def materialize_sql_script(self, sql_script: scripts.SQLScript) -> DuckDBJob:
+        if sql_script.header_statements:
+            raise ValueError("Header statements are not (yet) supported for DuckDB")
+
         destination = DuckDBDialect.convert_table_ref_to_duckdb_table_reference(
             table_ref=sql_script.table_ref
         )
@@ -618,7 +644,7 @@ class DuckDBClient:
         # lea will not be reflected in the metadata column and could break orchestration mecanism.
         materialize_code = f"""
         CREATE OR REPLACE TABLE {destination} AS (
-        WITH logic_table AS ({sql_script.code}),
+        WITH logic_table AS ({sql_script.query}),
         materialized_infos AS (SELECT CURRENT_LOCALTIMESTAMP() AS _materialized_timestamp)
         SELECT * FROM logic_table, materialized_infos
         );
@@ -710,7 +736,7 @@ class DuckDBClient:
         for _, row in tables_result.iterrows():
             table_name = row["table_name"]
             table_schema = row["schema_name"]
-            n_rows = int(row["estimated_size"])
+            n_rows = int(row["estimated_size"]) if not pd.isna(row["estimated_size"]) else None
             stats_query = f"""
             SELECT
                 MAX(_materialized_timestamp) AS last_modified
@@ -743,7 +769,7 @@ class DuckDBClient:
         """
         result = self.connection.execute(query).fetchdf()
         return {
-            scripts.TableRef(name=table_name): [
+            scripts.TableRef(dataset=None, schema=(), name=str(table_name), project=None): [
                 scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()
             ]
             for table_name, rows in result.groupby("table_name")
@@ -754,7 +780,7 @@ class DuckDBClient:
     ) -> DuckDBJob:
         if self.print_mode:
             rich.print(script)
-        job = DuckDBJob(query=script.code, connection=self.connection, destination=destination)
+        job = DuckDBJob(query=script.query, connection=self.connection, destination=destination)
         return job
 
 
