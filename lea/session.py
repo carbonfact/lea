@@ -113,14 +113,18 @@ class Session:
         if script.table_ref.replace_dataset(self.write_dataset) in self.incremental_table_refs:
             script = dataclasses.replace(
                 script,
-                code=script.sql_dialect.add_dependency_filters(
-                    code=script.code,
-                    incremental_field_name=self.incremental_field_name,  # type: ignore
-                    incremental_field_values=self.incremental_field_values,  # type: ignore
-                    # One caveat is the dependencies which are not incremental do not have to be
-                    # filtered. Indeed, they are already filtered by the fact that they are
-                    # incremental.
-                    dependencies_to_filter=self.filterable_table_refs - self.incremental_table_refs,
+                code=(
+                    "".join(f"{hs};\n" for hs in script.header_statements)
+                    + script.sql_dialect.add_dependency_filters(
+                        code=script.query,
+                        incremental_field_name=self.incremental_field_name,  # type: ignore
+                        incremental_field_values=self.incremental_field_values,  # type: ignore
+                        # One caveat is the dependencies which are not incremental do not have to be
+                        # filtered. Indeed, they are already filtered by the fact that they are
+                        # incremental.
+                        dependencies_to_filter=self.filterable_table_refs
+                        - self.incremental_table_refs,
+                    )
                 ),
             )
 
