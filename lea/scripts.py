@@ -120,14 +120,17 @@ class SQLScript:
     @property
     def header_statements(self) -> list[str]:
         return (
-            [expr.sql(dialect=self.sql_dialect.sqlglot_dialect) for expr in self.expressions[:-1]]
+            [
+                expr.sql(dialect=self.sql_dialect.sqlglot_dialect, pretty=True)
+                for expr in self.expressions[:-1]
+            ]
             if len(self.expressions) > 1
             else []
         )
 
     @property
     def query(self) -> str:
-        return self.expressions[-1].sql(dialect=self.sql_dialect.sqlglot_dialect)
+        return self.expressions[-1].sql(dialect=self.sql_dialect.sqlglot_dialect, pretty=True)
 
     @functools.cached_property
     def ast(self):

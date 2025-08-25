@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -9,6 +8,7 @@ from lea.conductor import Session
 from lea.databases import DuckDBClient, TableStats
 from lea.dialects import DuckDBDialect
 from lea.scripts import Script, TableRef
+from lea.test_big_query import assert_queries_are_equal
 
 DUMMY_TABLE_STATS = TableStats(n_rows=0, n_bytes=0, updated_at=None)
 
@@ -55,17 +55,6 @@ def scripts() -> dict[TableRef, Script]:
             ),
         ]
     }
-
-
-def assert_queries_are_equal(query1: str, query2: str):
-    assert normalize_query(query1) == normalize_query(query2)
-
-
-def normalize_query(query: str) -> str:
-    normalized_query = re.sub(r"\s+", " ", query).strip()
-    normalized_query = re.sub(r"/\*.*?\*/", "", normalized_query).replace(" ,", ",")
-    normalized_query = normalized_query.strip()
-    return normalized_query
 
 
 def test_simple_run(scripts):

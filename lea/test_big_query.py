@@ -67,7 +67,8 @@ def assert_queries_are_equal(query1: str, query2: str):
 
 def normalize_query(query: str) -> str:
     normalized_query = re.sub(r"\s+", " ", query).strip()
-    normalized_query = re.sub(r"/\*.*?\*/", "", normalized_query).replace(" ,", ",")
+    normalized_query = re.sub(r"/\*.*?\*/", "", normalized_query)
+    normalized_query = normalized_query.replace("  ", " ")
     normalized_query = normalized_query.strip()
     return normalized_query
 
