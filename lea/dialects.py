@@ -60,7 +60,6 @@ class SQLDialect:
         incremental_field_values: set[str],
         dependencies_to_filter: set[TableRef],
     ) -> str:
-        code = remove_comment_lines(code)
         incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
         for dependency in dependencies_to_filter:
             dependency_str = cls.format_table_ref(dependency)
@@ -84,7 +83,6 @@ class SQLDialect:
         incremental_field_values: set[str],
         incremental_dependencies: dict[TableRef, TableRef],
     ) -> str:
-        code = remove_comment_lines(code)
         incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
         for (
             dependency_without_wap_suffix,
@@ -107,10 +105,6 @@ class SQLDialect:
                 code,
             )
         return code
-
-
-def remove_comment_lines(code: str) -> str:
-    return "\n".join(line for line in code.split("\n") if not line.strip().startswith("--"))
 
 
 def load_assertion_test_template(tag: str) -> jinja2.Template:

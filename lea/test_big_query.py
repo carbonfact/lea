@@ -62,9 +62,14 @@ def scripts() -> dict[TableRef, Script]:
 
 
 def assert_queries_are_equal(query1: str, query2: str):
-    normalized_query1 = re.sub(r"\s+", " ", query1).strip()
-    normalized_query2 = re.sub(r"\s+", " ", query2).strip()
-    assert normalized_query1 == normalized_query2
+    assert normalize_query(query1) == normalize_query(query2)
+
+
+def normalize_query(query: str) -> str:
+    normalized_query = re.sub(r"\s+", " ", query).strip()
+    normalized_query = re.sub(r"/\*.*?\*/", "", normalized_query).replace(" ,", ",")
+    normalized_query = normalized_query.strip()
+    return normalized_query
 
 
 def test_simple_run(scripts):
