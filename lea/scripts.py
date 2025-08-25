@@ -146,22 +146,23 @@ class SQLScript:
 
         dependencies = set()
 
-        for scope in sqlglot.optimizer.scope.traverse_scope(self.ast):
-            for table in scope.tables or []:
-                if (
-                    not isinstance(table.this, sqlglot.expressions.Func)
-                    and sqlglot.expressions.table_name(table) not in scope.cte_sources
-                ):
-                    try:
-                        table_ref = self.sql_dialect.parse_table_ref(
-                            table_ref=sqlglot.expressions.table_name(table)
-                        )
-                    except ValueError as e:
-                        raise ValueError(
-                            f"Unable to parse table reference {sqlglot.expressions.table_name(table)!r} "
-                            f"in {self.table_ref.replace_project(None)}"
-                        ) from e
-                    dependencies.add(add_default_project(table_ref))
+        for expression in [*self.header_statements, self.ast]:
+            for scope in sqlglot.optimizer.scope.traverse_scope(expression):
+                for table in scope.tables or []:
+                    if (
+                        not isinstance(table.this, sqlglot.expressions.Func)
+                        and sqlglot.expressions.table_name(table) not in scope.cte_sources
+                    ):
+                        try:
+                            table_ref = self.sql_dialect.parse_table_ref(
+                                table_ref=sqlglot.expressions.table_name(table)
+                            )
+                        except ValueError as e:
+                            raise ValueError(
+                                f"Unable to parse table reference {sqlglot.expressions.table_name(table)!r} "
+                                f"in {self.table_ref.replace_project(None)}"
+                            ) from e
+                        dependencies.add(add_default_project(table_ref))
 
         return dependencies
 
