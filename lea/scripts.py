@@ -146,23 +146,16 @@ class SQLScript:
 
         dependencies = set()
 
-        for expression in [*self.header_statements, self.ast]:
-            for scope in sqlglot.optimizer.scope.traverse_scope(expression):
-                for table in scope.tables or []:
-                    if (
-                        not isinstance(table.this, sqlglot.expressions.Func)
-                        and sqlglot.expressions.table_name(table) not in scope.cte_sources
-                    ):
-                        try:
-                            table_ref = self.sql_dialect.parse_table_ref(
-                                table_ref=sqlglot.expressions.table_name(table)
-                            )
-                        except ValueError as e:
-                            raise ValueError(
-                                f"Unable to parse table reference {sqlglot.expressions.table_name(table)!r} "
-                                f"in {self.table_ref.replace_project(None)}"
-                            ) from e
-                        dependencies.add(add_default_project(table_ref))
+        for expression in [*(self.expressions[:-1] if len(self.expressions) > 1 else []), self.ast]:
+            for table_name in find_table_names(expression):
+                try:
+                    table_ref = self.sql_dialect.parse_table_ref(table_ref=table_name)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Unable to parse table reference {table_name!r} "
+                        f"in {self.table_ref.replace_project(None)}"
+                    ) from e
+                dependencies.add(add_default_project(table_ref))
 
         return dependencies
 
@@ -268,3 +261,29 @@ def read_scripts(
         and not path.name.startswith("_")
         and path.stat().st_size > 0
     ]
+
+
+def find_table_names(expression: sqlglot.Expression) -> set[str]:
+    if isinstance(expression, sqlglot.expressions.Set | sqlglot.expressions.Declare):
+        return find_table_names_using_find_all(expression)
+    return find_table_names_using_find_all_in_scope(expression)
+
+
+def find_table_names_using_find_all(expression: sqlglot.Expression) -> set[str]:
+    return {
+        sqlglot.expressions.table_name(e)
+        for e in expression.walk()
+        if isinstance(e, sqlglot.expressions.Table)
+    } - {e.alias for e in expression.walk() if isinstance(e, sqlglot.expressions.CTE)}
+
+
+def find_table_names_using_find_all_in_scope(expression: sqlglot.Expression) -> set[str]:
+    return {
+        sqlglot.expressions.table_name(table)
+        for scope in sqlglot.optimizer.scope.traverse_scope(expression)
+        for table in scope.tables or []
+        if (
+            not isinstance(table.this, sqlglot.expressions.Func)
+            and sqlglot.expressions.table_name(table) not in scope.cte_sources
+        )
+    }
