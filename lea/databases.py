@@ -291,6 +291,14 @@ class BigQueryClient(BigBluePickAPI):
             project=self.compute_project_id,
             credentials=self.credentials,
             location=self.location,
+            client_options={
+                "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform",
+                    "https://www.googleapis.com/auth/drive",
+                    "https://www.googleapis.com/auth/spreadsheets.readonly",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                ]
+            },
         )
         self.dry_run = dry_run
         self.print_mode = print_mode
