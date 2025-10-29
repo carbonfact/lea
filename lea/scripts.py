@@ -223,7 +223,7 @@ class SQLScript:
             make_assertion_test(self.table_ref.replace_project(None), field, tag)
             for field in self.fields or []
             for tag in field.tags
-            if tag not in {FieldTag.INCREMENTAL}
+            if tag not in {FieldTag.INCREMENTAL, FieldTag.CLUSTERING_FIELD}
         ]
 
     def replace_table_ref(self, table_ref: TableRef) -> SQLScript:

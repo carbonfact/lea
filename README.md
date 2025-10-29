@@ -347,7 +347,9 @@ lea run --restart
 
 ### BigQuery
 
-#### Default clustering
+#### Clustering
+
+##### Default clustering
 
 At Carbonfact, we cluster most of our tables by customer. This is done to optimize query performance and reduce costs. lea allows you to automatically cluster tables that contain a given field:
 
@@ -362,6 +364,20 @@ LEA_BQ_DEFAULT_CLUSTERING_FIELDS=account_slug,brand_slug
 ```
 
 For each table, lea will use the clustering fields it can and ignore the others. With the previous configuration, if your table defines `account_slug` and not `brand_slug`, it will cluster by `account_slug`.
+
+#### Table specific clustering
+
+You can also define clustering fields for a specific table:
+```
+SELECT
+  account_slug,
+  -- #CLUSTERING_FIELD
+  object_kind,
+  value
+FROM my_table
+```
+
+If you define specific clustering fields for a table, they will be added *in addition to* the default ones. This is done to ensure that project-wide clustering fields are kept up to date in each table.
 
 #### Big Blue Pick API
 
