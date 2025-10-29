@@ -18,6 +18,7 @@ from google.oauth2 import service_account
 import lea
 from lea import scripts
 from lea.dialects import BigQueryDialect, DuckDBDialect
+from lea.field import FieldTag
 from lea.table_ref import TableRef
 
 
@@ -351,16 +352,20 @@ class BigQueryClient(BigBluePickAPI):
         destination = BigQueryDialect.convert_table_ref_to_bigquery_table_reference(
             table_ref=sql_script.table_ref, project=self.write_project_id
         )
-        clustering_fields = (
-            (
-                [
-                    clustering_field
-                    for clustering_field in self.default_clustering_fields
-                    if clustering_field in {field.name for field in sql_script.fields or []}
-                ]
-            )
-            if self.default_clustering_fields
-            else None
+        default_clustering_fields = [
+            clustering_field
+            for clustering_field in (self.default_clustering_fields or [])
+            if clustering_field in {field.name for field in sql_script.fields or []}
+        ]
+        tagged_clustering_fields = [
+            field.name
+            for field in (sql_script.fields or [])
+            if FieldTag.CLUSTERING_FIELD in field.tags
+        ]
+        clustering_fields = []
+        # Remove duplicates but preserve order
+        clustering_fields = list(
+            dict.fromkeys([*default_clustering_fields, *tagged_clustering_fields])
         )
         job_config = self.make_job_config(
             script=sql_script,

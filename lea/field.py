@@ -21,3 +21,4 @@ class FieldTag(enum.StrEnum):
     UNIQUE_BY = "#UNIQUE_BY"
     SET = "#SET"
     INCREMENTAL = "#INCREMENTAL"
+    CLUSTERING_FIELD = "#CLUSTERING_FIELD"
