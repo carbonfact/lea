@@ -375,8 +375,7 @@ class BigQueryClient(BigBluePickAPI):
         # Run header statements if there are any
         if sql_script.header_statements:
             code = "".join(f"{hs};\n" for hs in sql_script.header_statements)
-            header_job_config = bigquery.QueryJobConfig()
-            header_job_config.create_session = True
+            header_job_config = bigquery.QueryJobConfig(create_session=True)
             job = client.query(code, job_config=header_job_config)
             job.result()
             session_id = job.session_info.session_id  # type: ignore
@@ -439,25 +438,22 @@ class BigQueryClient(BigBluePickAPI):
         delete_code = f"""
         DROP TABLE IF EXISTS {destination};
         """
-        header_job_config = bigquery.QueryJobConfig()
-        header_job_config.create_session = True
+        header_job_config = bigquery.QueryJobConfig(create_session=True)
         job = self.client.query(delete_code, job_config=header_job_config)
         job.result()
         session_id = job.session_info.session_id
 
         # Now, clone the source table to the destination.
         clone_code = f"""
-        CREATE OR REPLACE TABLE {destination}
+        CREATE TABLE {destination}
         CLONE {source}
         """
         job_config = self.make_job_config(
             script=scripts.SQLScript(
                 table_ref=to_table_ref, code=clone_code, sql_dialect=BigQueryDialect, fields=[]
-            )
+            ),
+            connection_properties=[bigquery.ConnectionProperty(key="session_id", value=session_id)],
         )
-        job_config.connection_properties = [
-            bigquery.ConnectionProperty(key="session_id", value=session_id)
-        ]
 
         return BigQueryJob(
             client=self,
