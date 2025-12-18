@@ -22,6 +22,7 @@ sqlglot = ">=27.8,<29.0"
 rsa = "^4.7"
 google-cloud-bigquery-storage = "^2.27.0"
 requests = "^2.32.3"
+filelock = "^3.20.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = ">=6.21.2,<8.0.0"
