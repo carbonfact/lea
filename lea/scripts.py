@@ -137,9 +137,7 @@ class SQLScript:
 
     @property
     def query(self) -> str:
-        return self.expressions[-1].sql(
-            dialect=self.sql_dialect.sqlglot_dialect, pretty=True
-        )
+        return self.expressions[-1].sql(dialect=self.sql_dialect.sqlglot_dialect, pretty=True)
 
     @functools.cached_property
     def ast(self):
@@ -200,39 +198,29 @@ class SQLScript:
             if tag == FieldTag.NO_NULLS:
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.NO_NULLS),
-                    code=self.sql_dialect.make_column_test_no_nulls(
-                        table_ref, field.name
-                    ),
+                    code=self.sql_dialect.make_column_test_no_nulls(table_ref, field.name),
                     sql_dialect=self.sql_dialect,
                 )
             elif tag == FieldTag.UNIQUE:
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.UNIQUE),
-                    code=self.sql_dialect.make_column_test_unique(
-                        table_ref, field.name
-                    ),
+                    code=self.sql_dialect.make_column_test_unique(table_ref, field.name),
                     sql_dialect=self.sql_dialect,
                 )
             elif unique_by := re.fullmatch(FieldTag.UNIQUE_BY + r"\((?P<by>.+)\)", tag):
                 by = unique_by.group("by")
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.UNIQUE_BY),
-                    code=self.sql_dialect.make_column_test_unique_by(
-                        table_ref, field.name, by
-                    ),
+                    code=self.sql_dialect.make_column_test_unique_by(table_ref, field.name, by),
                     sql_dialect=self.sql_dialect,
                 )
             elif set_ := re.fullmatch(
                 FieldTag.SET + r"\{(?P<elements>'[^']+'(?:,\s*'[^']+')*)\}", tag
             ):
-                elements = {
-                    element.strip() for element in set_.group("elements").split(",")
-                }
+                elements = {element.strip() for element in set_.group("elements").split(",")}
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.SET),
-                    code=self.sql_dialect.make_column_test_set(
-                        table_ref, field.name, elements
-                    ),
+                    code=self.sql_dialect.make_column_test_set(table_ref, field.name, elements),
                     sql_dialect=self.sql_dialect,
                 )
             else:
@@ -254,9 +242,7 @@ class SQLScript:
     def __rich__(self):
         code = textwrap.dedent(self.code).strip()
         code_with_table_ref = f"""-- {self.table_ref}\n\n{code}\n"""
-        return rich.syntax.Syntax(
-            code_with_table_ref, "sql", line_numbers=False, theme="ansi_dark"
-        )
+        return rich.syntax.Syntax(code_with_table_ref, "sql", line_numbers=False, theme="ansi_dark")
 
 
 Script = SQLScript
@@ -281,9 +267,7 @@ def read_scripts(
                 raise ValueError(f"Unsupported script type: {path}")
 
     def set_dataset(script: Script) -> Script:
-        return script.replace_table_ref(
-            script.table_ref.replace_dataset(dataset=dataset_name)
-        )
+        return script.replace_table_ref(script.table_ref.replace_dataset(dataset=dataset_name))
 
     return [
         set_dataset(read_script(path))

@@ -30,9 +30,7 @@ class SQLDialect:
             table=table_ref_str, column=field_name
         )
 
-    def make_column_test_unique_by(
-        self, table_ref: TableRef, field_name: str, by: str
-    ) -> str:
+    def make_column_test_unique_by(self, table_ref: TableRef, field_name: str, by: str) -> str:
         table_ref_str = self.format_table_ref(table_ref)
         return load_assertion_test_template(FieldTag.UNIQUE_BY).render(
             table=table_ref_str,
@@ -46,9 +44,7 @@ class SQLDialect:
             table=table_ref_str, column=field_name
         )
 
-    def make_column_test_set(
-        self, table_ref: TableRef, field_name: str, elements: set[str]
-    ) -> str:
+    def make_column_test_set(self, table_ref: TableRef, field_name: str, elements: set[str]) -> str:
         table_ref_str = self.format_table_ref(table_ref)
         return load_assertion_test_template(FieldTag.SET).render(
             table=table_ref_str,
@@ -64,9 +60,7 @@ class SQLDialect:
         incremental_field_values: set[str],
         dependencies_to_filter: set[TableRef],
     ) -> str:
-        incremental_field_values_str = ", ".join(
-            f"'{value}'" for value in incremental_field_values
-        )
+        incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
         for dependency in dependencies_to_filter:
             dependency_str = cls.format_table_ref(dependency)
             code = re.sub(
@@ -89,19 +83,13 @@ class SQLDialect:
         incremental_field_values: set[str],
         incremental_dependencies: dict[TableRef, TableRef],
     ) -> str:
-        incremental_field_values_str = ", ".join(
-            f"'{value}'" for value in incremental_field_values
-        )
+        incremental_field_values_str = ", ".join(f"'{value}'" for value in incremental_field_values)
         for (
             dependency_without_wap_suffix,
             dependency_with_wap_suffix,
         ) in incremental_dependencies.items():
-            dependency_without_wap_suffix_str = cls.format_table_ref(
-                dependency_without_wap_suffix
-            )
-            dependency_with_wap_suffix_str = cls.format_table_ref(
-                dependency_with_wap_suffix
-            )
+            dependency_without_wap_suffix_str = cls.format_table_ref(dependency_without_wap_suffix)
+            dependency_with_wap_suffix_str = cls.format_table_ref(dependency_with_wap_suffix)
             code = re.sub(
                 # We could use \b, but it doesn't work with backticks
                 rf"(?<!\S){re.escape(dependency_with_wap_suffix_str)}(?=[,\s]|$)",
@@ -121,11 +109,7 @@ class SQLDialect:
 
 def load_assertion_test_template(tag: str) -> jinja2.Template:
     return jinja2.Template(
-        (
-            pathlib.Path(__file__).parent
-            / "assertions"
-            / f"{tag.lstrip('#')}.sql.jinja"
-        ).read_text()
+        (pathlib.Path(__file__).parent / "assertions" / f"{tag.lstrip('#')}.sql.jinja").read_text()
     )
 
 
@@ -209,9 +193,7 @@ class DuckDBDialect(SQLDialect):
 
             return TableRef(
                 dataset=None,
-                schema=tuple(
-                    [strip_quotes(schema), *[strip_quotes(ss) for ss in subschema]]
-                ),
+                schema=tuple([strip_quotes(schema), *[strip_quotes(ss) for ss in subschema]]),
                 name=strip_quotes(name),
                 project=strip_quotes(project) if project else None,
             )
@@ -234,9 +216,7 @@ class DuckDBDialect(SQLDialect):
         if len(table_ref.schema) > 0:
             schema = table_ref.schema[0]
             if len(table_ref.schema) > 1:
-                full_table_ref = (
-                    f"{schema}.{'__'.join([*table_ref.schema[1:], table_ref.name])}"
-                )
+                full_table_ref = f"{schema}.{'__'.join([*table_ref.schema[1:], table_ref.name])}"
             else:
                 full_table_ref = f"{schema}.{table_ref.name}"
             return full_table_ref
