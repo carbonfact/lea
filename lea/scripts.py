@@ -51,27 +51,32 @@ class SQLScript:
 
         if self.fields is not None:
             return
-        field_names = self.ast.named_selects
-        field_comments = extract_comments(
-            code=self.code, expected_field_names=field_names, sql_dialect=self.sql_dialect
-        )
-        fields = [
-            Field(
-                name=name,
-                tags={
-                    comment.text
-                    for comment in field_comments.get(name, [])
-                    if comment.text.startswith("#")
-                },
-                description=" ".join(
-                    comment.text
-                    for comment in field_comments.get(name, [])
-                    if not comment.text.startswith("#")
-                ),
+        if isinstance(self.ast, sqlglot.exp.Command):
+            fields = []
+        else:
+            field_names = self.ast.named_selects
+            field_comments = extract_comments(
+                code=self.code,
+                expected_field_names=field_names,
+                sql_dialect=self.sql_dialect,
             )
-            for name in field_names
-            if name != "*"
-        ]
+            fields = [
+                Field(
+                    name=name,
+                    tags={
+                        comment.text
+                        for comment in field_comments.get(name, [])
+                        if comment.text.startswith("#")
+                    },
+                    description=" ".join(
+                        comment.text
+                        for comment in field_comments.get(name, [])
+                        if not comment.text.startswith("#")
+                    ),
+                )
+                for name in field_names
+                if name != "*"
+            ]
         # https://stackoverflow.com/a/54119384
         object.__setattr__(self, "fields", fields)
 
@@ -95,7 +100,9 @@ class SQLScript:
 
         return cls(
             table_ref=TableRef.from_path(
-                scripts_dir=scripts_dir, relative_path=relative_path, project_name=project_name
+                scripts_dir=scripts_dir,
+                relative_path=relative_path,
+                project_name=project_name,
             ),
             code=code,
             sql_dialect=sql_dialect,
@@ -130,7 +137,9 @@ class SQLScript:
 
     @property
     def query(self) -> str:
-        return self.expressions[-1].sql(dialect=self.sql_dialect.sqlglot_dialect, pretty=True)
+        return self.expressions[-1].sql(
+            dialect=self.sql_dialect.sqlglot_dialect, pretty=True
+        )
 
     @functools.cached_property
     def ast(self):
@@ -149,7 +158,10 @@ class SQLScript:
 
         dependencies = set()
 
-        for expression in [*(self.expressions[:-1] if len(self.expressions) > 1 else []), self.ast]:
+        for expression in [
+            *(self.expressions[:-1] if len(self.expressions) > 1 else []),
+            self.ast,
+        ]:
             for table_name in find_table_names(expression):
                 try:
                     table_ref = self.sql_dialect.parse_table_ref(table_ref=table_name)
@@ -188,29 +200,39 @@ class SQLScript:
             if tag == FieldTag.NO_NULLS:
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.NO_NULLS),
-                    code=self.sql_dialect.make_column_test_no_nulls(table_ref, field.name),
+                    code=self.sql_dialect.make_column_test_no_nulls(
+                        table_ref, field.name
+                    ),
                     sql_dialect=self.sql_dialect,
                 )
             elif tag == FieldTag.UNIQUE:
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.UNIQUE),
-                    code=self.sql_dialect.make_column_test_unique(table_ref, field.name),
+                    code=self.sql_dialect.make_column_test_unique(
+                        table_ref, field.name
+                    ),
                     sql_dialect=self.sql_dialect,
                 )
             elif unique_by := re.fullmatch(FieldTag.UNIQUE_BY + r"\((?P<by>.+)\)", tag):
                 by = unique_by.group("by")
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.UNIQUE_BY),
-                    code=self.sql_dialect.make_column_test_unique_by(table_ref, field.name, by),
+                    code=self.sql_dialect.make_column_test_unique_by(
+                        table_ref, field.name, by
+                    ),
                     sql_dialect=self.sql_dialect,
                 )
             elif set_ := re.fullmatch(
                 FieldTag.SET + r"\{(?P<elements>'[^']+'(?:,\s*'[^']+')*)\}", tag
             ):
-                elements = {element.strip() for element in set_.group("elements").split(",")}
+                elements = {
+                    element.strip() for element in set_.group("elements").split(",")
+                }
                 return SQLScript(
                     table_ref=make_table_ref(field, FieldTag.SET),
-                    code=self.sql_dialect.make_column_test_set(table_ref, field.name, elements),
+                    code=self.sql_dialect.make_column_test_set(
+                        table_ref, field.name, elements
+                    ),
                     sql_dialect=self.sql_dialect,
                 )
             else:
@@ -232,14 +254,19 @@ class SQLScript:
     def __rich__(self):
         code = textwrap.dedent(self.code).strip()
         code_with_table_ref = f"""-- {self.table_ref}\n\n{code}\n"""
-        return rich.syntax.Syntax(code_with_table_ref, "sql", line_numbers=False, theme="ansi_dark")
+        return rich.syntax.Syntax(
+            code_with_table_ref, "sql", line_numbers=False, theme="ansi_dark"
+        )
 
 
 Script = SQLScript
 
 
 def read_scripts(
-    scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str, project_name: str | None
+    scripts_dir: pathlib.Path,
+    sql_dialect: SQLDialect,
+    dataset_name: str,
+    project_name: str | None,
 ) -> list[Script]:
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):
@@ -254,7 +281,9 @@ def read_scripts(
                 raise ValueError(f"Unsupported script type: {path}")
 
     def set_dataset(script: Script) -> Script:
-        return script.replace_table_ref(script.table_ref.replace_dataset(dataset=dataset_name))
+        return script.replace_table_ref(
+            script.table_ref.replace_dataset(dataset=dataset_name)
+        )
 
     return [
         set_dataset(read_script(path))
@@ -280,7 +309,9 @@ def find_table_names_using_find_all(expression: sqlglot.Expression) -> set[str]:
     } - {e.alias for e in expression.walk() if isinstance(e, sqlglot.expressions.CTE)}
 
 
-def find_table_names_using_find_all_in_scope(expression: sqlglot.Expression) -> set[str]:
+def find_table_names_using_find_all_in_scope(
+    expression: sqlglot.Expression,
+) -> set[str]:
     return {
         sqlglot.expressions.table_name(table)
         for scope in sqlglot.optimizer.scope.traverse_scope(expression)
