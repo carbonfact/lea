@@ -5,7 +5,7 @@ name = "lea-cli"
 packages = [
   {include = "lea", from = "."},
 ]
-version = "0.14.0"
+version = "0.15.0"
 
 [tool.poetry.dependencies]
 click = "^8.1.7"

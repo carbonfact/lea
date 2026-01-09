@@ -51,27 +51,32 @@ class SQLScript:
 
         if self.fields is not None:
             return
-        field_names = self.ast.named_selects
-        field_comments = extract_comments(
-            code=self.code, expected_field_names=field_names, sql_dialect=self.sql_dialect
-        )
-        fields = [
-            Field(
-                name=name,
-                tags={
-                    comment.text
-                    for comment in field_comments.get(name, [])
-                    if comment.text.startswith("#")
-                },
-                description=" ".join(
-                    comment.text
-                    for comment in field_comments.get(name, [])
-                    if not comment.text.startswith("#")
-                ),
+        if isinstance(self.ast, sqlglot.exp.Command):
+            fields = []
+        else:
+            field_names = self.ast.named_selects
+            field_comments = extract_comments(
+                code=self.code,
+                expected_field_names=field_names,
+                sql_dialect=self.sql_dialect,
             )
-            for name in field_names
-            if name != "*"
-        ]
+            fields = [
+                Field(
+                    name=name,
+                    tags={
+                        comment.text
+                        for comment in field_comments.get(name, [])
+                        if comment.text.startswith("#")
+                    },
+                    description=" ".join(
+                        comment.text
+                        for comment in field_comments.get(name, [])
+                        if not comment.text.startswith("#")
+                    ),
+                )
+                for name in field_names
+                if name != "*"
+            ]
         # https://stackoverflow.com/a/54119384
         object.__setattr__(self, "fields", fields)
 
@@ -95,7 +100,9 @@ class SQLScript:
 
         return cls(
             table_ref=TableRef.from_path(
-                scripts_dir=scripts_dir, relative_path=relative_path, project_name=project_name
+                scripts_dir=scripts_dir,
+                relative_path=relative_path,
+                project_name=project_name,
             ),
             code=code,
             sql_dialect=sql_dialect,
@@ -149,7 +156,10 @@ class SQLScript:
 
         dependencies = set()
 
-        for expression in [*(self.expressions[:-1] if len(self.expressions) > 1 else []), self.ast]:
+        for expression in [
+            *(self.expressions[:-1] if len(self.expressions) > 1 else []),
+            self.ast,
+        ]:
             for table_name in find_table_names(expression):
                 try:
                     table_ref = self.sql_dialect.parse_table_ref(table_ref=table_name)
@@ -239,7 +249,10 @@ Script = SQLScript
 
 
 def read_scripts(
-    scripts_dir: pathlib.Path, sql_dialect: SQLDialect, dataset_name: str, project_name: str | None
+    scripts_dir: pathlib.Path,
+    sql_dialect: SQLDialect,
+    dataset_name: str,
+    project_name: str | None,
 ) -> list[Script]:
     def read_script(path: pathlib.Path) -> Script:
         match tuple(path.suffixes):
@@ -280,7 +293,9 @@ def find_table_names_using_find_all(expression: sqlglot.Expression) -> set[str]:
     } - {e.alias for e in expression.walk() if isinstance(e, sqlglot.expressions.CTE)}
 
 
-def find_table_names_using_find_all_in_scope(expression: sqlglot.Expression) -> set[str]:
+def find_table_names_using_find_all_in_scope(
+    expression: sqlglot.Expression,
+) -> set[str]:
     return {
         sqlglot.expressions.table_name(table)
         for scope in sqlglot.optimizer.scope.traverse_scope(expression)

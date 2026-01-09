@@ -138,7 +138,7 @@ class BigQueryDialect(SQLDialect):
         """
         project, dataset, leftover = None, *tuple(table_ref.rsplit(".", 1))
         if "." in dataset:
-            project, dataset = dataset.split(".")
+            project, dataset = dataset.split(".", 1)
         *schema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
         return TableRef(
             dataset=strip_quotes(dataset),
