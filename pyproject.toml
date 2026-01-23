@@ -44,7 +44,7 @@ packages = ["lea"]
 lint.ignore = ["E501"]
 line-length = 100
 lint.select = ["E", "F", "I", "UP"] # https://beta.ruff.rs/docs/rules/
-target-version = 'py313'
+target-version = 'py312'
 
 [tool.ruff.lint.isort]
 required-imports = ["from __future__ import annotations"]
