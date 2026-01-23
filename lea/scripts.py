@@ -16,6 +16,7 @@ import sqlglot.expressions
 import sqlglot.optimizer
 import sqlglot.optimizer.qualify
 import sqlglot.optimizer.scope
+import yaml
 
 from .comment import extract_comments
 from .dialects import SQLDialect
@@ -92,8 +93,14 @@ class SQLScript:
         if relative_path.suffixes == [".sql", ".jinja"]:
             loader = jinja2.FileSystemLoader(scripts_dir)
             environment = jinja2.Environment(loader=loader)
+
+            def load_yaml(path: str) -> dict:
+                full_path = (scripts_dir / path).resolve()
+                with open(full_path) as f:
+                    return yaml.safe_load(f)
+
             template = environment.get_template(str(relative_path))
-            code = template.render(env=os.environ)
+            code = template.render(env=os.environ, load_yaml=load_yaml)
         # Or it's a regular SQL file
         else:
             code = (scripts_dir / relative_path).read_text().rstrip().rstrip(";")
@@ -107,7 +114,7 @@ class SQLScript:
             code=code,
             sql_dialect=sql_dialect,
             updated_at=dt.datetime.fromtimestamp(
-                (scripts_dir / relative_path).stat().st_mtime, tz=dt.timezone.utc
+                (scripts_dir / relative_path).stat().st_mtime, tz=dt.UTC
             ),
         )
 

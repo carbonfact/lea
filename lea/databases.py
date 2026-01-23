@@ -106,13 +106,13 @@ class BigQueryJob:
     def statistics(self) -> TableStats | None:
         if self.client.dry_run or self.destination is None:
             return None
-        table = self.client.client.get_table(
+        table = self.client.default_client.get_table(
             self.destination, retry=bigquery.DEFAULT_RETRY.with_deadline(10)
         )
         return TableStats(n_rows=table.num_rows, n_bytes=table.num_bytes, updated_at=table.modified)
 
     def stop(self):
-        self.client.client.cancel_job(self.query_job.job_id)
+        self.client.default_client.cancel_job(self.query_job.job_id)
 
     @property
     def result(self) -> pd.DataFrame:
@@ -444,7 +444,7 @@ class BigQueryClient(BigBluePickAPI):
         DROP TABLE IF EXISTS {destination};
         """
         header_job_config = bigquery.QueryJobConfig(create_session=True)
-        job = self.client.query(delete_code, job_config=header_job_config)
+        job = self.default_client.query(delete_code, job_config=header_job_config)
         job.result()
         session_id = job.session_info.session_id
 
@@ -501,7 +501,7 @@ class BigQueryClient(BigBluePickAPI):
         )
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(
+            query_job=self.default_client.query(
                 delete_and_insert_code, job_config=job_config, location=self.location
             ),
             destination=destination,
@@ -524,7 +524,9 @@ class BigQueryClient(BigBluePickAPI):
         )
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(delete_code, job_config=job_config, location=self.location),
+            query_job=self.default_client.query(
+                delete_code, job_config=job_config, location=self.location
+            ),
         )
 
     def list_table_stats(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
@@ -532,7 +534,7 @@ class BigQueryClient(BigBluePickAPI):
         SELECT table_id, row_count, size_bytes, last_modified_time
         FROM `{self.write_project_id}.{dataset_name}.__TABLES__`
         """
-        job = self.client.query(query, location=self.location)
+        job = self.default_client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(
                 f"{self.write_project_id}.{dataset_name}.{row['table_id']}"
@@ -540,7 +542,7 @@ class BigQueryClient(BigBluePickAPI):
                 n_rows=row["row_count"],
                 n_bytes=row["size_bytes"],
                 updated_at=(
-                    dt.datetime.fromtimestamp(row["last_modified_time"] // 1000, tz=dt.timezone.utc)
+                    dt.datetime.fromtimestamp(row["last_modified_time"] // 1000, tz=dt.UTC)
                 ),
             )
             for row in job.result()
@@ -551,7 +553,7 @@ class BigQueryClient(BigBluePickAPI):
         SELECT table_name, column_name
         FROM `{self.write_project_id}.{dataset_name}.INFORMATION_SCHEMA.COLUMNS`
         """
-        job = self.client.query(query, location=self.location)
+        job = self.default_client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(
                 f"{self.write_project_id}.{dataset_name}.{table_name}"
@@ -764,11 +766,11 @@ class DuckDBClient:
             """
             result = self.connection.execute(stats_query).fetchdf().dropna()
             if result.empty:
-                updated_at = dt.datetime.now(dt.timezone.utc)
+                updated_at = dt.datetime.now(dt.UTC)
             else:
                 updated_at = dt.datetime.fromtimestamp(
                     result.iloc[0]["last_modified"].to_pydatetime().timestamp(),
-                    tz=dt.timezone.utc,
+                    tz=dt.UTC,
                 )
             table_stats[
                 DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}").replace_dataset(
