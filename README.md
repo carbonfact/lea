@@ -3,14 +3,9 @@
 <img src="https://github.com/carbonfact/lea/assets/8095957/df2bcf1e-fcc9-4111-9897-ec29427aeeaa" width="33%" align="right" />
 
 <p>
-<!-- Tests -->
-<a href="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml">
-    <img src="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml/badge.svg" alt="tests">
-</a>
-
-<!-- Code quality -->
-<a href="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml">
-    <img src="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml/badge.svg" alt="code_quality">
+<!-- CI -->
+<a href="https://github.com/carbonfact/lea/actions/workflows/ci.yml">
+    <img src="https://github.com/carbonfact/lea/actions/workflows/ci.yml/badge.svg" alt="CI">
 </a>
 
 <!-- PyPI -->
@@ -181,6 +176,19 @@ A script may contain multiple SQL statements, separated by semicolons. The last 
 SQL queries can be templated with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/). A `.sql.jinja` extension is necessary for lea to recognise them.
 
 You have access to an `env` variable within the template context, which is simply an access point to `os.environ`.
+
+A `load_yaml` function is also available, allowing you to load YAML files relative to the scripts directory:
+
+```jinja
+{% set taxonomy = load_yaml('core/taxonomies/product.yaml') %}
+
+SELECT
+  {% for dim in taxonomy.dimensions %}
+  MAX(IF(key = '{{ dim.key }}', value, NULL)) AS {{ dim.column }},
+  {% endfor %}
+  account_slug
+FROM core.raw_attributes
+```
 
 ### Development vs. production
 
@@ -378,6 +386,16 @@ FROM my_table
 ```
 
 If you define specific clustering fields for a table, they will be added *in addition to* the default ones. This is done to ensure that project-wide clustering fields are kept up to date in each table.
+
+#### Script-specific compute projects
+
+You can route specific scripts to different compute projects. This is useful when some expensive queries should run on a reservation project while others run on-demand:
+
+```sh
+LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS={"core.heavy_table": "reservation-project-id", "analytics.expensive_query": "reservation-project-id"}
+```
+
+The value is a JSON object mapping script references to compute project IDs. Scripts not listed will use the default `LEA_BQ_COMPUTE_PROJECT_ID`.
 
 #### Big Blue Pick API
 

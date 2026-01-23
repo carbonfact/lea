@@ -1,6 +1,6 @@
 [project]
 name = "lea-cli"
-version = "0.15.0"
+version = "0.16.0"
 description = "A minimalist alternative to dbt"
 authors = [{name = "Max Halford", email = "maxhalford25@gmail.com"}]
 requires-python = ">=3.11,<4"

@@ -11,7 +11,7 @@ import sys
 import dotenv
 
 import lea
-from lea import databases
+from lea import databases, scripts
 from lea.dag import DAGOfScripts
 from lea.databases import DatabaseClient, TableStats
 from lea.dialects import BigQueryDialect, DuckDBDialect
@@ -142,7 +142,7 @@ class Conductor:
 
         # We need a dataset to materialize the scripts. If we're in production mode, we use the
         # base dataset. If we're in user mode, we use a dataset named after the user.
-        write_dataset = self.dataset_name if production else self.name_user_dataset()
+        write_dataset = self.dataset_name if production else self.dataset_name_with_username
         database_client.create_dataset(write_dataset)
 
         if self.warehouse == databases.Warehouse.DUCKDB:
@@ -278,8 +278,10 @@ class Conductor:
                     "LEA_BQ_COMPUTE_PROJECT_ID",
                     credentials.project_id if credentials is not None else None,
                 ),
-                script_specific_compute_project_ids=json.loads(
-                    os.environ.get("LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS", "{}")
+                script_specific_compute_project_ids=parse_bigquery_script_specific_compute_project_ids(
+                    env_var=os.environ.get("LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS"),
+                    dataset_name=self.dataset_name_with_username,
+                    write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
                 ),
                 storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL", "PHYSICAL"),
                 dry_run=dry_run,
@@ -327,7 +329,8 @@ class Conductor:
 
         raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
 
-    def name_user_dataset(self) -> str:
+    @property
+    def dataset_name_with_username(self) -> str:
         username = os.environ.get("LEA_USERNAME", getpass.getuser())
         return f"{self.dataset_name}_{username}"
 
@@ -543,3 +546,22 @@ def determine_table_refs_to_run(
     table_refs_to_run -= unselected_table_refs
 
     return table_refs_to_run
+
+
+def parse_bigquery_script_specific_compute_project_ids(
+    env_var: str | None,
+    dataset_name: str,
+    write_project_id: str,
+) -> dict[scripts.TableRef, str]:
+    if env_var is None:
+        return {}
+    mapping = json.loads(env_var)
+    return {
+        (
+            BigQueryDialect.parse_table_ref(table_ref_str)
+            .replace_dataset(dataset_name)
+            .replace_project(write_project_id)
+            .add_audit_suffix()
+        ): compute_project_id
+        for table_ref_str, compute_project_id in mapping.items()
+    }

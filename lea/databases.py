@@ -268,8 +268,8 @@ class BigQueryClient(BigBluePickAPI):
         self.storage_billing_model = storage_billing_model
         self.location = location
         self.clients = {
-            project_id: bigquery.Client(
-                project=self.compute_project_id,
+            compute_project_id: bigquery.Client(
+                project=compute_project_id,
                 credentials=self.credentials,
                 location=self.location,
                 client_options={
@@ -281,13 +281,13 @@ class BigQueryClient(BigBluePickAPI):
                     ]
                 },
             )
-            for project_id in {
+            for compute_project_id in {
                 self.compute_project_id,
                 *(self.script_specific_compute_project_ids.values()),
                 big_blue_pick_api_on_demand_project_id,
                 big_blue_pick_api_reservation_project_id,
             }
-            if project_id is not None
+            if compute_project_id is not None
         }
         self.dry_run = dry_run
         self.print_mode = print_mode
@@ -382,6 +382,10 @@ class BigQueryClient(BigBluePickAPI):
 
         # Determine which client to use
         client = self.determine_client_for_script(sql_script=sql_script)
+        if client.project != self.compute_project_id:
+            lea.log.info(
+                f"Using compute project {client.project!r} for materializing {sql_script.table_ref}"
+            )
 
         # Run header statements if there are any
         if sql_script.header_statements:
