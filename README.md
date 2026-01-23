@@ -41,7 +41,10 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
   - [Skipping unmodified scripts during development](#skipping-unmodified-scripts-during-development)
 - [Warehouse specific features](#warehouse-specific-features)
   - [BigQuery](#bigquery-1)
-    - [Default clustering](#default-clustering)
+    - [Clustering](#clustering)
+      - [Default clustering](#default-clustering)
+    - [Table specific clustering](#table-specific-clustering)
+    - [Script-specific compute projects](#script-specific-compute-projects)
     - [Big Blue Pick API](#big-blue-pick-api)
 - [Contributing](#contributing)
 - [License](#license)
@@ -389,10 +392,10 @@ If you define specific clustering fields for a table, they will be added *in add
 
 #### Script-specific compute projects
 
-You can route specific scripts to different compute projects. This is useful when some expensive queries should run on a reservation project while others run on-demand:
+You can route specific scripts to different compute projects. This is useful when some expensive queries should run on a reservation project while others run on-demand, or vice-versa:
 
 ```sh
-LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS={"core.heavy_table": "reservation-project-id", "analytics.expensive_query": "reservation-project-id"}
+LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS={"dataset.schema__table": "reservation-project-id", "dataset.schema__subschema__table": "reservation-project-id"}
 ```
 
 The value is a JSON object mapping script references to compute project IDs. Scripts not listed will use the default `LEA_BQ_COMPUTE_PROJECT_ID`.
