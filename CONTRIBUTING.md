@@ -15,18 +15,10 @@ git submodule init
 git submodule update
 ```
 
-Next, you'll need a Python environment:
+Next, install [uv](https://docs.astral.sh/uv/getting-started/installation/) and set up the environment:
 
 ```sh
-pyenv install -v 3.11
-```
-
-You'll also need [Poetry](https://python-poetry.org/):
-
-```sh
-curl -sSL https://install.python-poetry.org | python3 -
-poetry install
-poetry shell
+uv sync
 ```
 
 ## Testing
