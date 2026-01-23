@@ -128,7 +128,9 @@ class Conductor:
         print_mode: bool = False,
     ) -> Session:
         # We need a database client to run scripts
-        database_client = self.make_client(dry_run=dry_run, print_mode=print_mode)
+        database_client = self.make_client(
+            dry_run=dry_run, print_mode=print_mode, production=production
+        )
 
         # We need to select the scripts we want to run. We do this by querying the DAG.
         selected_table_refs = self.dag.select(*select)
@@ -253,7 +255,9 @@ class Conductor:
             msg += f", cost ${session.total_billed_dollars:.2f}"
         lea.log.info(msg)
 
-    def make_client(self, dry_run: bool = False, print_mode: bool = False) -> DatabaseClient:
+    def make_client(
+        self, dry_run: bool = False, print_mode: bool = False, production: bool = False
+    ) -> DatabaseClient:
         if self.warehouse == databases.Warehouse.BIGQUERY:
             # Do imports here to avoid loading them all the time
             from google.oauth2 import service_account
@@ -280,7 +284,9 @@ class Conductor:
                 ),
                 script_specific_compute_project_ids=parse_bigquery_script_specific_compute_project_ids(
                     env_var=os.environ.get("LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS"),
-                    dataset_name=self.dataset_name_with_username,
+                    dataset_name=(
+                        self.dataset_name if production else self.dataset_name_with_username
+                    ),
                     write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
                 ),
                 storage_billing_model=os.environ.get("LEA_BQ_STORAGE_BILLING_MODEL", "PHYSICAL"),

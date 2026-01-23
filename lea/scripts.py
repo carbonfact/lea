@@ -96,6 +96,8 @@ class SQLScript:
 
             def load_yaml(path: str) -> dict:
                 full_path = (scripts_dir / path).resolve()
+                if not full_path.is_relative_to(scripts_dir.resolve()):
+                    raise ValueError(f"load_yaml path escapes scripts_dir: {path}")
                 with open(full_path) as f:
                     return yaml.safe_load(f)
 
