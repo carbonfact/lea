@@ -41,8 +41,7 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
   - [Skipping unmodified scripts during development](#skipping-unmodified-scripts-during-development)
 - [Warehouse specific features](#warehouse-specific-features)
   - [BigQuery](#bigquery-1)
-    - [Clustering](#clustering)
-      - [Default clustering](#default-clustering)
+    - [Default clustering](#default-clustering)
     - [Table specific clustering](#table-specific-clustering)
     - [Script-specific compute projects](#script-specific-compute-projects)
     - [Big Blue Pick API](#big-blue-pick-api)
@@ -358,9 +357,7 @@ lea run --restart
 
 ### BigQuery
 
-#### Clustering
-
-##### Default clustering
+#### Default clustering
 
 At Carbonfact, we cluster most of our tables by customer. This is done to optimize query performance and reduce costs. lea allows you to automatically cluster tables that contain a given field:
 
@@ -379,7 +376,8 @@ For each table, lea will use the clustering fields it can and ignore the others.
 #### Table specific clustering
 
 You can also define clustering fields for a specific table:
-```
+
+```sql
 SELECT
   account_slug,
   -- #CLUSTERING_FIELD
