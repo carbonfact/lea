@@ -731,7 +731,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "ipykernel", specifier = ">=6.21.2,<8" },
-    { name = "pre-commit", specifier = ">=3.5,<5" },
+    { name = "pre-commit", specifier = ">=4.1,<5" },
     { name = "pytest", specifier = ">=7.4.2,<10" },
     { name = "ruff", specifier = ">=0.1,<0.15" },
 ]
