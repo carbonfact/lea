@@ -3,14 +3,9 @@
 <img src="https://github.com/carbonfact/lea/assets/8095957/df2bcf1e-fcc9-4111-9897-ec29427aeeaa" width="33%" align="right" />
 
 <p>
-<!-- Tests -->
-<a href="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml">
-    <img src="https://github.com/carbonfact/lea/actions/workflows/unit-tests.yml/badge.svg" alt="tests">
-</a>
-
-<!-- Code quality -->
-<a href="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml">
-    <img src="https://github.com/carbonfact/lea/actions/workflows/code-quality.yml/badge.svg" alt="code_quality">
+<!-- CI -->
+<a href="https://github.com/carbonfact/lea/actions/workflows/ci.yml">
+    <img src="https://github.com/carbonfact/lea/actions/workflows/ci.yml/badge.svg" alt="CI">
 </a>
 
 <!-- PyPI -->
@@ -47,6 +42,8 @@ lea aims to be simple and provides sane defaults. We happily use it every day at
 - [Warehouse specific features](#warehouse-specific-features)
   - [BigQuery](#bigquery-1)
     - [Default clustering](#default-clustering)
+    - [Table specific clustering](#table-specific-clustering)
+    - [Script-specific compute projects](#script-specific-compute-projects)
     - [Big Blue Pick API](#big-blue-pick-api)
 - [Contributing](#contributing)
 - [License](#license)
@@ -181,6 +178,19 @@ A script may contain multiple SQL statements, separated by semicolons. The last 
 SQL queries can be templated with [Jinja](https://jinja.palletsprojects.com/en/3.1.x/). A `.sql.jinja` extension is necessary for lea to recognise them.
 
 You have access to an `env` variable within the template context, which is simply an access point to `os.environ`.
+
+A `load_yaml` function is also available, allowing you to load YAML files relative to the scripts directory:
+
+```jinja
+{% set taxonomy = load_yaml('core/taxonomies/product.yaml') %}
+
+SELECT
+  {% for dim in taxonomy.dimensions %}
+  MAX(IF(key = '{{ dim.key }}', value, NULL)) AS {{ dim.column }},
+  {% endfor %}
+  account_slug
+FROM core.raw_attributes
+```
 
 ### Development vs. production
 
@@ -347,9 +357,7 @@ lea run --restart
 
 ### BigQuery
 
-#### Clustering
-
-##### Default clustering
+#### Default clustering
 
 At Carbonfact, we cluster most of our tables by customer. This is done to optimize query performance and reduce costs. lea allows you to automatically cluster tables that contain a given field:
 
@@ -368,7 +376,8 @@ For each table, lea will use the clustering fields it can and ignore the others.
 #### Table specific clustering
 
 You can also define clustering fields for a specific table:
-```
+
+```sql
 SELECT
   account_slug,
   -- #CLUSTERING_FIELD
@@ -378,6 +387,16 @@ FROM my_table
 ```
 
 If you define specific clustering fields for a table, they will be added *in addition to* the default ones. This is done to ensure that project-wide clustering fields are kept up to date in each table.
+
+#### Script-specific compute projects
+
+You can route specific scripts to different compute projects. This is useful when some expensive queries should run on a reservation project while others run on-demand, or vice-versa:
+
+```sh
+LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS={"dataset.schema__table": "reservation-project-id", "dataset.schema__subschema__table": "reservation-project-id"}
+```
+
+The value is a JSON object mapping script references to compute project IDs. Scripts not listed will use the default `LEA_BQ_COMPUTE_PROJECT_ID`.
 
 #### Big Blue Pick API
 

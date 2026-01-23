@@ -120,13 +120,13 @@ class BigQueryJob:
     def statistics(self) -> TableStats | None:
         if self.client.dry_run or self.destination is None:
             return None
-        table = self.client.client.get_table(
+        table = self.client.default_client.get_table(
             self.destination, retry=bigquery.DEFAULT_RETRY.with_deadline(10)
         )
         return TableStats(n_rows=table.num_rows, n_bytes=table.num_bytes, updated_at=table.modified)
 
     def stop(self):
-        self.client.client.cancel_job(self.query_job.job_id)
+        self.client.default_client.cancel_job(self.query_job.job_id)
 
     @property
     def result(self) -> pd.DataFrame:
@@ -233,15 +233,6 @@ class BigBluePickAPI:
             return self.reservation_project_id
         return self.default_project_id
 
-    def pick_client(
-        self,
-        script: scripts.SQLScript,
-        credentials: service_account.Credentials | None,
-        location: str,
-    ) -> bigquery.Client:
-        project_id = self.pick_project_id_for_script(script=script)
-        return bigquery.Client(project=project_id, credentials=credentials, location=location)
-
     def record_job_for_script(self, script: scripts.SQLScript, job: bigquery.QueryJob):
         self.call_pick_api(
             path="/write",
@@ -274,6 +265,7 @@ class BigQueryClient(BigBluePickAPI):
         location: str,
         write_project_id: str,
         compute_project_id: str | None,
+        script_specific_compute_project_ids: dict[scripts.TableRef, str] | None = None,
         storage_billing_model: str = "PHYSICAL",
         dry_run: bool = False,
         print_mode: bool = False,
@@ -286,21 +278,31 @@ class BigQueryClient(BigBluePickAPI):
         self.credentials = credentials
         self.write_project_id = write_project_id
         self.compute_project_id = compute_project_id
+        self.script_specific_compute_project_ids = script_specific_compute_project_ids or {}
         self.storage_billing_model = storage_billing_model
         self.location = location
-        self.client = bigquery.Client(
-            project=self.compute_project_id,
-            credentials=self.credentials,
-            location=self.location,
-            client_options={
-                "scopes": [
-                    "https://www.googleapis.com/auth/cloud-platform",
-                    "https://www.googleapis.com/auth/drive",
-                    "https://www.googleapis.com/auth/spreadsheets.readonly",
-                    "https://www.googleapis.com/auth/userinfo.email",
-                ]
-            },
-        )
+        self.clients = {
+            compute_project_id: bigquery.Client(
+                project=compute_project_id,
+                credentials=self.credentials,
+                location=self.location,
+                client_options={
+                    "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform",
+                        "https://www.googleapis.com/auth/drive",
+                        "https://www.googleapis.com/auth/spreadsheets.readonly",
+                        "https://www.googleapis.com/auth/userinfo.email",
+                    ]
+                },
+            )
+            for compute_project_id in {
+                self.compute_project_id,
+                *(self.script_specific_compute_project_ids.values()),
+                big_blue_pick_api_on_demand_project_id,
+                big_blue_pick_api_reservation_project_id,
+            }
+            if compute_project_id is not None
+        }
         self.dry_run = dry_run
         self.print_mode = print_mode
         self.default_clustering_fields = default_clustering_fields or []
@@ -322,6 +324,10 @@ class BigQueryClient(BigBluePickAPI):
             else None
         )
 
+    @property
+    def default_client(self) -> bigquery.Client:
+        return self.clients[self.compute_project_id]
+
     def create_dataset(self, dataset_name: str):
         dataset_ref = bigquery.DatasetReference(
             project=self.write_project_id, dataset_id=dataset_name
@@ -329,10 +335,10 @@ class BigQueryClient(BigBluePickAPI):
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset.storage_billing_model = self.storage_billing_model
-        dataset = self.client.create_dataset(dataset, exists_ok=True)
+        dataset = self.default_client.create_dataset(dataset, exists_ok=True)
 
     def delete_dataset(self, dataset_name: str):
-        self.client.delete_dataset(
+        self.default_client.delete_dataset(
             dataset=f"{self.write_project_id}.{dataset_name}",
             delete_contents=True,
             not_found_ok=True,
@@ -347,6 +353,16 @@ class BigQueryClient(BigBluePickAPI):
         if isinstance(script, scripts.SQLScript):
             return self.materialize_sql_script(sql_script=script)
         raise ValueError("Unsupported script type")
+
+    def determine_client_for_script(self, sql_script: scripts.SQLScript) -> bigquery.Client:
+        project_id = (
+            self.big_blue_pick_api.pick_project_id_for_script(script=sql_script)
+            if self.big_blue_pick_api is not None
+            else self.script_specific_compute_project_ids.get(
+                sql_script.table_ref, self.compute_project_id
+            )
+        )
+        return self.clients[project_id]
 
     def materialize_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
         destination = BigQueryDialect.convert_table_ref_to_bigquery_table_reference(
@@ -371,20 +387,19 @@ class BigQueryClient(BigBluePickAPI):
             script=sql_script,
             destination=destination,
             write_disposition="WRITE_TRUNCATE",
-            clustering_fields=clustering_fields
-            if clustering_fields and not sql_script.table_ref.is_test
-            else None,
+            clustering_fields=(
+                clustering_fields
+                if clustering_fields and not sql_script.table_ref.is_test
+                else None
+            ),
         )
 
-        client = (
-            self.big_blue_pick_api.pick_client(
-                script=sql_script,
-                credentials=self.credentials,
-                location=self.location,
+        # Determine which client to use
+        client = self.determine_client_for_script(sql_script=sql_script)
+        if client.project != self.compute_project_id:
+            lea.log.info(
+                f"Using compute project {client.project!r} for materializing {sql_script.table_ref}"
             )
-            if self.big_blue_pick_api is not None
-            else self.client
-        )
 
         # Run header statements if there are any
         if sql_script.header_statements:
@@ -418,20 +433,14 @@ class BigQueryClient(BigBluePickAPI):
         raise ValueError("Unsupported script type")
 
     def query_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
+        client = self.determine_client_for_script(sql_script=sql_script)
         job_config = self.make_job_config(script=sql_script)
-        client = (
-            self.big_blue_pick_api.pick_client(
-                script=sql_script,
-                credentials=self.credentials,
-                location=self.location,
-            )
-            if self.big_blue_pick_api is not None
-            else self.client
-        )
         return BigQueryJob(
             client=self,
             query_job=client.query(
-                query=sql_script.query, job_config=job_config, location=self.location
+                query=sql_script.query,
+                job_config=job_config,
+                location=self.location,
             ),
             script=sql_script,
         )
@@ -453,7 +462,7 @@ class BigQueryClient(BigBluePickAPI):
         DROP TABLE IF EXISTS {destination};
         """
         header_job_config = bigquery.QueryJobConfig(create_session=True)
-        job = self.client.query(delete_code, job_config=header_job_config)
+        job = self.default_client.query(delete_code, job_config=header_job_config)
         job.result()
         session_id = job.session_info.session_id
 
@@ -471,7 +480,9 @@ class BigQueryClient(BigBluePickAPI):
 
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(clone_code, job_config=job_config, location=self.location),
+            query_job=self.default_client.query(
+                clone_code, job_config=job_config, location=self.location
+            ),
             destination=destination,
         )
 
@@ -508,7 +519,7 @@ class BigQueryClient(BigBluePickAPI):
         )
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(
+            query_job=self.default_client.query(
                 delete_and_insert_code, job_config=job_config, location=self.location
             ),
             destination=destination,
@@ -531,7 +542,9 @@ class BigQueryClient(BigBluePickAPI):
         )
         return BigQueryJob(
             client=self,
-            query_job=self.client.query(delete_code, job_config=job_config, location=self.location),
+            query_job=self.default_client.query(
+                delete_code, job_config=job_config, location=self.location
+            ),
         )
 
     def list_table_stats(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
@@ -539,7 +552,7 @@ class BigQueryClient(BigBluePickAPI):
         SELECT table_id, row_count, size_bytes, last_modified_time
         FROM `{self.write_project_id}.{dataset_name}.__TABLES__`
         """
-        job = self.client.query(query, location=self.location)
+        job = self.default_client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(
                 f"{self.write_project_id}.{dataset_name}.{row['table_id']}"
@@ -547,7 +560,7 @@ class BigQueryClient(BigBluePickAPI):
                 n_rows=row["row_count"],
                 n_bytes=row["size_bytes"],
                 updated_at=(
-                    dt.datetime.fromtimestamp(row["last_modified_time"] // 1000, tz=dt.timezone.utc)
+                    dt.datetime.fromtimestamp(row["last_modified_time"] // 1000, tz=dt.UTC)
                 ),
             )
             for row in job.result()
@@ -558,7 +571,7 @@ class BigQueryClient(BigBluePickAPI):
         SELECT table_name, column_name
         FROM `{self.write_project_id}.{dataset_name}.INFORMATION_SCHEMA.COLUMNS`
         """
-        job = self.client.query(query, location=self.location)
+        job = self.default_client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(
                 f"{self.write_project_id}.{dataset_name}.{table_name}"
@@ -771,11 +784,11 @@ class DuckDBClient:
             """
             result = self.connection.execute(stats_query).fetchdf().dropna()
             if result.empty:
-                updated_at = dt.datetime.now(dt.timezone.utc)
+                updated_at = dt.datetime.now(dt.UTC)
             else:
                 updated_at = dt.datetime.fromtimestamp(
                     result.iloc[0]["last_modified"].to_pydatetime().timestamp(),
-                    tz=dt.timezone.utc,
+                    tz=dt.UTC,
                 )
             table_stats[
                 DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}").replace_dataset(
