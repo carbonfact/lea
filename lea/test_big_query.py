@@ -119,7 +119,7 @@ def test_incremental_field(scripts):
         existing_tables={},
         existing_audit_tables={},
         incremental_field_name="name",
-        incremental_field_values={"Alice"},
+        incremental_field_values=["Alice"],
     )
 
     assert_queries_are_equal(
@@ -167,7 +167,7 @@ def test_incremental_field_with_comma(scripts):
         existing_tables={},
         existing_audit_tables={},
         incremental_field_name="name",
-        incremental_field_values={"Alice"},
+        incremental_field_values=["Alice"],
     )
 
     assert_queries_are_equal(
@@ -215,7 +215,7 @@ def test_incremental_field_but_no_incremental_table_selected(scripts):
         existing_tables={},
         existing_audit_tables={},
         incremental_field_name="name",
-        incremental_field_values={"Alice"},
+        incremental_field_values=["Alice"],
     )
 
     assert_queries_are_equal(
@@ -244,7 +244,7 @@ def test_incremental_field_with_just_incremental_table_selected(scripts):
         existing_tables={},
         existing_audit_tables={},
         incremental_field_name="name",
-        incremental_field_values={"Alice"},
+        incremental_field_values=["Alice"],
     )
 
     assert_queries_are_equal(
@@ -277,7 +277,7 @@ def test_incremental_field_with_just_incremental_table_selected_and_materialized
             TableRef("read", ("raw",), "users", "test_project"): DUMMY_TABLE_STATS
         },
         incremental_field_name="name",
-        incremental_field_values={"Alice"},
+        incremental_field_values=["Alice"],
     )
 
     assert_queries_are_equal(
@@ -310,7 +310,7 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
             TableRef("read", ("core",), "users", "test_project"): DUMMY_TABLE_STATS,
         },
         incremental_field_name="name",
-        incremental_field_values={"Alice"},
+        incremental_field_values=["Alice"],
     )
 
     assert_queries_are_equal(
@@ -339,7 +339,7 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
 ):
     session = Session(
         database_client=BigQueryClient(
-            credentials=AnonymousCredentials(),
+            credentials=AnonymousCredentials(),  # ty: ignore[invalid-argument-type]
             location="EU",
             write_project_id="write-project-id",
             compute_project_id="compute-project-id",
@@ -354,7 +354,7 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
             TableRef("read", ("core",), "users", "test_project"): DUMMY_TABLE_STATS,
         },
         incremental_field_name="name",
-        incremental_field_values={"Alice"},
+        incremental_field_values=["Alice"],
     )
 
     assert_queries_are_equal(

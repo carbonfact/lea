@@ -30,7 +30,7 @@ class TableRef:
             project=project_name,
         )
 
-    def replace_dataset(self, dataset: str) -> TableRef:
+    def replace_dataset(self, dataset: str | None) -> TableRef:
         return dataclasses.replace(self, dataset=dataset)
 
     def replace_project(self, project: str | None) -> TableRef:

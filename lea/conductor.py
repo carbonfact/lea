@@ -63,6 +63,7 @@ class Conductor:
         self.project_name = project_name
 
         lea.log.info("📝 Reading scripts")
+        cache_dir = self.scripts_dir / ".lea_cache"
 
         if self.warehouse == databases.Warehouse.BIGQUERY:
             self.dag = DAGOfScripts.from_directory(
@@ -70,6 +71,7 @@ class Conductor:
                 sql_dialect=BigQueryDialect(),
                 dataset_name=self.dataset_name,
                 project_name=self.project_name,
+                cache_dir=cache_dir,
             )
         elif self.warehouse in {
             databases.Warehouse.DUCKDB,
@@ -81,6 +83,7 @@ class Conductor:
                 sql_dialect=DuckDBDialect(),
                 dataset_name=self.dataset_name,
                 project_name=None,
+                cache_dir=cache_dir,
             )
         else:
             raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
@@ -202,7 +205,9 @@ class Conductor:
 
             # Store setup SQL for lazy loading — the native DB extension is only
             # loaded when actually needed (pulling deps or running native scripts)
-            session_quack_setup_stmts = native_dialect.quack_setup_sql(env=dict(os.environ))
+            session_quack_setup_stmts = native_dialect.quack_setup_sql(
+                env=dict(os.environ), dataset=write_dataset
+            )
 
             # Create schemas in DuckLake
             schema_names = set(
@@ -228,35 +233,31 @@ class Conductor:
             )
             database_client.create_dataset(write_dataset)
 
-            if self.warehouse == databases.Warehouse.DUCKDB:
-                lea.log.info(
-                    f"🔩 Using DuckDB database at {database_client.database_path.absolute()}"
-                )
-            elif self.warehouse == databases.Warehouse.MOTHERDUCK:
-                database_client.connection.execute("ATTACH 'md:';")
-                database_client.connection.execute(
-                    f"CREATE DATABASE IF NOT EXISTS {write_dataset};"
-                )
-                database_client.connection.execute(f"USE {write_dataset};")
-            elif self.warehouse == databases.Warehouse.DUCKLAKE:
-                if s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
-                    lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
-                    database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
-                database_client.connection.execute(
-                    f"""
-                    ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
-                        DATA_PATH '{os.environ["LEA_DUCKLAKE_DATA_PATH"]}'
-                    );
-                    USE my_ducklake;
-                    """
-                )
+            if isinstance(database_client, databases.DuckDBClient):
+                if self.warehouse == databases.Warehouse.DUCKDB:
+                    lea.log.info(
+                        f"🔩 Using DuckDB database at {database_client.database_path.absolute()}"
+                    )
+                elif self.warehouse == databases.Warehouse.MOTHERDUCK:
+                    database_client.connection.execute("ATTACH 'md:';")
+                    database_client.connection.execute(
+                        f"CREATE DATABASE IF NOT EXISTS {write_dataset};"
+                    )
+                    database_client.connection.execute(f"USE {write_dataset};")
+                elif self.warehouse == databases.Warehouse.DUCKLAKE:
+                    if s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
+                        lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
+                        database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
+                    database_client.connection.execute(
+                        f"""
+                        ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
+                            DATA_PATH '{os.environ["LEA_DUCKLAKE_DATA_PATH"]}'
+                        );
+                        USE my_ducklake;
+                        """
+                    )
 
-            # When using DuckDB, we need to create schema for the tables
-            if self.warehouse in {
-                databases.Warehouse.DUCKDB,
-                databases.Warehouse.MOTHERDUCK,
-                databases.Warehouse.DUCKLAKE,
-            }:
+                # When using DuckDB, we need to create schema for the tables
                 for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
                     extension = extension.strip()
                     if extension:
@@ -326,7 +327,8 @@ class Conductor:
 
         # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
         session.end()
-        duration_str = str(session.ended_at - session.started_at).split(".")[0]  # type: ignore[operator]
+        assert session.ended_at is not None
+        duration_str = str(session.ended_at - session.started_at).split(".")[0]
         emoji = "✅" if not session.any_error_has_occurred else "❌"
         msg = f"{emoji} Finished"
         if session.ended_at - session.started_at > dt.timedelta(seconds=1):
@@ -339,7 +341,12 @@ class Conductor:
 
     def make_client(
         self, dry_run: bool = False, print_mode: bool = False, production: bool = False
-    ) -> DatabaseClient:
+    ) -> (
+        databases.BigQueryClient
+        | databases.DuckDBClient
+        | databases.MotherDuckClient
+        | databases.DuckLakeClient
+    ):
         if self.warehouse == databases.Warehouse.BIGQUERY:
             # Do imports here to avoid loading them all the time
             from google.oauth2 import service_account
@@ -464,6 +471,8 @@ def pull_dependencies_into_ducklake(
         return
 
     # Second pass: filter out candidates that already exist in DuckLake
+    if session.quack_database_client is None:
+        raise RuntimeError("quack_database_client is required for dependency pulling")
     existing_duck_tables = session.quack_database_client.list_existing_table_refs()
     deps_to_pull = determine_deps_to_pull(
         table_refs_to_run=table_refs_to_run,
@@ -492,8 +501,7 @@ def pull_dependencies_into_ducklake(
                 session.write_dataset
             )
         existing_native_refs = {
-            table_ref.replace_dataset(session.base_dataset)
-            for table_ref in session.existing_tables
+            table_ref.replace_dataset(session.base_dataset) for table_ref in session.existing_tables
         }
         pullable = {
             dep
@@ -514,9 +522,12 @@ def pull_dependencies_into_ducklake(
 
     session.ensure_quack_extension_loaded()
     lea.log.info(f"🦆 Pulling {len(pullable):,d} dependencies into DuckLake")
-    conn = session.quack_database_client.connection
-    if session.quack_database_client._active_database:
-        conn.execute(f"USE {session.quack_database_client._active_database};")
+    if session.quack_database_client is None:
+        raise RuntimeError("quack_database_client is required for pulling into DuckLake")
+    quack_client = session.quack_database_client
+    conn = quack_client.connection
+    if quack_client._active_database:
+        conn.execute(f"USE {quack_client._active_database};")
 
     # Ensure schemas exist for pulled deps
     pull_schemas = set(dep.schema[0] for dep in pullable if dep.schema)
@@ -524,6 +535,11 @@ def pull_dependencies_into_ducklake(
         conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
 
     def _pull_one(dep: TableRef):
+        import time
+
+        if session.native_dialect is None:
+            raise RuntimeError("native_dialect is required for pulling dependencies")
+
         # Source: read from native DB via extension (e.g. bq.citibike_max.core__trips)
         source_ref = dep.replace_dataset(session.write_dataset)
         source_str = session.native_dialect.format_table_ref_for_duckdb(source_ref)
@@ -532,18 +548,26 @@ def pull_dependencies_into_ducklake(
         dest_ref = dep.replace_dataset(None).replace_project(None)
         dest_str = DuckDBDialect.format_table_ref(dest_ref)
 
-        lea.log.info(f"🦆 Pulling {dest_str}")
+        lea.log.info(f"PULLING {dest_str}")
+        t0 = time.perf_counter()
         cursor = conn.cursor()
-        if session.quack_database_client._active_database:
-            cursor.execute(f"USE {session.quack_database_client._active_database};")
+        if quack_client._active_database:
+            cursor.execute(f"USE {quack_client._active_database};")
         cursor.execute(f"CREATE OR REPLACE TABLE {dest_str} AS SELECT * FROM {source_str}")
+        row = cursor.execute(f"SELECT COUNT(*) FROM {dest_str}").fetchone()
+        n_rows = row[0] if row else 0
         cursor.close()
+        elapsed = time.perf_counter() - t0
+        lea.log.info(f"[green]SUCCESS[/green] {dest_str}, {n_rows:,d} rows ({elapsed:.1f}s)")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = {executor.submit(_pull_one, dep): dep for dep in pullable}
         for future in concurrent.futures.as_completed(futures):
             if (exception := future.exception()) is not None:
-                lea.log.error(f"Failed pulling {futures[future]}\n{exception}")
+                dep = futures[future]
+                dest_ref = dep.replace_dataset(None).replace_project(None)
+                dest_str = DuckDBDialect.format_table_ref(dest_ref)
+                lea.log.error(f"[red]ERRORED[/red] {dest_str}\n{exception}")
 
     session.pulled_table_refs = pullable
 
@@ -664,7 +688,7 @@ def delete_audit_tables(session: Session):
             for table_ref in session.selected_table_refs
             if table_ref in session.duck_table_refs
         }
-        if native_audit_refs:
+        if native_audit_refs and session.database_client is not None:
             lea.log.info("🧹 Deleting audit tables")
             delete_table_refs(
                 table_refs=native_audit_refs,
@@ -672,7 +696,7 @@ def delete_audit_tables(session: Session):
                 executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
                 verbose=False,
             )
-        if duck_audit_refs:
+        if duck_audit_refs and session.quack_database_client is not None:
             lea.log.info("🧹 Deleting DuckLake audit tables")
             delete_table_refs(
                 table_refs=duck_audit_refs,
@@ -680,7 +704,7 @@ def delete_audit_tables(session: Session):
                 executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
                 verbose=False,
             )
-    elif table_refs_to_delete:
+    elif table_refs_to_delete and session.database_client is not None:
         lea.log.info("🧹 Deleting audit tables")
         delete_table_refs(
             table_refs=table_refs_to_delete,
@@ -696,7 +720,7 @@ def delete_orphan_tables(session: Session):
         session.add_write_context_to_table_ref(table_ref).remove_audit_suffix()
         for table_ref in session.scripts
     }
-    if table_refs_to_delete:
+    if table_refs_to_delete and session.database_client is not None:
         lea.log.info("🧹 Deleting orphan tables")
         delete_table_refs(
             table_refs=table_refs_to_delete,

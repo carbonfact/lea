@@ -28,9 +28,10 @@ lea = "lea.cli:app"
 [dependency-groups]
 dev = [
   "ipykernel>=6.21.2,<8",
-  "pre-commit>=4.1,<5",
+  "prek",
   "pytest>=7.4.2,<10",
   "ruff>=0.1,<0.16",
+  "ty>=0.0.21",
 ]
 
 [build-system]
@@ -42,8 +43,8 @@ packages = ["lea"]
 
 [tool.ruff]
 lint.ignore = ["E501"]
-line-length = 100
 lint.select = ["E", "F", "I", "UP"] # https://beta.ruff.rs/docs/rules/
+line-length = 100
 target-version = 'py312'
 
 [tool.ruff.lint.isort]

@@ -7,7 +7,6 @@ import textwrap
 import jinja2
 import sqlglot
 import sqlglot.dialects
-from google.cloud import bigquery
 
 from lea.field import FieldTag
 from lea.table_ref import TableRef
@@ -27,7 +26,7 @@ class SQLDialect:
     def format_table_ref(table_ref: TableRef) -> str:
         raise NotImplementedError
 
-    def quack_setup_sql(self, env: dict[str, str]) -> list[str]:
+    def quack_setup_sql(self, env: dict[str, str], dataset: str | None = None) -> list[str]:
         """Return SQL statements to install/load extension and attach native DB to DuckDB."""
         return []
 
@@ -135,12 +134,15 @@ class BigQueryDialect(SQLDialect):
     sqlglot_dialect = sqlglot.dialects.Dialects.BIGQUERY
     quack_attached_name = "bq"
 
-    def quack_setup_sql(self, env: dict[str, str]) -> list[str]:
+    def quack_setup_sql(self, env: dict[str, str], dataset: str | None = None) -> list[str]:
         project = env["LEA_BQ_PROJECT_ID"]
+        attach_str = f"project={project}"
+        if dataset:
+            attach_str += f" dataset={dataset}"
         return [
             "INSTALL bigquery FROM community;",
             "LOAD bigquery;",
-            f"ATTACH 'project={project}' AS {self.quack_attached_name} (TYPE bigquery, READ_ONLY);",
+            f"ATTACH '{attach_str}' AS {self.quack_attached_name} (TYPE bigquery, READ_ONLY);",
         ]
 
     def format_table_ref_for_duckdb(self, table_ref: TableRef) -> str:
@@ -189,9 +191,9 @@ class BigQueryDialect(SQLDialect):
         return table_ref_str
 
     @staticmethod
-    def convert_table_ref_to_bigquery_table_reference(
-        table_ref: TableRef, project: str
-    ) -> bigquery.TableReference:
+    def convert_table_ref_to_bigquery_table_reference(table_ref: TableRef, project: str):
+        from google.cloud import bigquery
+
         return bigquery.TableReference(
             dataset_ref=bigquery.DatasetReference(
                 project=project,

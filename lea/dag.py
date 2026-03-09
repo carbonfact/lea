@@ -5,8 +5,6 @@ import pathlib
 import re
 from collections.abc import Iterator
 
-import git
-
 from .dialects import SQLDialect
 from .scripts import Script, read_scripts
 from .table_ref import TableRef
@@ -35,12 +33,14 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         sql_dialect: SQLDialect,
         dataset_name: str,
         project_name: str | None,
+        cache_dir: pathlib.Path | None = None,
     ) -> DAGOfScripts:
         scripts = read_scripts(
             scripts_dir=scripts_dir,
             sql_dialect=sql_dialect,
             dataset_name=dataset_name,
             project_name=project_name,
+            cache_dir=cache_dir,
         )
 
         # Fields in the script's code may contain tags. These tags induce assertion tests, which
@@ -185,7 +185,11 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 def list_table_refs_that_changed(
     scripts_dir: pathlib.Path, project_name: str | None
 ) -> set[TableRef]:
+    import git
+
     repo = git.Repo(search_parent_directories=True)
+    if repo.working_tree_dir is None:
+        raise RuntimeError("git repository has no working tree directory")
     repo_root = pathlib.Path(repo.working_tree_dir)
 
     absolute_scripts_dir = scripts_dir.resolve()

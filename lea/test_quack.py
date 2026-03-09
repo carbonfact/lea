@@ -3,7 +3,6 @@ from __future__ import annotations
 import tempfile
 
 import duckdb
-import pytest
 
 from lea.databases import DuckLakeClient, TableStats
 from lea.dialects import BigQueryDialect, DuckDBDialect
@@ -240,7 +239,9 @@ class TestBigQueryDialectQuack:
         assert result == "bq.my_dataset.staging__customers"
 
     def test_format_table_ref_for_duckdb_with_audit_suffix(self):
-        ref = TableRef(dataset="my_dataset", schema=("staging",), name="customers___audit", project=None)
+        ref = TableRef(
+            dataset="my_dataset", schema=("staging",), name="customers___audit", project=None
+        )
         result = BigQueryDialect().format_table_ref_for_duckdb(ref)
         assert result == "bq.my_dataset.staging__customers___audit"
 
@@ -258,7 +259,9 @@ class TestBigQueryDialectQuack:
 # These test the single-pass flow for duck scripts.
 
 
-def make_bq_ref(schema: str, name: str, dataset: str = "citibike", project: str = "my-project") -> TableRef:
+def make_bq_ref(
+    schema: str, name: str, dataset: str = "citibike", project: str = "my-project"
+) -> TableRef:
     return TableRef(dataset=dataset, schema=(schema,), name=name, project=project)
 
 
@@ -275,7 +278,7 @@ class TestAddContextForDuckScript:
             unselected_table_refs=set(),
             existing_tables={},
             existing_audit_tables={},
-            quack_database_client="fake_duck_client",  # just non-None to enable quack mode
+            quack_database_client="fake_duck_client",  # just non-None to enable quack mode  # ty: ignore[invalid-argument-type]
             native_table_refs=native_table_refs,
             duck_table_refs=duck_table_refs,
             native_dialect=BigQueryDialect(),
@@ -463,7 +466,7 @@ class TestAddContextForDuckScript:
             unselected_table_refs=set(),
             existing_tables={},
             existing_audit_tables={},
-            quack_database_client="fake",
+            quack_database_client="fake",  # ty: ignore[invalid-argument-type]
             native_table_refs={staging},
             duck_table_refs={core},
             native_dialect=BigQueryDialect(),
@@ -665,19 +668,23 @@ class TestListExistingTableRefs:
         tmp_dir = tempfile.mkdtemp()
         path = f"{tmp_dir}/test.ducklake"
         conn = duckdb.connect(path)
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE ducklake_schema (
                 schema_id INTEGER, schema_uuid VARCHAR, begin_snapshot INTEGER,
                 end_snapshot INTEGER, schema_name VARCHAR, path VARCHAR, path_is_relative BOOLEAN
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             CREATE TABLE ducklake_table (
                 table_id INTEGER, table_uuid VARCHAR, begin_snapshot INTEGER,
                 end_snapshot INTEGER, schema_id INTEGER, table_name VARCHAR,
                 path VARCHAR, path_is_relative BOOLEAN
             )
-        """)
+        """
+        )
         schemas: dict[str, int] = {}
         for schema, table in tables:
             if schema not in schemas:

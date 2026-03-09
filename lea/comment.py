@@ -30,6 +30,8 @@ class CommentBlock(collections.UserList):
 def extract_comments(
     code: str, expected_field_names: list[str], sql_dialect: SQLDialect
 ) -> dict[str, CommentBlock]:
+    if sql_dialect.sqlglot_dialect is None:
+        raise RuntimeError("sqlglot_dialect must be set")
     dialect = sqlglot.Dialect.get_or_raise(sql_dialect.sqlglot_dialect.value)
     tokens = dialect.tokenizer_class().tokenize(code)
 

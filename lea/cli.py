@@ -27,9 +27,23 @@ def app():
     "--production", is_flag=True, default=False, help="Whether to run the scripts in production."
 )
 @click.option("--restart", is_flag=True, default=False, help="Whether to restart from scratch.")
-@click.option("--quack", is_flag=True, default=False, help="Run in quack mode (DuckLake for local dev).")
+@click.option(
+    "--quack", is_flag=True, default=False, help="Run in quack mode (DuckLake for local dev)."
+)
 @click.option("--env-file", type=click.Path(exists=True), help="Path to the environment file.")
-def run(select, unselect, dataset, scripts, incremental, dry, print, production, restart, quack, env_file):
+def run(
+    select,
+    unselect,
+    dataset,
+    scripts,
+    incremental,
+    dry,
+    print,
+    production,
+    restart,
+    quack,
+    env_file,
+):
     if select in {"", "Ø"}:
         select = []
 

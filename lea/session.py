@@ -9,7 +9,8 @@ import time
 from collections.abc import Callable
 
 import lea
-from lea.databases import DatabaseClient, TableStats
+from lea.databases import DatabaseClient, DuckLakeClient, TableStats
+from lea.dialects import SQLDialect
 from lea.field import FieldTag
 from lea.job import Job, JobStatus
 from lea.scripts import Script
@@ -19,7 +20,7 @@ from lea.table_ref import TableRef
 class Session:
     def __init__(
         self,
-        database_client: DatabaseClient,
+        database_client: DatabaseClient | None,
         base_dataset: str,
         write_dataset: str,
         scripts: dict[TableRef, Script],
@@ -27,13 +28,13 @@ class Session:
         unselected_table_refs: set[TableRef],
         existing_tables: dict[TableRef, TableStats],
         existing_audit_tables: dict[TableRef, TableStats],
-        incremental_field_name=None,
-        incremental_field_values=None,
+        incremental_field_name: str | None = None,
+        incremental_field_values: list[str] | None = None,
         # Quack mode fields
-        quack_database_client: DatabaseClient | None = None,
+        quack_database_client: DuckLakeClient | None = None,
         native_table_refs: set[TableRef] | None = None,
         duck_table_refs: set[TableRef] | None = None,
-        native_dialect=None,
+        native_dialect: SQLDialect | None = None,
         native_dataset: str | None = None,
         quack_extension_setup_stmts: list[str] | None = None,
     ):
@@ -206,6 +207,8 @@ class Session:
             if dep_base in self.native_table_refs and dep_base not in self.pulled_table_refs:
                 # Native dep not pulled → read via attached extension
                 dep_for_ext = dep_with_context.replace_dataset(self.write_dataset)
+                if self.native_dialect is None:
+                    raise RuntimeError("native_dialect is required for formatting native dependency refs")
                 new_ref_str = self.native_dialect.format_table_ref_for_duckdb(dep_for_ext)
             else:
                 # Duck dep or pulled native dep → DuckDB format (no dataset, no project)
@@ -215,7 +218,7 @@ class Session:
             code = re.sub(rf"\b{re.escape(old_ref_str)}\b", new_ref_str, code)
 
         # Transpile SQL syntax from native dialect to DuckDB
-        if self.native_dialect is not None and self.native_dialect.sqlglot_dialect:
+        if self.native_dialect is not None and self.native_dialect.sqlglot_dialect is not None:
             from_dialect = str(self.native_dialect.sqlglot_dialect.value)
             if from_dialect != "duckdb":
                 code = transpile_query(code, from_dialect=from_dialect)
@@ -244,18 +247,26 @@ class Session:
         import lea
 
         lea.log.info("🦆 Loading native DB extension for DuckLake")
+        if self.quack_database_client is None:
+            raise RuntimeError("quack_database_client is required to load the native DB extension")
         conn = self.quack_database_client.connection
         for stmt in self._quack_extension_setup_stmts:
             conn.execute(stmt)
         self._quack_extension_loaded = True
 
-    def _get_client_for_script(self, script: Script) -> DatabaseClient:
+    def _get_client_for_script(self, script: Script) -> DatabaseClient | DuckLakeClient:
         """In quack mode, pick the right client based on script classification."""
         if not self.is_quack_mode:
+            if self.database_client is None:
+                raise RuntimeError("database_client is required when not in quack mode")
             return self.database_client
         base_ref = self.remove_write_context_from_table_ref(script.table_ref)
         if base_ref in self.duck_table_refs:
+            if self.quack_database_client is None:
+                raise RuntimeError("quack_database_client is required for duck table refs")
             return self.quack_database_client
+        if self.database_client is None:
+            raise RuntimeError("database_client is required for non-duck table refs")
         return self.database_client
 
     def run_script(self, script: Script):
@@ -351,8 +362,13 @@ class Session:
 
             return
 
-    def promote_audit_table(self, table_ref: TableRef, client: DatabaseClient | None = None):
-        client = client or self.database_client
+    def promote_audit_table(
+        self, table_ref: TableRef, client: DatabaseClient | DuckLakeClient | None = None
+    ):
+        if client is None:
+            if self.database_client is None:
+                raise RuntimeError("database_client is required to promote audit tables")
+            client = self.database_client
         from_table_ref = table_ref
         to_table_ref = table_ref.remove_audit_suffix()
 

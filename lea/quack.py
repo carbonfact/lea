@@ -75,11 +75,11 @@ def determine_deps_to_pull(
         # existing_duck_tables are in DuckDB format (no dataset/project),
         # so normalize deps for comparison
         existing_normalized = {
-            ref.replace_dataset(None).replace_project(None)
-            for ref in existing_duck_tables
+            ref.replace_dataset(None).replace_project(None) for ref in existing_duck_tables
         }
         deps_to_pull = {
-            dep for dep in deps_to_pull
+            dep
+            for dep in deps_to_pull
             if dep.replace_dataset(None).replace_project(None) not in existing_normalized
         }
 
@@ -90,5 +90,3 @@ def transpile_query(code: str, from_dialect: str, to_dialect: str = "duckdb") ->
     """Transpile SQL from one dialect to another using SQLGlot."""
     statements = sqlglot.transpile(code, read=from_dialect, write=to_dialect)
     return ";\n".join(statements)
-
-
