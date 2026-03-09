@@ -58,6 +58,8 @@ lea parses the SQL, sees that `core.revenue` depends on `staging.customers` and 
 
 ## Table of contents
 
+- [TLDR](#tldr)
+- [Table of contents](#table-of-contents)
 - [Installation](#installation)
 - [Configuration](#configuration)
   - [BigQuery](#bigquery)
@@ -74,6 +76,10 @@ lea parses the SQL, sees that `core.revenue` depends on `staging.customers` and 
   - [Quack mode](#quack-mode)
 - [Warehouse specific features](#warehouse-specific-features)
   - [BigQuery](#bigquery-1)
+    - [Default clustering](#default-clustering)
+    - [Table specific clustering](#table-specific-clustering)
+    - [Script-specific compute projects](#script-specific-compute-projects)
+    - [Big Blue Pick API](#big-blue-pick-api)
 - [Examples](#examples)
 - [Contributing](#contributing)
 - [License](#license)
