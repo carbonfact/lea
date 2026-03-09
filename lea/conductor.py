@@ -103,6 +103,7 @@ class Conductor:
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
         quack: bool = False,
+        quack_push: bool = False,
     ):
         session = self.prepare_session(
             select=select,
@@ -113,10 +114,11 @@ class Conductor:
             incremental_field_values=incremental_field_values,
             print_mode=print_mode,
             quack=quack,
+            quack_push=quack_push,
         )
 
         try:
-            self.run_session(session, restart=restart, dry_run=dry_run)
+            self.run_session(session, restart=restart, dry_run=dry_run, quack_push=quack_push)
             if session.any_error_has_occurred:
                 return sys.exit(1)
         except KeyboardInterrupt:
@@ -134,6 +136,7 @@ class Conductor:
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
         quack: bool = False,
+        quack_push: bool = False,
     ) -> Session:
         # We need to select the scripts we want to run. We do this by querying the DAG.
         selected_table_refs = self.dag.select(*select)
@@ -204,9 +207,11 @@ class Conductor:
             quack_database_client.set_active_database("quack_ducklake")
 
             # Store setup SQL for lazy loading — the native DB extension is only
-            # loaded when actually needed (pulling deps or running native scripts)
+            # loaded when actually needed (pulling deps or running native scripts).
+            # When quack_push is enabled, attach writably from the start so we can
+            # push duck tables back to the native DB later without re-attaching.
             session_quack_setup_stmts = native_dialect.quack_setup_sql(
-                env=dict(os.environ), dataset=write_dataset
+                env=dict(os.environ), dataset=write_dataset, read_only=not quack_push
             )
 
             # Create schemas in DuckLake
@@ -305,7 +310,7 @@ class Conductor:
 
         return session
 
-    def run_session(self, session: Session, restart: bool, dry_run: bool):
+    def run_session(self, session: Session, restart: bool, dry_run: bool, quack_push: bool = False):
         if restart:
             delete_audit_tables(session)
 
@@ -324,6 +329,15 @@ class Conductor:
             # Let's also delete orphan tables, which are tables that exist but who's scripts have
             # been deleted.
             delete_orphan_tables(session)
+
+        # In quack-push mode, push promoted duck tables to the native database
+        if (
+            not session.any_error_has_occurred
+            and not dry_run
+            and quack_push
+            and session.is_quack_mode
+        ):
+            push_ducklake_to_native(session)
 
         # Regardless of whether all the jobs succeeded or not, we want to summarize the session.
         session.end()
@@ -543,12 +557,13 @@ def pull_dependencies_into_ducklake(
         # Source: read from native DB via extension (e.g. bq.citibike_max.core__trips)
         source_ref = dep.replace_dataset(session.write_dataset)
         source_str = session.native_dialect.format_table_ref_for_duckdb(source_ref)
+        source_str_display = session.native_dialect.format_table_ref(source_ref)
 
         # Destination: DuckLake table (e.g. core.trips)
         dest_ref = dep.replace_dataset(None).replace_project(None)
         dest_str = DuckDBDialect.format_table_ref(dest_ref)
 
-        lea.log.info(f"PULLING {dest_str}")
+        lea.log.info(f"PULLING {source_str_display}")
         t0 = time.perf_counter()
         cursor = conn.cursor()
         if quack_client._active_database:
@@ -558,7 +573,9 @@ def pull_dependencies_into_ducklake(
         n_rows = row[0] if row else 0
         cursor.close()
         elapsed = time.perf_counter() - t0
-        lea.log.info(f"[green]SUCCESS[/green] {dest_str}, {n_rows:,d} rows ({elapsed:.1f}s)")
+        lea.log.info(
+            f"[green]SUCCESS[/green] {source_str_display}, {n_rows:,d} rows ({elapsed:.1f}s)"
+        )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = {executor.submit(_pull_one, dep): dep for dep in pullable}
@@ -570,6 +587,69 @@ def pull_dependencies_into_ducklake(
                 lea.log.error(f"[red]ERRORED[/red] {dest_str}\n{exception}")
 
     session.pulled_table_refs = pullable
+
+
+def push_ducklake_to_native(session: Session):
+    """Push promoted duck tables from DuckLake to the native database."""
+    from lea.dialects import DuckDBDialect
+
+    duck_tables_to_push = {
+        table_ref
+        for table_ref in session.selected_table_refs
+        if table_ref in session.duck_table_refs and not table_ref.is_test
+    }
+
+    if not duck_tables_to_push:
+        return
+
+    lea.log.info(f"🦆 Pushing {len(duck_tables_to_push):,d} duck tables to native DB")
+
+    # Ensure the extension is loaded (it's attached writably when quack_push is set)
+    session.ensure_quack_extension_loaded()
+
+    if session.quack_database_client is None:
+        raise RuntimeError("quack_database_client is required for quack push")
+    if session.native_dialect is None:
+        raise RuntimeError("native_dialect is required for quack push")
+
+    conn = session.quack_database_client.connection
+    if session.quack_database_client._active_database:
+        conn.execute(f"USE {session.quack_database_client._active_database};")
+
+    def _push_one(table_ref: TableRef):
+        import time
+
+        # Source: promoted DuckLake table (e.g. core.trips)
+        duck_ref = table_ref.replace_dataset(None).replace_project(None)
+        source_str = DuckDBDialect.format_table_ref(duck_ref)
+
+        # Destination: native DB via writable extension (e.g. bq.dataset.core__trips)
+        dest_ref = table_ref.replace_dataset(session.write_dataset)
+        dest_str = session.native_dialect.format_table_ref_for_duckdb(dest_ref)
+        dest_str_display = session.native_dialect.format_table_ref(dest_ref)
+
+        lea.log.info(f"PUSHING {source_str} → {dest_str_display}")
+        t0 = time.perf_counter()
+        cursor = conn.cursor()
+        if session.quack_database_client._active_database:
+            cursor.execute(f"USE {session.quack_database_client._active_database};")
+        cursor.execute(f"CREATE OR REPLACE TABLE {dest_str} AS SELECT * FROM {source_str}")
+        row = cursor.execute(f"SELECT COUNT(*) FROM {source_str}").fetchone()
+        n_rows = row[0] if row else 0
+        cursor.close()
+        elapsed = time.perf_counter() - t0
+        lea.log.info(
+            f"[green]SUCCESS[/green] {source_str} → {dest_str_display}, {n_rows:,d} rows ({elapsed:.1f}s)"
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_push_one, ref): ref for ref in duck_tables_to_push}
+        for future in concurrent.futures.as_completed(futures):
+            if (exception := future.exception()) is not None:
+                ref = futures[future]
+                duck_ref = ref.replace_dataset(None).replace_project(None)
+                source_str = DuckDBDialect.format_table_ref(duck_ref)
+                lea.log.error(f"[red]ERRORED[/red] pushing {source_str}\n{exception}")
 
 
 def materialize_scripts(dag: DAGOfScripts, session: Session):

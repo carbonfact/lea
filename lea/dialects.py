@@ -26,7 +26,9 @@ class SQLDialect:
     def format_table_ref(table_ref: TableRef) -> str:
         raise NotImplementedError
 
-    def quack_setup_sql(self, env: dict[str, str], dataset: str | None = None) -> list[str]:
+    def quack_setup_sql(
+        self, env: dict[str, str], dataset: str | None = None, read_only: bool = True
+    ) -> list[str]:
         """Return SQL statements to install/load extension and attach native DB to DuckDB."""
         return []
 
@@ -134,15 +136,18 @@ class BigQueryDialect(SQLDialect):
     sqlglot_dialect = sqlglot.dialects.Dialects.BIGQUERY
     quack_attached_name = "bq"
 
-    def quack_setup_sql(self, env: dict[str, str], dataset: str | None = None) -> list[str]:
+    def quack_setup_sql(
+        self, env: dict[str, str], dataset: str | None = None, read_only: bool = True
+    ) -> list[str]:
         project = env["LEA_BQ_PROJECT_ID"]
         attach_str = f"project={project}"
         if dataset:
             attach_str += f" dataset={dataset}"
+        attach_opts = "TYPE bigquery, READ_ONLY" if read_only else "TYPE bigquery"
         return [
             "INSTALL bigquery FROM community;",
             "LOAD bigquery;",
-            f"ATTACH '{attach_str}' AS {self.quack_attached_name} (TYPE bigquery, READ_ONLY);",
+            f"ATTACH '{attach_str}' AS {self.quack_attached_name} ({attach_opts});",
         ]
 
     def format_table_ref_for_duckdb(self, table_ref: TableRef) -> str:

@@ -30,6 +30,12 @@ def app():
 @click.option(
     "--quack", is_flag=True, default=False, help="Run in quack mode (DuckLake for local dev)."
 )
+@click.option(
+    "--quack-push",
+    is_flag=True,
+    default=False,
+    help="After quack mode promotion, push duck tables to the native database.",
+)
 @click.option("--env-file", type=click.Path(exists=True), help="Path to the environment file.")
 def run(
     select,
@@ -42,6 +48,7 @@ def run(
     production,
     restart,
     quack,
+    quack_push,
     env_file,
 ):
     if select in {"", "Ø"}:
@@ -59,6 +66,9 @@ def run(
     incremental_field_name = next(iter(incremental_field_values), None)
     incremental_field_values = incremental_field_values[incremental_field_name]
 
+    if quack_push and not quack:
+        quack = True
+
     conductor = lea.Conductor(scripts_dir=scripts, dataset_name=dataset, env_file_path=env_file)
     conductor.run(
         select=select,
@@ -70,4 +80,5 @@ def run(
         incremental_field_values=incremental_field_values,
         print_mode=print,
         quack=quack,
+        quack_push=quack_push,
     )

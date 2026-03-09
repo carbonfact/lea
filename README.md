@@ -291,6 +291,14 @@ LEA_QUACK_DUCKLAKE_DATA_PATH=s3://my-bucket/quack/data
 LEA_QUACK_DUCKLAKE_S3_ENDPOINT=storage.googleapis.com
 ```
 
+You can push the DuckLake tables back to your warehouse with `--quack-push`:
+
+```sh
+lea run --quack --quack-push
+```
+
+"Quack mode" is mostly intended for cheap local development with a rapid feedback loop. But you could also run your production refreshes with DuckDB and upload the artifacts to your warehouse with `--quack-push`. This can be a great way to save on compute costs.
+
 ## Warehouse specific features
 
 ### BigQuery
