@@ -84,8 +84,10 @@ class Conductor:
             )
         else:
             raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
-        lea.log.info(f"{sum(1 for s in self.dag.scripts if not s.is_test):,d} table scripts")
-        lea.log.info(f"{sum(1 for s in self.dag.scripts if s.is_test):,d} test scripts")
+        n_table = sum(1 for s in self.dag.scripts if not s.is_test)
+        lea.log.info(f"{n_table:,d} table scripts")
+        if n_test := sum(1 for s in self.dag.scripts if s.is_test):
+            lea.log.info(f"{n_test:,d} test scripts")
 
     def run(
         self,
@@ -97,6 +99,7 @@ class Conductor:
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
+        quack: bool = False,
     ):
         session = self.prepare_session(
             select=select,
@@ -106,6 +109,7 @@ class Conductor:
             incremental_field_name=incremental_field_name,
             incremental_field_values=incremental_field_values,
             print_mode=print_mode,
+            quack=quack,
         )
 
         try:
@@ -126,12 +130,8 @@ class Conductor:
         incremental_field_name: str | None = None,
         incremental_field_values: list[str] | None = None,
         print_mode: bool = False,
+        quack: bool = False,
     ) -> Session:
-        # We need a database client to run scripts
-        database_client = self.make_client(
-            dry_run=dry_run, print_mode=print_mode, production=production
-        )
-
         # We need to select the scripts we want to run. We do this by querying the DAG.
         selected_table_refs = self.dag.select(*select)
         unselected_table_refs = self.dag.select(*unselect)
@@ -145,67 +145,143 @@ class Conductor:
         # We need a dataset to materialize the scripts. If we're in production mode, we use the
         # base dataset. If we're in user mode, we use a dataset named after the user.
         write_dataset = self.dataset_name if production else self.dataset_name_with_username
-        database_client.create_dataset(write_dataset)
 
-        if self.warehouse == databases.Warehouse.DUCKDB:
-            lea.log.info(f"🔩 Using DuckDB database at {database_client.database_path.absolute()}")
+        # Quack mode: set up DuckLake client and classify scripts
+        quack_database_client = None
+        native_table_refs = set()
+        duck_table_refs = set()
+        native_dialect = None
+        native_dataset = None
+        session_quack_setup_stmts = None
+        selected_has_native = False
 
-        elif self.warehouse == databases.Warehouse.MOTHERDUCK:
-            database_client.connection.execute("ATTACH 'md:';")
-            database_client.connection.execute(f"CREATE DATABASE IF NOT EXISTS {write_dataset};")
-            database_client.connection.execute(f"USE {write_dataset};")
+        if quack:
+            from lea.quack import classify_scripts
 
-        elif self.warehouse == databases.Warehouse.DUCKLAKE:
-            if s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
-                lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
-                database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
+            lea.log.info("🦆 Quack mode enabled")
 
-            database_client.connection.execute(
-                f"""
-            ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
-                DATA_PATH '{os.environ["LEA_DUCKLAKE_DATA_PATH"]}'
-            );
-            USE my_ducklake;
-            """
+            # Classify scripts into native vs duck
+            native_table_refs, duck_table_refs = classify_scripts(
+                dependency_graph=self.dag.dependency_graph,
+                scripts=self.dag.scripts,
             )
 
-        # When using DuckDB, we need to create schema for the tables
-        if self.warehouse in {
-            databases.Warehouse.DUCKDB,
-            databases.Warehouse.MOTHERDUCK,
-            databases.Warehouse.DUCKLAKE,
-        }:
-            # Load extensions
-            for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
-                extension = extension.strip()
-                if extension:
-                    lea.log.info(f"🔩 Loading extension {extension}")
-                    database_client.connection.execute(f"INSTALL '{extension}';")
-                    database_client.connection.execute(f"LOAD '{extension}';")
+            # Remember the native dialect for transpilation
+            if self.warehouse == databases.Warehouse.BIGQUERY:
+                native_dialect = BigQueryDialect()
+            else:
+                native_dialect = DuckDBDialect()
+            native_dataset = self.dataset_name
 
-            # Schemas are not created automatically in DuckDB, so we need to create them
-            # manually before running the scripts.
-            lea.log.info("🔩 Creating schemas")
+            # Create a DuckLake client for duck scripts
+            quack_catalog = os.environ["LEA_QUACK_DUCKLAKE_CATALOG_DATABASE"]
+            quack_data_path = os.environ["LEA_QUACK_DUCKLAKE_DATA_PATH"]
+            quack_database_client = databases.DuckLakeClient(
+                database_path=pathlib.Path(quack_data_path),
+                catalog_path=quack_catalog,
+                dry_run=dry_run,
+                print_mode=print_mode,
+            )
+            quack_database_client.create_dataset(write_dataset)
+
+            # Set up DuckLake
+            conn = quack_database_client.connection
+            if s3_endpoint := os.environ.get("LEA_QUACK_DUCKLAKE_S3_ENDPOINT"):
+                lea.log.info(f"🦆 Setting S3 endpoint to {s3_endpoint!r}")
+                conn.execute(f"SET s3_endpoint='{s3_endpoint}'")
+
+            conn.execute(
+                f"""
+                ATTACH 'ducklake:{quack_catalog}' AS quack_ducklake (
+                    DATA_PATH '{quack_data_path}'
+                );
+                USE quack_ducklake;
+                """
+            )
+            quack_database_client.set_active_database("quack_ducklake")
+
+            # Store setup SQL for lazy loading — the native DB extension is only
+            # loaded when actually needed (pulling deps or running native scripts)
+            session_quack_setup_stmts = native_dialect.quack_setup_sql(env=dict(os.environ))
+
+            # Create schemas in DuckLake
             schema_names = set(
-                table_ref.schema[0]
-                for table_ref in selected_table_refs | unselected_table_refs
-                if table_ref.schema is not None
+                table_ref.schema[0] for table_ref in duck_table_refs if table_ref.schema
             )
             for schema_name in schema_names:
-                database_client.create_schema(schema_name)
+                quack_database_client.create_schema(schema_name)
 
-        # When the scripts run, they are materialized into side-tables which we call "audit"
-        # tables. When a run stops because of an error, the audit tables are left behind. If we
-        # want to start fresh, we have to delete the audit tables. If not, the materialized tables
-        # can be skipped.
-        existing_tables = self.list_existing_tables(
-            database_client=database_client, dataset=write_dataset
-        )
-        lea.log.info(f"{len(existing_tables):,d} tables already exist")
-        existing_audit_tables = self.list_existing_audit_tables(
-            database_client=database_client, dataset=write_dataset
-        )
-        lea.log.info(f"{len(existing_audit_tables):,d} audit tables already exist")
+            selected_has_native = bool(
+                (selected_table_refs - unselected_table_refs) & native_table_refs
+            )
+
+        # Create the native DB client. In quack mode with only duck scripts selected,
+        # we defer this entirely — creating it involves network calls (auth, API calls)
+        # that are wasteful when all deps are already in DuckLake.
+        database_client = None
+        existing_tables = {}
+        existing_audit_tables = {}
+
+        if not quack or selected_has_native:
+            database_client = self.make_client(
+                dry_run=dry_run, print_mode=print_mode, production=production
+            )
+            database_client.create_dataset(write_dataset)
+
+            if self.warehouse == databases.Warehouse.DUCKDB:
+                lea.log.info(
+                    f"🔩 Using DuckDB database at {database_client.database_path.absolute()}"
+                )
+            elif self.warehouse == databases.Warehouse.MOTHERDUCK:
+                database_client.connection.execute("ATTACH 'md:';")
+                database_client.connection.execute(
+                    f"CREATE DATABASE IF NOT EXISTS {write_dataset};"
+                )
+                database_client.connection.execute(f"USE {write_dataset};")
+            elif self.warehouse == databases.Warehouse.DUCKLAKE:
+                if s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
+                    lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
+                    database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
+                database_client.connection.execute(
+                    f"""
+                    ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
+                        DATA_PATH '{os.environ["LEA_DUCKLAKE_DATA_PATH"]}'
+                    );
+                    USE my_ducklake;
+                    """
+                )
+
+            # When using DuckDB, we need to create schema for the tables
+            if self.warehouse in {
+                databases.Warehouse.DUCKDB,
+                databases.Warehouse.MOTHERDUCK,
+                databases.Warehouse.DUCKLAKE,
+            }:
+                for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
+                    extension = extension.strip()
+                    if extension:
+                        lea.log.info(f"🔩 Loading extension {extension}")
+                        database_client.connection.execute(f"INSTALL '{extension}';")
+                        database_client.connection.execute(f"LOAD '{extension}';")
+
+                lea.log.info("🔩 Creating schemas")
+                schema_names = set(
+                    table_ref.schema[0]
+                    for table_ref in selected_table_refs | unselected_table_refs
+                    if table_ref.schema is not None
+                )
+                for schema_name in schema_names:
+                    database_client.create_schema(schema_name)
+
+            existing_tables = self.list_existing_tables(
+                database_client=database_client, dataset=write_dataset
+            )
+            lea.log.info(f"{len(existing_tables):,d} tables already exist")
+            existing_audit_tables = self.list_existing_audit_tables(
+                database_client=database_client, dataset=write_dataset
+            )
+            if existing_audit_tables:
+                lea.log.info(f"{len(existing_audit_tables):,d} audit tables already exist")
 
         session = Session(
             database_client=database_client,
@@ -218,6 +294,12 @@ class Conductor:
             existing_audit_tables=existing_audit_tables,
             incremental_field_name=incremental_field_name,
             incremental_field_values=incremental_field_values,
+            quack_database_client=quack_database_client,
+            native_table_refs=native_table_refs,
+            duck_table_refs=duck_table_refs,
+            native_dialect=native_dialect,
+            native_dataset=native_dataset,
+            quack_extension_setup_stmts=session_quack_setup_stmts,
         )
 
         return session
@@ -363,6 +445,109 @@ class Conductor:
         return existing_audit_tables
 
 
+def pull_dependencies_into_ducklake(
+    table_refs_to_run: set[TableRef],
+    dag: DAGOfScripts,
+    session: Session,
+):
+    """Pull missing dependencies into DuckLake so duck scripts can read them locally."""
+    from lea.quack import determine_deps_to_pull
+
+    # First pass: find candidates without querying DuckLake (pure Python, instant)
+    candidates = determine_deps_to_pull(
+        table_refs_to_run=table_refs_to_run,
+        duck_table_refs=session.duck_table_refs,
+        dependency_graph=dag.dependency_graph,
+        scripts=dag.scripts,
+    )
+    if not candidates:
+        return
+
+    # Second pass: filter out candidates that already exist in DuckLake
+    existing_duck_tables = session.quack_database_client.list_existing_table_refs()
+    deps_to_pull = determine_deps_to_pull(
+        table_refs_to_run=table_refs_to_run,
+        duck_table_refs=session.duck_table_refs,
+        dependency_graph=dag.dependency_graph,
+        scripts=dag.scripts,
+        existing_duck_tables=existing_duck_tables,
+    )
+
+    # Mark candidates that already exist in DuckLake as "pulled" so the rewriting
+    # uses DuckLake format instead of the BQ extension
+    already_in_ducklake = candidates - deps_to_pull
+    if already_in_ducklake:
+        session.pulled_table_refs |= already_in_ducklake
+
+    if not deps_to_pull:
+        return
+
+    # Filter to deps that exist in the native DB, if we have the info.
+    # When the native client hasn't been created (pure duck quack mode), we skip
+    # the check and attempt to pull everything — the BQ extension will error on
+    # any missing tables and we'll log the failure.
+    if session.database_client is not None:
+        if not session.existing_tables:
+            session.existing_tables = session.database_client.list_table_stats(
+                session.write_dataset
+            )
+        existing_native_refs = {
+            table_ref.replace_dataset(session.base_dataset)
+            for table_ref in session.existing_tables
+        }
+        pullable = {
+            dep
+            for dep in deps_to_pull
+            if dep.replace_dataset(session.base_dataset) in existing_native_refs
+        }
+        unpullable = deps_to_pull - pullable
+        if unpullable:
+            for dep in unpullable:
+                lea.log.warning(
+                    f"🦆 Cannot pull {dep} — not found in native DB. "
+                    "Run upstream dependencies first."
+                )
+        if not pullable:
+            return
+    else:
+        pullable = deps_to_pull
+
+    session.ensure_quack_extension_loaded()
+    lea.log.info(f"🦆 Pulling {len(pullable):,d} dependencies into DuckLake")
+    conn = session.quack_database_client.connection
+    if session.quack_database_client._active_database:
+        conn.execute(f"USE {session.quack_database_client._active_database};")
+
+    # Ensure schemas exist for pulled deps
+    pull_schemas = set(dep.schema[0] for dep in pullable if dep.schema)
+    for schema_name in pull_schemas:
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+
+    def _pull_one(dep: TableRef):
+        # Source: read from native DB via extension (e.g. bq.citibike_max.core__trips)
+        source_ref = dep.replace_dataset(session.write_dataset)
+        source_str = session.native_dialect.format_table_ref_for_duckdb(source_ref)
+
+        # Destination: DuckLake table (e.g. core.trips)
+        dest_ref = dep.replace_dataset(None).replace_project(None)
+        dest_str = DuckDBDialect.format_table_ref(dest_ref)
+
+        lea.log.info(f"🦆 Pulling {dest_str}")
+        cursor = conn.cursor()
+        if session.quack_database_client._active_database:
+            cursor.execute(f"USE {session.quack_database_client._active_database};")
+        cursor.execute(f"CREATE OR REPLACE TABLE {dest_str} AS SELECT * FROM {source_str}")
+        cursor.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        futures = {executor.submit(_pull_one, dep): dep for dep in pullable}
+        for future in concurrent.futures.as_completed(futures):
+            if (exception := future.exception()) is not None:
+                lea.log.error(f"Failed pulling {futures[future]}\n{exception}")
+
+    session.pulled_table_refs = pullable
+
+
 def materialize_scripts(dag: DAGOfScripts, session: Session):
     table_refs_to_run = determine_table_refs_to_run(
         selected_table_refs=session.selected_table_refs,
@@ -374,6 +559,18 @@ def materialize_scripts(dag: DAGOfScripts, session: Session):
     if not table_refs_to_run:
         lea.log.info("✅ Nothing needs materializing")
         return
+    # In quack mode, pull missing dependencies into DuckLake before running
+    if session.is_quack_mode:
+        pull_dependencies_into_ducklake(
+            table_refs_to_run=table_refs_to_run,
+            dag=dag,
+            session=session,
+        )
+        # If any native scripts are being run, duck scripts may reference their
+        # audit tables via the native DB extension (e.g. bq.dataset.table___audit)
+        if table_refs_to_run & session.native_table_refs:
+            session.ensure_quack_extension_loaded()
+
     lea.log.info(f"🔵 Running {len(table_refs_to_run):,d} scripts")
     dag.prepare()
     while dag.is_active():
@@ -423,9 +620,21 @@ def promote_audit_tables(session: Session):
     for selected_table_ref in session.selected_table_refs:
         if selected_table_ref.is_test:
             continue
-        selected_table_ref = session.add_write_context_to_table_ref(selected_table_ref)
-        future = session.executor.submit(session.promote_audit_table, selected_table_ref)
-        session.promote_audit_tables_futures[future] = selected_table_ref
+
+        is_duck = session.is_quack_mode and selected_table_ref in session.duck_table_refs
+        if is_duck:
+            # Duck tables are promoted in DuckLake using DuckDB-format table refs
+            duck_ref = (
+                selected_table_ref.replace_dataset(None).replace_project(None).add_audit_suffix()
+            )
+            future = session.executor.submit(
+                session.promote_audit_table, duck_ref, session.quack_database_client
+            )
+            session.promote_audit_tables_futures[future] = duck_ref
+        else:
+            selected_table_ref = session.add_write_context_to_table_ref(selected_table_ref)
+            future = session.executor.submit(session.promote_audit_table, selected_table_ref)
+            session.promote_audit_tables_futures[future] = selected_table_ref
 
     # Wait for all promotion jobs to finish
     for future in concurrent.futures.as_completed(session.promote_audit_tables_futures):
@@ -442,7 +651,36 @@ def delete_audit_tables(session: Session):
         session.add_write_context_to_table_ref(table_ref)
         for table_ref in session.selected_table_refs
     }
-    if table_refs_to_delete:
+
+    # In quack mode, split duck vs native audit tables
+    if session.is_quack_mode:
+        duck_audit_refs = {
+            table_ref.replace_dataset(None).replace_project(None).add_audit_suffix()
+            for table_ref in session.selected_table_refs
+            if table_ref in session.duck_table_refs
+        }
+        native_audit_refs = table_refs_to_delete - {
+            session.add_write_context_to_table_ref(table_ref)
+            for table_ref in session.selected_table_refs
+            if table_ref in session.duck_table_refs
+        }
+        if native_audit_refs:
+            lea.log.info("🧹 Deleting audit tables")
+            delete_table_refs(
+                table_refs=native_audit_refs,
+                database_client=session.database_client,
+                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                verbose=False,
+            )
+        if duck_audit_refs:
+            lea.log.info("🧹 Deleting DuckLake audit tables")
+            delete_table_refs(
+                table_refs=duck_audit_refs,
+                database_client=session.quack_database_client,
+                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                verbose=False,
+            )
+    elif table_refs_to_delete:
         lea.log.info("🧹 Deleting audit tables")
         delete_table_refs(
             table_refs=table_refs_to_delete,
@@ -450,7 +688,7 @@ def delete_audit_tables(session: Session):
             executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
             verbose=False,
         )
-        session.existing_audit_tables = {}
+    session.existing_audit_tables = {}
 
 
 def delete_orphan_tables(session: Session):

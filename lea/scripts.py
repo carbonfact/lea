@@ -96,11 +96,13 @@ class SQLScript:
 
             def load_yaml(path: str) -> dict:
                 full_path = (scripts_dir / path).resolve()
-                if not full_path.is_relative_to(scripts_dir.resolve()):
-                    raise ValueError(f"load_yaml path escapes scripts_dir: {path}")
+                project_root = scripts_dir.resolve().parent
+                if not full_path.is_relative_to(project_root):
+                    raise ValueError(f"load_yaml path escapes project root: {path}")
                 with open(full_path) as f:
                     return yaml.safe_load(f)
 
+            environment.globals["load_yaml"] = load_yaml
             template = environment.get_template(str(relative_path))
             code = template.render(env=os.environ, load_yaml=load_yaml)
         # Or it's a regular SQL file

@@ -840,14 +840,63 @@ class MotherDuckClient(DuckDBClient):
 
 
 class DuckLakeClient(DuckDBClient):
+    def __init__(self, *args, catalog_path: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Store a persistent connection so that DuckLake attach, extensions, etc. persist
+        self._conn = duckdb.connect()
+        self._active_database: str | None = None
+        self._catalog_path: str | None = catalog_path
+
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
-        return duckdb
+        return self._conn
+
+    def set_active_database(self, database_name: str):
+        """Remember the active database so cursors can inherit it."""
+        self._active_database = database_name
+
+    def make_job_config(
+        self, script: scripts.SQLScript, destination: str | None = None
+    ) -> DuckDBJob:
+        if self.print_mode:
+            rich.print(script)
+        # Use a cursor for thread safety — each job gets its own cursor
+        # sharing the parent connection's state (attached DBs, loaded extensions).
+        # Cursors don't inherit the USE context, so we set it explicitly.
+        cursor = self._conn.cursor()
+        if self._active_database:
+            cursor.execute(f"USE {self._active_database};")
+        return DuckDBJob(query=script.query, connection=cursor, destination=destination)
+
+    def list_existing_table_refs(self) -> set[scripts.TableRef]:
+        """List table refs in the DuckLake catalog by querying its metadata database directly.
+
+        This avoids triggering catalog scans on attached databases (e.g. the BigQuery
+        extension) by opening a separate read-only connection to the .ducklake file.
+
+        """
+        if not self._catalog_path:
+            return set()
+        meta_conn = duckdb.connect(self._catalog_path, read_only=True)
+        try:
+            rows = meta_conn.execute(
+                "SELECT s.schema_name, t.table_name "
+                "FROM ducklake_table t "
+                "JOIN ducklake_schema s ON t.schema_id = s.schema_id "
+                "WHERE t.end_snapshot IS NULL AND s.end_snapshot IS NULL"
+            ).fetchall()
+        finally:
+            meta_conn.close()
+        return {
+            DuckDBDialect.parse_table_ref(f"{schema}.{table}")
+            for schema, table in rows
+        }
 
     @property
     def _tables_query(self) -> str:
-        return """
+        db_filter = f"AND database_name = '{self._active_database}'" if self._active_database else ""
+        return f"""
         SELECT table_name, schema_name, estimated_size
         FROM duckdb_tables()
-        WHERE NOT STARTS_WITH(table_name, 'ducklake_');
+        WHERE NOT STARTS_WITH(table_name, 'ducklake_') {db_filter};
         """

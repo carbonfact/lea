@@ -6,3 +6,5 @@ dist/
 /*.ipynb
 .DS_Store
 *.wal
+*.parquet
+*.ducklake
