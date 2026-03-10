@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import datetime as dt
 import enum
@@ -631,19 +632,27 @@ class DuckDBJob:
     connection: duckdb.DuckDBPyConnection
     destination: str | None = None
     exception: Exception | None = None
+    _future: concurrent.futures.Future | None = dataclasses.field(default=None, repr=False)
 
     def execute(self):
         self.connection.execute(self.query)
 
+    def execute_async(self):
+        """Start execution in a background thread so is_done can report progress."""
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self._future = executor.submit(self.execute)
+        executor.shutdown(wait=False)
+
     @property
     def is_done(self) -> bool:
-        try:
-            self.execute()
-        except Exception as e:
-            self.exception = e
-            raise e
-        else:
-            return True
+        if self._future is None:
+            self.execute_async()
+        if not self._future.done():
+            return False
+        if exception := self._future.exception():
+            self.exception = exception
+            raise exception
+        return True
 
     def stop(self):
         pass  # No support for stopping queries in DuckDB
