@@ -30,6 +30,9 @@ def classify_scripts(
         deps = dependency_graph.get(table_ref, set())
         if any(dep not in scripts for dep in deps):
             native_refs.add(table_ref)
+        # Scripts using EXTERNAL_QUERY can't be transpiled to DuckDB
+        elif "EXTERNAL_QUERY" in scripts[table_ref].code.upper():
+            native_refs.add(table_ref)
 
     # Step 2: Propagate upstream — all ancestors of native scripts must also be native
     def add_ancestors(ref: TableRef):

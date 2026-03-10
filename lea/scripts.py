@@ -268,12 +268,22 @@ Script = SQLScript
 _CACHE_VERSION = f"1_{sqlglot.__version__}"  # ty: ignore[possibly-missing-attribute]
 
 
+def _env_hash() -> str:
+    """Hash all LEA_* environment variables to detect config changes."""
+    import hashlib
+
+    lea_vars = sorted(
+        (k, v) for k, v in os.environ.items() if k.startswith("LEA_")
+    )
+    return hashlib.sha256(str(lea_vars).encode()).hexdigest()
+
+
 def _load_cache(cache_path: pathlib.Path) -> dict:
     """Load the script cache. Returns {relative_path_str: entry}."""
     try:
         with open(cache_path, "rb") as f:
             data = pickle.load(f)
-        if data.get("version") == _CACHE_VERSION:
+        if data.get("version") == _CACHE_VERSION and data.get("env_hash") == _env_hash():
             return data.get("scripts", {})
     except (FileNotFoundError, pickle.UnpicklingError, KeyError, EOFError):
         pass
@@ -284,7 +294,7 @@ def _save_cache(cache_path: pathlib.Path, entries: dict) -> None:
     """Save the script cache."""
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cache_path, "wb") as f:
-        pickle.dump({"version": _CACHE_VERSION, "scripts": entries}, f)
+        pickle.dump({"version": _CACHE_VERSION, "env_hash": _env_hash(), "scripts": entries}, f)
 
 
 def read_scripts(

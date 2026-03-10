@@ -17,6 +17,13 @@ from lea.scripts import Script
 from lea.table_ref import TableRef
 
 
+class ScriptError(Exception):
+    """Raised when a script fails during execution. Already logged by monitor_job."""
+
+    def __init__(self, table_ref: TableRef):
+        self.table_ref = table_ref
+
+
 class Session:
     def __init__(
         self,
@@ -250,6 +257,10 @@ class Session:
     def is_quack_mode(self) -> bool:
         return self.quack_database_client is not None
 
+    def format_warehouse_name(self, warehouse: "databases.Warehouse") -> str:
+        """Return the warehouse name, colored only in quack mode where disambiguation matters."""
+        return warehouse.rich_name if self.is_quack_mode else warehouse.display_name
+
     def ensure_quack_extension_loaded(self):
         """Load the native DB extension (e.g. BigQuery) into the DuckLake connection.
 
@@ -262,8 +273,8 @@ class Session:
 
         from lea.databases import Warehouse
 
-        warehouse_name = self.warehouse.rich_name if self.warehouse else "native"
-        ducklake_name = Warehouse.DUCKLAKE.rich_name
+        warehouse_name = self.format_warehouse_name(self.warehouse) if self.warehouse else "native"
+        ducklake_name = self.format_warehouse_name(Warehouse.DUCKLAKE)
         lea.log.info(f"🦆 Loading {warehouse_name} extension for {ducklake_name}")
         if self.quack_database_client is None:
             raise RuntimeError("quack_database_client is required to load the native DB extension")
@@ -306,23 +317,35 @@ class Session:
         else:
             database_job = client.materialize_script(script=script)
 
-        job = Job(table_ref=script.table_ref, is_test=script.is_test, database_job=database_job)
-        self.jobs.append(job)
-
-        msg = f"{job.status} {script.table_ref}"
-
+        # In quack mode, label each job with the warehouse it runs on
+        warehouse_label = None
         if self.is_quack_mode:
             from lea.databases import Warehouse
 
             if client == self.quack_database_client:
-                msg += f" ({Warehouse.DUCKLAKE.rich_name})"
+                warehouse_label = self.format_warehouse_name(Warehouse.DUCKLAKE)
             elif self.warehouse is not None:
-                msg += f" ({self.warehouse.rich_name})"
+                warehouse_label = self.format_warehouse_name(self.warehouse)
+
+        job = Job(
+            table_ref=script.table_ref,
+            is_test=script.is_test,
+            database_job=database_job,
+            warehouse_label=warehouse_label,
+        )
+        self.jobs.append(job)
+
+        msg = f"{job.status} {script.table_ref}"
+        if warehouse_label:
+            msg += f" ({warehouse_label})"
         if script.table_ref.remove_audit_suffix() in self.incremental_table_refs:
             msg += " (incremental)"
         lea.log.info(msg)
 
         self.monitor_job(job)
+
+        if job.status == JobStatus.ERRORED:
+            raise ScriptError(job.table_ref)
 
     def monitor_job(self, job: Job):
         # We're going to do exponential backoff. This is because we don't want to overload
@@ -364,6 +387,8 @@ class Session:
             else:
                 job.status = JobStatus.SUCCESS
                 msg = f"{job.status} {job.table_ref}"
+                if job.warehouse_label:
+                    msg += f" ({job.warehouse_label})"
                 job.ended_at = dt.datetime.now()
                 # Depending on the warehouse in use, jobs may have a conclude() method, for example
                 # for recording job statistics.
@@ -418,12 +443,15 @@ class Session:
     def end(self):
         lea.log.info("😴 Ending session")
         self.stop_event.set()
+        stopped_count = 0
         for job in self.jobs:
             if job.status == JobStatus.RUNNING:
                 job.database_job.stop()
                 job.status = JobStatus.STOPPED
-                lea.log.info(f"{job.status} {job.table_ref}")
-        self.executor.shutdown()
+                stopped_count += 1
+        if stopped_count:
+            lea.log.info(f"STOPPED {stopped_count} running scripts")
+        self.executor.shutdown(cancel_futures=True)
         self.ended_at = dt.datetime.now()
 
     @property

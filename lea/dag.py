@@ -160,6 +160,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             if not ready:
                 break
             any_skipped = False
+            any_yielded = False
             for table_ref in ready:
                 if (
                     # The DAG contains all the scripts as well as all the dependencies of each
@@ -174,8 +175,12 @@ class DAGOfScripts(graphlib.TopologicalSorter):
                     any_skipped = True
                     continue
 
+                any_yielded = True
                 yield self.scripts[table_ref]
-            if not any_skipped:
+            # If we yielded scripts, stop and let the caller process them before
+            # resolving more of the DAG. Only keep looping if we only skipped
+            # non-selected nodes (which may unlock new ready nodes).
+            if any_yielded or not any_skipped:
                 break
 
     def iter_ancestors(self, node: TableRef):

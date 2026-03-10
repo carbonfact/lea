@@ -295,27 +295,15 @@ class BigQueryClient(BigBluePickAPI):
         self.storage_billing_model = storage_billing_model
         self.location = location
         self.clients = {
-            compute_project_id: bigquery.Client(
-                project=compute_project_id,
-                credentials=self.credentials,
-                location=self.location,
-                client_options={
-                    "scopes": [
-                        "https://www.googleapis.com/auth/cloud-platform",
-                        "https://www.googleapis.com/auth/drive",
-                        "https://www.googleapis.com/auth/spreadsheets.readonly",
-                        "https://www.googleapis.com/auth/userinfo.email",
-                    ]
-                },
-            )
-            for compute_project_id in {
+            project_id: self._make_client(project_id)
+            for project_id in {
                 self.compute_project_id,
                 *(self.script_specific_compute_project_ids.values()),
                 big_blue_pick_api_on_demand_project_id,
                 big_blue_pick_api_reservation_project_id,
                 self.write_project_id,
             }
-            if compute_project_id is not None
+            if project_id is not None
         }
         self.dry_run = dry_run
         self.print_mode = print_mode
@@ -337,6 +325,26 @@ class BigQueryClient(BigBluePickAPI):
             )
             else None
         )
+
+    def _make_client(self, project_id: str) -> bigquery.Client:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(
+            project=project_id,
+            credentials=self.credentials,
+            location=self.location,
+            client_options={
+                "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform",
+                    "https://www.googleapis.com/auth/drive",
+                    "https://www.googleapis.com/auth/spreadsheets.readonly",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                ]
+            },
+        )
+        adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
+        client._http.mount("https://", adapter)
+        return client
 
     @property
     def default_client(self) -> bigquery.Client:

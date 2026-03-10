@@ -143,20 +143,34 @@ LEA_DUCKDB_EXTENSIONS=parquet,httpfs
 
 ### DuckLake
 
+DuckLake needs a database to [manage metadata](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database), which is what `LEA_DUCKLAKE_CATALOG_DATABASE` is for.
+
+**Local storage:**
+
 ```sh
-# Required
 LEA_WAREHOUSE=ducklake
-# Required
-LEA_DUCKLAKE_DATA_PATH=gcs://bike-sharing-analytics
-# Required
 LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
-# Optional
-LEA_DUCKLAKE_S3_ENDPOINT=storage.googleapis.com
-# Optional
-LEA_DUCKDB_EXTENSIONS=parquet,httpfs
+LEA_DUCKLAKE_DATA_PATH=/path/to/data
 ```
 
-DuckLake needs a database to [manage metadata](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database), which is what `LEA_DUCKLAKE_CATALOG_DATABASE` is for.
+**S3:**
+
+```sh
+LEA_WAREHOUSE=ducklake
+LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
+LEA_DUCKLAKE_DATA_PATH=s3://my-bucket/data
+LEA_DUCKLAKE_S3_ENDPOINT=storage.googleapis.com
+```
+
+**GCS** (requires [HMAC keys](https://cloud.google.com/storage/docs/authentication/hmackeys)):
+
+```sh
+LEA_WAREHOUSE=ducklake
+LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
+LEA_DUCKLAKE_DATA_PATH=gcs://my-bucket/data
+LEA_DUCKLAKE_GCS_KEY_ID=GOOG1E...
+LEA_DUCKLAKE_GCS_SECRET=...
+```
 
 ## Usage
 
@@ -276,19 +290,30 @@ lea run --select core.users --quack
 
 lea automatically pulls the necessary upstream tables from your warehouse into a [DuckLake](https://ducklake.select/) instance, and only pulls what's missing. SQL is transpiled to DuckDB automatically.
 
-You'll need to configure a DuckLake instance for storage, in addition to your regular warehouse configuration. If your dependencies are small, a local path works fine:
+You'll need to configure a DuckLake instance for storage, in addition to your regular warehouse configuration.
+
+**Local storage:**
 
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=/path/to/quack/data
 ```
 
-For larger dependencies, it's recommended to use an S3-compatible target instead. DuckLake supports this natively, which means the data lives in the cloud rather than on your machine:
+**S3:**
 
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=s3://my-bucket/quack/data
 LEA_QUACK_DUCKLAKE_S3_ENDPOINT=storage.googleapis.com
+```
+
+**GCS** (requires [HMAC keys](https://cloud.google.com/storage/docs/authentication/hmackeys)):
+
+```sh
+LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
+LEA_QUACK_DUCKLAKE_DATA_PATH=gcs://my-bucket/quack/data
+LEA_QUACK_DUCKLAKE_GCS_KEY_ID=GOOG1E...
+LEA_QUACK_DUCKLAKE_GCS_SECRET=...
 ```
 
 You can push the DuckLake tables back to your warehouse with `--quack-push`:

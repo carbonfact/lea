@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pathlib
 import tempfile
 
 import duckdb
@@ -760,3 +761,117 @@ class TestListExistingTableRefs:
     def test_no_catalog_path(self):
         client = DuckLakeClient(database_path=None, catalog_path=None)
         assert client.list_existing_table_refs() == set()
+
+
+# --- iter_scripts tests ---
+
+
+class TestIterScripts:
+    """Test that DAGOfScripts.iter_scripts yields scripts in bounded batches."""
+
+    def _make_dag(self, dep_graph, scripts):
+        from lea.dag import DAGOfScripts
+
+        return DAGOfScripts(
+            dependency_graph=dep_graph,
+            scripts=list(scripts.values()),
+            scripts_dir=pathlib.Path("."),
+            dataset_name="ds",
+            project_name=None,
+        )
+
+    def test_yields_one_batch_then_stops(self):
+        """iter_scripts should yield one batch of ready scripts, not cascade through the DAG."""
+        # Build a chain: ext -> a -> b -> c (only b and c are selected)
+        ext = make_ref("raw", "source")
+        a = make_ref("staging", "a")
+        b = make_ref("core", "b")
+        c = make_ref("analytics", "c")
+
+        scripts = {
+            a: make_script(a),
+            b: make_script(b),
+            c: make_script(c),
+        }
+        dep_graph = {
+            a: {ext},
+            b: {a},
+            c: {b},
+        }
+
+        # Only select b and c — a is not selected and will be skipped
+        selected = {b, c}
+
+        dag = self._make_dag(dep_graph, scripts)
+        dag.prepare()
+
+        # First call: should skip ext and a (not selected), yield b, then stop
+        batch1 = list(dag.iter_scripts(selected))
+        assert len(batch1) == 1
+        assert batch1[0].table_ref == b
+
+    def test_does_not_yield_entire_dag_at_once(self):
+        """When many intermediate nodes are non-selected, iter_scripts must not
+        resolve the whole DAG in one call — it should yield only the first
+        available batch of selected scripts."""
+        # ext -> a -> b -> c -> d
+        # Only c and d are selected. a and b should be skipped.
+        ext = make_ref("raw", "source")
+        a = make_ref("staging", "a")
+        b = make_ref("staging", "b")
+        c = make_ref("core", "c")
+        d = make_ref("analytics", "d")
+
+        scripts = {
+            a: make_script(a),
+            b: make_script(b),
+            c: make_script(c),
+            d: make_script(d),
+        }
+        dep_graph = {
+            a: {ext},
+            b: {a},
+            c: {b},
+            d: {c},
+        }
+
+        selected = {c, d}
+
+        dag = self._make_dag(dep_graph, scripts)
+        dag.prepare()
+
+        # First call should yield only c (after skipping ext, a, b), not both c and d
+        batch1 = list(dag.iter_scripts(selected))
+        assert len(batch1) == 1
+        assert batch1[0].table_ref == c
+
+        # Mark c as done, then the next call should yield d
+        dag.done(c)
+        batch2 = list(dag.iter_scripts(selected))
+        assert len(batch2) == 1
+        assert batch2[0].table_ref == d
+
+    def test_concurrent_scripts_yielded_together(self):
+        """Scripts with no dependency on each other should be yielded in the same batch."""
+        # ext -> a, ext -> b (a and b are independent)
+        ext = make_ref("raw", "source")
+        a = make_ref("core", "a")
+        b = make_ref("core", "b")
+
+        scripts = {
+            a: make_script(a),
+            b: make_script(b),
+        }
+        dep_graph = {
+            a: {ext},
+            b: {ext},
+        }
+
+        selected = {a, b}
+
+        dag = self._make_dag(dep_graph, scripts)
+        dag.prepare()
+
+        batch = list(dag.iter_scripts(selected))
+        assert len(batch) == 2
+        assert {s.table_ref for s in batch} == {a, b}
