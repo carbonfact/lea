@@ -315,7 +315,7 @@ class Conductor:
             delete_audit_tables(session)
 
         # Loop over table references in topological order
-        materialize_scripts(dag=self.dag, session=session)
+        materialize_scripts(dag=self.dag, session=session, restart=restart)
 
         # At this point, the scripts have been materialized into side-tables which we call "audit"
         # tables. We can now take care of promoting the audit tables to production.
@@ -470,6 +470,7 @@ def pull_dependencies_into_ducklake(
     table_refs_to_run: set[TableRef],
     dag: DAGOfScripts,
     session: Session,
+    restart: bool = False,
 ):
     """Pull missing dependencies into DuckLake so duck scripts can read them locally."""
     from lea.quack import determine_deps_to_pull
@@ -484,23 +485,27 @@ def pull_dependencies_into_ducklake(
     if not candidates:
         return
 
-    # Second pass: filter out candidates that already exist in DuckLake
-    if session.quack_database_client is None:
-        raise RuntimeError("quack_database_client is required for dependency pulling")
-    existing_duck_tables = session.quack_database_client.list_existing_table_refs()
-    deps_to_pull = determine_deps_to_pull(
-        table_refs_to_run=table_refs_to_run,
-        duck_table_refs=session.duck_table_refs,
-        dependency_graph=dag.dependency_graph,
-        scripts=dag.scripts,
-        existing_duck_tables=existing_duck_tables,
-    )
+    if restart:
+        # On restart, always re-pull everything to get fresh data
+        deps_to_pull = candidates
+    else:
+        # Second pass: filter out candidates that already exist in DuckLake
+        if session.quack_database_client is None:
+            raise RuntimeError("quack_database_client is required for dependency pulling")
+        existing_duck_tables = session.quack_database_client.list_existing_table_refs()
+        deps_to_pull = determine_deps_to_pull(
+            table_refs_to_run=table_refs_to_run,
+            duck_table_refs=session.duck_table_refs,
+            dependency_graph=dag.dependency_graph,
+            scripts=dag.scripts,
+            existing_duck_tables=existing_duck_tables,
+        )
 
-    # Mark candidates that already exist in DuckLake as "pulled" so the rewriting
-    # uses DuckLake format instead of the BQ extension
-    already_in_ducklake = candidates - deps_to_pull
-    if already_in_ducklake:
-        session.pulled_table_refs |= already_in_ducklake
+        # Mark candidates that already exist in DuckLake as "pulled" so the rewriting
+        # uses DuckLake format instead of the BQ extension
+        already_in_ducklake = candidates - deps_to_pull
+        if already_in_ducklake:
+            session.pulled_table_refs |= already_in_ducklake
 
     if not deps_to_pull:
         return
@@ -526,7 +531,8 @@ def pull_dependencies_into_ducklake(
         if unpullable:
             for dep in unpullable:
                 lea.log.warning(
-                    f"🦆 Cannot pull {dep} — not found in native DB. "
+                    f"🦆 Cannot pull {dep} — not found in "
+                    f"{session.warehouse.display_name if session.warehouse else 'native DB'}. "
                     "Run upstream dependencies first."
                 )
         if not pullable:
@@ -535,7 +541,8 @@ def pull_dependencies_into_ducklake(
         pullable = deps_to_pull
 
     session.ensure_quack_extension_loaded()
-    lea.log.info(f"🦆 Pulling {len(pullable):,d} dependencies into DuckLake")
+    ducklake_name = databases.Warehouse.DUCKLAKE.rich_name
+    lea.log.info(f"🦆 Pulling {len(pullable):,d} dependencies into {ducklake_name}")
     if session.quack_database_client is None:
         raise RuntimeError("quack_database_client is required for pulling into DuckLake")
     quack_client = session.quack_database_client
@@ -563,7 +570,7 @@ def pull_dependencies_into_ducklake(
         dest_ref = dep.replace_dataset(None).replace_project(None)
         dest_str = DuckDBDialect.format_table_ref(dest_ref)
 
-        lea.log.info(f"PULLING {source_str_display}")
+        lea.log.info(f"PULLING {source_str_display} → {dest_str}")
         t0 = time.perf_counter()
         cursor = conn.cursor()
         if quack_client._active_database:
@@ -574,7 +581,7 @@ def pull_dependencies_into_ducklake(
         cursor.close()
         elapsed = time.perf_counter() - t0
         lea.log.info(
-            f"[green]SUCCESS[/green] {source_str_display}, {n_rows:,d} rows ({elapsed:.1f}s)"
+            f"[green]SUCCESS[/green] {source_str_display} → {dest_str}, {n_rows:,d} rows ({elapsed:.1f}s)"
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -586,7 +593,7 @@ def pull_dependencies_into_ducklake(
                 dest_str = DuckDBDialect.format_table_ref(dest_ref)
                 lea.log.error(f"[red]ERRORED[/red] {dest_str}\n{exception}")
 
-    session.pulled_table_refs = pullable
+    session.pulled_table_refs |= pullable
 
 
 def push_ducklake_to_native(session: Session):
@@ -602,7 +609,9 @@ def push_ducklake_to_native(session: Session):
     if not duck_tables_to_push:
         return
 
-    lea.log.info(f"🦆 Pushing {len(duck_tables_to_push):,d} duck tables to native DB")
+    ducklake_name = databases.Warehouse.DUCKLAKE.rich_name
+    warehouse_name = session.warehouse.rich_name if session.warehouse else "native DB"
+    lea.log.info(f"🦆 Pushing {len(duck_tables_to_push):,d} {ducklake_name} tables to {warehouse_name}")
 
     # Ensure the extension is loaded (it's attached writably when quack_push is set)
     session.ensure_quack_extension_loaded()
@@ -652,7 +661,7 @@ def push_ducklake_to_native(session: Session):
                 lea.log.error(f"[red]ERRORED[/red] pushing {source_str}\n{exception}")
 
 
-def materialize_scripts(dag: DAGOfScripts, session: Session):
+def materialize_scripts(dag: DAGOfScripts, session: Session, restart: bool = False):
     table_refs_to_run = determine_table_refs_to_run(
         selected_table_refs=session.selected_table_refs,
         unselected_table_refs=session.unselected_table_refs,
@@ -669,6 +678,7 @@ def materialize_scripts(dag: DAGOfScripts, session: Session):
             table_refs_to_run=table_refs_to_run,
             dag=dag,
             session=session,
+            restart=restart,
         )
         # If any native scripts are being run, duck scripts may reference their
         # audit tables via the native DB extension (e.g. bq.dataset.table___audit)
@@ -677,6 +687,8 @@ def materialize_scripts(dag: DAGOfScripts, session: Session):
 
     lea.log.info(f"🔵 Running {len(table_refs_to_run):,d} scripts")
     dag.prepare()
+    pending_native_count = 0
+    extension_refreshed = False
     while dag.is_active():
         # If we're in early end mode, we need to check if any script errored, in which case we
         # have to stop everything.
@@ -689,6 +701,9 @@ def materialize_scripts(dag: DAGOfScripts, session: Session):
             # Before executing a script, we need to contextualize it. We have to edit its
             # dependencies, add incremental logic, and set the write context.
             script_to_run = session.add_context_to_script(script_to_run)
+            base_ref = session.remove_write_context_from_table_ref(script_to_run.table_ref)
+            if base_ref in session.native_table_refs:
+                pending_native_count += 1
             # 🔨 if you're developping on lea, you can call session.run_script(script_to_run) here
             # to get a better stack trace. This is because the executor will run the script in a
             # different thread, and the exception will be raised in that thread, not in the main
@@ -705,8 +720,44 @@ def materialize_scripts(dag: DAGOfScripts, session: Session):
             if exception := future.exception():
                 lea.log.error(f"Failed running {script_done.table_ref}\n{exception}")
             table_ref = session.remove_write_context_from_table_ref(script_done.table_ref)
+            if table_ref in session.native_table_refs:
+                pending_native_count -= 1
             session.run_script_futures_complete[future] = session.run_script_futures.pop(future)
             dag.done(table_ref)
+        # Refresh the BQ extension's metadata cache once all native scripts have
+        # completed, so downstream duck scripts can see newly created audit tables.
+        if (
+            session.is_quack_mode
+            and not extension_refreshed
+            and pending_native_count == 0
+            and table_refs_to_run & session.native_table_refs
+        ):
+            extension_refreshed = True
+            _refresh_quack_extension(session)
+
+
+def _refresh_quack_extension(session: Session):
+    """Detach and reattach the native DB extension to refresh its metadata cache.
+
+    The DuckDB BigQuery extension caches table metadata on attach. After native
+    scripts create new audit tables in BigQuery, the extension can't see them.
+    Detaching and reattaching forces a cache refresh.
+
+    """
+    if session.native_dialect is None or session.quack_database_client is None:
+        return
+
+    attached_name = session.native_dialect.quack_attached_name
+    if not attached_name:
+        return
+
+    conn = session.quack_database_client.connection
+    warehouse_name = session.warehouse.rich_name if session.warehouse else attached_name
+    lea.log.info(f"🦆 Refreshing {warehouse_name} extension metadata cache")
+    conn.execute(f"DETACH {attached_name};")
+    # Re-run only the ATTACH statement (extension is already installed/loaded)
+    attach_stmt = session._quack_extension_setup_stmts[-1]
+    conn.execute(attach_stmt)
 
 
 def promote_audit_tables(session: Session):
@@ -769,7 +820,8 @@ def delete_audit_tables(session: Session):
             if table_ref in session.duck_table_refs
         }
         if native_audit_refs and session.database_client is not None:
-            lea.log.info("🧹 Deleting audit tables")
+            warehouse_name = session.warehouse.rich_name if session.warehouse else "native"
+            lea.log.info(f"🧹 Deleting {warehouse_name} audit tables")
             delete_table_refs(
                 table_refs=native_audit_refs,
                 database_client=session.database_client,
@@ -777,7 +829,7 @@ def delete_audit_tables(session: Session):
                 verbose=False,
             )
         if duck_audit_refs and session.quack_database_client is not None:
-            lea.log.info("🧹 Deleting DuckLake audit tables")
+            lea.log.info(f"🧹 Deleting {databases.Warehouse.DUCKLAKE.rich_name} audit tables")
             delete_table_refs(
                 table_refs=duck_audit_refs,
                 database_client=session.quack_database_client,
@@ -785,7 +837,8 @@ def delete_audit_tables(session: Session):
                 verbose=False,
             )
     elif table_refs_to_delete and session.database_client is not None:
-        lea.log.info("🧹 Deleting audit tables")
+        warehouse_name = session.warehouse.rich_name if session.warehouse else "native"
+        lea.log.info(f"🧹 Deleting {warehouse_name} audit tables")
         delete_table_refs(
             table_refs=table_refs_to_delete,
             database_client=session.database_client,

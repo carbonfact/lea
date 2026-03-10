@@ -31,6 +31,26 @@ class Warehouse(enum.Enum):
     MOTHERDUCK = "motherduck"
     DUCKLAKE = "ducklake"
 
+    @property
+    def display_name(self) -> str:
+        return {
+            Warehouse.BIGQUERY: "BigQuery",
+            Warehouse.DUCKDB: "DuckDB",
+            Warehouse.MOTHERDUCK: "MotherDuck",
+            Warehouse.DUCKLAKE: "DuckLake",
+        }[self]
+
+    @property
+    def rich_name(self) -> str:
+        """Display name wrapped in rich markup color tags."""
+        color = {
+            Warehouse.BIGQUERY: "blue",
+            Warehouse.DUCKDB: "green",
+            Warehouse.MOTHERDUCK: "magenta",
+            Warehouse.DUCKLAKE: "dark_orange",
+        }[self]
+        return f"[{color}]{self.display_name}[/{color}]"
+
 
 class DatabaseJob(typing.Protocol):
     @property

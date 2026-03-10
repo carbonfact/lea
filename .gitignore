@@ -8,3 +8,4 @@ dist/
 *.wal
 *.parquet
 *.ducklake
+ui

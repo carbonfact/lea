@@ -155,20 +155,28 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
         """
 
-        for table_ref in self.get_ready():
-            if (
-                # The DAG contains all the scripts as well as all the dependencies of each script.
-                # Not all of these dependencies are scripts. We need to filter out the non-script
-                # dependencies.
-                table_ref not in self.scripts
-                # We also need to filter out the scripts that are not part of the selected table
-                # refs.
-                or table_ref not in table_refs
-            ):
-                self.done(table_ref)
-                continue
+        while True:
+            ready = self.get_ready()
+            if not ready:
+                break
+            any_skipped = False
+            for table_ref in ready:
+                if (
+                    # The DAG contains all the scripts as well as all the dependencies of each
+                    # script. Not all of these dependencies are scripts. We need to filter out
+                    # the non-script dependencies.
+                    table_ref not in self.scripts
+                    # We also need to filter out the scripts that are not part of the selected
+                    # table refs.
+                    or table_ref not in table_refs
+                ):
+                    self.done(table_ref)
+                    any_skipped = True
+                    continue
 
-            yield self.scripts[table_ref]
+                yield self.scripts[table_ref]
+            if not any_skipped:
+                break
 
     def iter_ancestors(self, node: TableRef):
         for child in self.dependency_graph.get(node, []):

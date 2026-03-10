@@ -233,6 +233,20 @@ class Session:
         )
 
     @property
+    def warehouse(self) -> "databases.Warehouse | None":
+        from lea.databases import BigQueryClient, DuckLakeClient, MotherDuckClient, Warehouse
+
+        if self.database_client is None:
+            return None
+        if isinstance(self.database_client, BigQueryClient):
+            return Warehouse.BIGQUERY
+        if isinstance(self.database_client, MotherDuckClient):
+            return Warehouse.MOTHERDUCK
+        if isinstance(self.database_client, DuckLakeClient):
+            return Warehouse.DUCKLAKE
+        return Warehouse.DUCKDB
+
+    @property
     def is_quack_mode(self) -> bool:
         return self.quack_database_client is not None
 
@@ -246,7 +260,11 @@ class Session:
             return
         import lea
 
-        lea.log.info("🦆 Loading native DB extension for DuckLake")
+        from lea.databases import Warehouse
+
+        warehouse_name = self.warehouse.rich_name if self.warehouse else "native"
+        ducklake_name = Warehouse.DUCKLAKE.rich_name
+        lea.log.info(f"🦆 Loading {warehouse_name} extension for {ducklake_name}")
         if self.quack_database_client is None:
             raise RuntimeError("quack_database_client is required to load the native DB extension")
         conn = self.quack_database_client.connection
@@ -294,7 +312,12 @@ class Session:
         msg = f"{job.status} {script.table_ref}"
 
         if self.is_quack_mode:
-            msg += " (ducklake)" if client == self.quack_database_client else " (native)"
+            from lea.databases import Warehouse
+
+            if client == self.quack_database_client:
+                msg += f" ({Warehouse.DUCKLAKE.rich_name})"
+            elif self.warehouse is not None:
+                msg += f" ({self.warehouse.rich_name})"
         if script.table_ref.remove_audit_suffix() in self.incremental_table_refs:
             msg += " (incremental)"
         lea.log.info(msg)

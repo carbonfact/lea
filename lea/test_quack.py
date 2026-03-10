@@ -507,6 +507,48 @@ class TestAddContextForDuckScript:
         assert "bq." not in result.code
 
 
+# --- _refresh_quack_extension tests ---
+
+
+class TestRefreshQuackExtension:
+    """Test that the BQ extension cache is refreshed after native scripts complete."""
+
+    def test_refresh_detaches_and_reattaches(self):
+        """After a native script completes, the BQ extension should be detached and reattached."""
+        from unittest.mock import MagicMock
+
+        from lea.conductor import _refresh_quack_extension
+
+        mock_conn = MagicMock()
+        mock_session = MagicMock()
+        mock_session.native_dialect.quack_attached_name = "bq"
+        mock_session.quack_database_client.connection = mock_conn
+        mock_session._quack_extension_setup_stmts = [
+            "INSTALL bigquery FROM community;",
+            "LOAD bigquery;",
+            "ATTACH 'project=my-project dataset=my_dataset' AS bq (TYPE bigquery, READ_ONLY);",
+        ]
+
+        _refresh_quack_extension(mock_session)
+
+        calls = [str(c) for c in mock_conn.execute.call_args_list]
+        # Should detach
+        assert any("DETACH bq" in c for c in calls)
+        # Should reattach using the last setup statement
+        assert any("ATTACH" in c and "AS bq" in c for c in calls)
+
+    def test_no_refresh_without_native_dialect(self):
+        """No crash if native_dialect is None."""
+        from lea.conductor import _refresh_quack_extension
+
+        from unittest.mock import MagicMock
+
+        mock_session = MagicMock()
+        mock_session.native_dialect = None
+
+        _refresh_quack_extension(mock_session)  # should not raise
+
+
 # --- determine_deps_to_pull tests ---
 
 
