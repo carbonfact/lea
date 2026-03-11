@@ -272,9 +272,7 @@ def _env_hash() -> str:
     """Hash all LEA_* environment variables to detect config changes."""
     import hashlib
 
-    lea_vars = sorted(
-        (k, v) for k, v in os.environ.items() if k.startswith("LEA_")
-    )
+    lea_vars = sorted((k, v) for k, v in os.environ.items() if k.startswith("LEA_"))
     return hashlib.sha256(str(lea_vars).encode()).hexdigest()
 
 

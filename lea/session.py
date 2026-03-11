@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 
 import lea
-from lea.databases import DatabaseClient, DuckLakeClient, TableStats
+from lea.databases import DatabaseClient, DuckLakeClient, TableStats, Warehouse
 from lea.dialects import SQLDialect
 from lea.field import FieldTag
 from lea.job import Job, JobStatus
@@ -215,7 +215,9 @@ class Session:
                 # Native dep not pulled → read via attached extension
                 dep_for_ext = dep_with_context.replace_dataset(self.write_dataset)
                 if self.native_dialect is None:
-                    raise RuntimeError("native_dialect is required for formatting native dependency refs")
+                    raise RuntimeError(
+                        "native_dialect is required for formatting native dependency refs"
+                    )
                 new_ref_str = self.native_dialect.format_table_ref_for_duckdb(dep_for_ext)
             else:
                 # Duck dep or pulled native dep → DuckDB format (no dataset, no project)
@@ -240,8 +242,8 @@ class Session:
         )
 
     @property
-    def warehouse(self) -> "databases.Warehouse | None":
-        from lea.databases import BigQueryClient, DuckLakeClient, MotherDuckClient, Warehouse
+    def warehouse(self) -> Warehouse | None:
+        from lea.databases import BigQueryClient, MotherDuckClient
 
         if self.database_client is None:
             return None
@@ -257,7 +259,7 @@ class Session:
     def is_quack_mode(self) -> bool:
         return self.quack_database_client is not None
 
-    def format_warehouse_name(self, warehouse: "databases.Warehouse") -> str:
+    def format_warehouse_name(self, warehouse: Warehouse) -> str:
         """Return the warehouse name, colored only in quack mode where disambiguation matters."""
         return warehouse.rich_name if self.is_quack_mode else warehouse.display_name
 
@@ -270,7 +272,6 @@ class Session:
         if self._quack_extension_loaded or not self._quack_extension_setup_stmts:
             return
         import lea
-
         from lea.databases import Warehouse
 
         warehouse_name = self.format_warehouse_name(self.warehouse) if self.warehouse else "native"

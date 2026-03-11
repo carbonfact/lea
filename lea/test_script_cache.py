@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import pathlib
 
 import pytest
 
@@ -128,9 +127,7 @@ class TestScriptCache:
         # Create a script with a dependency
         analytics = scripts_dir / "analytics"
         analytics.mkdir()
-        (analytics / "user_count.sql").write_text(
-            "SELECT COUNT(*) AS n FROM core.users"
-        )
+        (analytics / "user_count.sql").write_text("SELECT COUNT(*) AS n FROM core.users")
 
         kwargs = dict(
             scripts_dir=scripts_dir,

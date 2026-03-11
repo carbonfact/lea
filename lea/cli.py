@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import collections
 import os
-import pathlib
 import subprocess
 
 import click
@@ -35,9 +34,7 @@ def app():
     "--production", is_flag=True, default=False, help="Target the production environment."
 )
 @click.option("--restart", is_flag=True, default=False, help="Restart from scratch.")
-@click.option(
-    "--quack", is_flag=True, default=False, help="Run locally with DuckDB/DuckLake."
-)
+@click.option("--quack", is_flag=True, default=False, help="Run locally with DuckDB/DuckLake.")
 @click.option(
     "--quack-push",
     is_flag=True,

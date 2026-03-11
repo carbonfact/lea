@@ -54,7 +54,9 @@ def extract_comments(
     ]
 
     def is_var_line(line):
-        line_tokens = [t for t in tokens if t.line == line and t.token_type != sqlglot.TokenType.COMMA]
+        line_tokens = [
+            t for t in tokens if t.line == line and t.token_type != sqlglot.TokenType.COMMA
+        ]
         return line_tokens[-1].token_type == sqlglot.TokenType.VAR
 
     last_var_per_line = {token.line: token.text for token in var_tokens if is_var_line(token.line)}

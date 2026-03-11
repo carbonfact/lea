@@ -625,8 +625,12 @@ def push_ducklake_to_native(session: Session):
         return
 
     ducklake_name = session.format_warehouse_name(databases.Warehouse.DUCKLAKE)
-    warehouse_name = session.format_warehouse_name(session.warehouse) if session.warehouse else "native DB"
-    lea.log.info(f"🦆 Pushing {len(duck_tables_to_push):,d} {ducklake_name} tables to {warehouse_name}")
+    warehouse_name = (
+        session.format_warehouse_name(session.warehouse) if session.warehouse else "native DB"
+    )
+    lea.log.info(
+        f"🦆 Pushing {len(duck_tables_to_push):,d} {ducklake_name} tables to {warehouse_name}"
+    )
 
     # Ensure the extension is loaded (it's attached writably when quack_push is set)
     session.ensure_quack_extension_loaded()
@@ -636,9 +640,12 @@ def push_ducklake_to_native(session: Session):
     if session.native_dialect is None:
         raise RuntimeError("native_dialect is required for quack push")
 
-    conn = session.quack_database_client.connection
-    if session.quack_database_client._active_database:
-        conn.execute(f"USE {session.quack_database_client._active_database};")
+    quack_client = session.quack_database_client
+    native_dialect = session.native_dialect
+
+    conn = quack_client.connection
+    if quack_client._active_database:
+        conn.execute(f"USE {quack_client._active_database};")
 
     def _push_one(table_ref: TableRef):
         import time
@@ -649,14 +656,14 @@ def push_ducklake_to_native(session: Session):
 
         # Destination: native DB via writable extension (e.g. bq.dataset.core__trips)
         dest_ref = table_ref.replace_dataset(session.write_dataset)
-        dest_str = session.native_dialect.format_table_ref_for_duckdb(dest_ref)
-        dest_str_display = session.native_dialect.format_table_ref(dest_ref)
+        dest_str = native_dialect.format_table_ref_for_duckdb(dest_ref)
+        dest_str_display = native_dialect.format_table_ref(dest_ref)
 
         lea.log.info(f"PUSHING {source_str} → {dest_str_display}")
         t0 = time.perf_counter()
         cursor = conn.cursor()
-        if session.quack_database_client._active_database:
-            cursor.execute(f"USE {session.quack_database_client._active_database};")
+        if quack_client._active_database:
+            cursor.execute(f"USE {quack_client._active_database};")
         cursor.execute(f"CREATE OR REPLACE TABLE {dest_str} AS SELECT * FROM {source_str}")
         row = cursor.execute(f"SELECT COUNT(*) FROM {source_str}").fetchone()
         n_rows = row[0] if row else 0
@@ -792,7 +799,9 @@ def _refresh_quack_extension(session: Session):
         return
 
     conn = session.quack_database_client.connection
-    warehouse_name = session.format_warehouse_name(session.warehouse) if session.warehouse else attached_name
+    warehouse_name = (
+        session.format_warehouse_name(session.warehouse) if session.warehouse else attached_name
+    )
     lea.log.info(f"🦆 Refreshing {warehouse_name} extension metadata cache")
     conn.execute(f"DETACH {attached_name};")
     # Re-run only the ATTACH statement (extension is already installed/loaded)
@@ -860,7 +869,9 @@ def delete_audit_tables(session: Session):
             if table_ref in session.duck_table_refs
         }
         if native_audit_refs and session.database_client is not None:
-            warehouse_name = session.format_warehouse_name(session.warehouse) if session.warehouse else "native"
+            warehouse_name = (
+                session.format_warehouse_name(session.warehouse) if session.warehouse else "native"
+            )
             lea.log.info(f"🧹 Deleting {warehouse_name} audit tables")
             delete_table_refs(
                 table_refs=native_audit_refs,
@@ -869,7 +880,9 @@ def delete_audit_tables(session: Session):
                 verbose=False,
             )
         if duck_audit_refs and session.quack_database_client is not None:
-            lea.log.info(f"🧹 Deleting {session.format_warehouse_name(databases.Warehouse.DUCKLAKE)} audit tables")
+            lea.log.info(
+                f"🧹 Deleting {session.format_warehouse_name(databases.Warehouse.DUCKLAKE)} audit tables"
+            )
             delete_table_refs(
                 table_refs=duck_audit_refs,
                 database_client=session.quack_database_client,
@@ -877,7 +890,9 @@ def delete_audit_tables(session: Session):
                 verbose=False,
             )
     elif table_refs_to_delete and session.database_client is not None:
-        warehouse_name = session.format_warehouse_name(session.warehouse) if session.warehouse else "native"
+        warehouse_name = (
+            session.format_warehouse_name(session.warehouse) if session.warehouse else "native"
+        )
         lea.log.info(f"🧹 Deleting {warehouse_name} audit tables")
         delete_table_refs(
             table_refs=table_refs_to_delete,

@@ -287,7 +287,6 @@ class BigQueryClient(BigBluePickAPI):
         big_blue_pick_api_on_demand_project_id: str | None = None,
         big_blue_pick_api_reservation_project_id: str | None = None,
     ):
-        from google.cloud import bigquery
 
         self.credentials = credentials
         self.write_project_id = write_project_id
@@ -647,10 +646,11 @@ class DuckDBJob:
     def is_done(self) -> bool:
         if self._future is None:
             self.execute_async()
+        assert self._future is not None
         if not self._future.done():
             return False
         if exception := self._future.exception():
-            self.exception = exception
+            self.exception = Exception(exception)
             raise exception
         return True
 

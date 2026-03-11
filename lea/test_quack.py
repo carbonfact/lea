@@ -540,9 +540,9 @@ class TestRefreshQuackExtension:
 
     def test_no_refresh_without_native_dialect(self):
         """No crash if native_dialect is None."""
-        from lea.conductor import _refresh_quack_extension
-
         from unittest.mock import MagicMock
+
+        from lea.conductor import _refresh_quack_extension
 
         mock_session = MagicMock()
         mock_session.native_dialect = None
