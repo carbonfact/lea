@@ -5,8 +5,6 @@ import pathlib
 import re
 from collections.abc import Iterator
 
-import git
-
 from .dialects import SQLDialect
 from .scripts import Script, read_scripts
 from .table_ref import TableRef
@@ -35,12 +33,14 @@ class DAGOfScripts(graphlib.TopologicalSorter):
         sql_dialect: SQLDialect,
         dataset_name: str,
         project_name: str | None,
+        cache_dir: pathlib.Path | None = None,
     ) -> DAGOfScripts:
         scripts = read_scripts(
             scripts_dir=scripts_dir,
             sql_dialect=sql_dialect,
             dataset_name=dataset_name,
             project_name=project_name,
+            cache_dir=cache_dir,
         )
 
         # Fields in the script's code may contain tags. These tags induce assertion tests, which
@@ -155,20 +155,33 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
         """
 
-        for table_ref in self.get_ready():
-            if (
-                # The DAG contains all the scripts as well as all the dependencies of each script.
-                # Not all of these dependencies are scripts. We need to filter out the non-script
-                # dependencies.
-                table_ref not in self.scripts
-                # We also need to filter out the scripts that are not part of the selected table
-                # refs.
-                or table_ref not in table_refs
-            ):
-                self.done(table_ref)
-                continue
+        while True:
+            ready = self.get_ready()
+            if not ready:
+                break
+            any_skipped = False
+            any_yielded = False
+            for table_ref in ready:
+                if (
+                    # The DAG contains all the scripts as well as all the dependencies of each
+                    # script. Not all of these dependencies are scripts. We need to filter out
+                    # the non-script dependencies.
+                    table_ref not in self.scripts
+                    # We also need to filter out the scripts that are not part of the selected
+                    # table refs.
+                    or table_ref not in table_refs
+                ):
+                    self.done(table_ref)
+                    any_skipped = True
+                    continue
 
-            yield self.scripts[table_ref]
+                any_yielded = True
+                yield self.scripts[table_ref]
+            # If we yielded scripts, stop and let the caller process them before
+            # resolving more of the DAG. Only keep looping if we only skipped
+            # non-selected nodes (which may unlock new ready nodes).
+            if any_yielded or not any_skipped:
+                break
 
     def iter_ancestors(self, node: TableRef):
         for child in self.dependency_graph.get(node, []):
@@ -185,7 +198,11 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 def list_table_refs_that_changed(
     scripts_dir: pathlib.Path, project_name: str | None
 ) -> set[TableRef]:
+    import git
+
     repo = git.Repo(search_parent_directories=True)
+    if repo.working_tree_dir is None:
+        raise RuntimeError("git repository has no working tree directory")
     repo_root = pathlib.Path(repo.working_tree_dir)
 
     absolute_scripts_dir = scripts_dir.resolve()

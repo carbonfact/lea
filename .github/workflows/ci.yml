@@ -18,5 +18,5 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv run pre-commit run --all-files
+      - run: uv run prek run --all-files
       - run: uv run pytest

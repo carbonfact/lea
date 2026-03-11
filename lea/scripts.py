@@ -5,6 +5,7 @@ import datetime as dt
 import functools
 import os
 import pathlib
+import pickle
 import re
 import textwrap
 
@@ -31,6 +32,7 @@ class SQLScript:
     sql_dialect: SQLDialect
     fields: list[Field] | None = dataclasses.field(default=None)
     updated_at: dt.datetime | None = None
+    _cached_dependencies: set[TableRef] | None = dataclasses.field(default=None, repr=False)
 
     def __post_init__(self):
         """
@@ -88,6 +90,8 @@ class SQLScript:
         relative_path: pathlib.Path,
         sql_dialect: SQLDialect,
         project_name: str | None,
+        fields: list[Field] | None = None,
+        cached_dependencies: set[TableRef] | None = None,
     ) -> SQLScript:
         # Either the file is a Jinja template
         if relative_path.suffixes == [".sql", ".jinja"]:
@@ -96,11 +100,13 @@ class SQLScript:
 
             def load_yaml(path: str) -> dict:
                 full_path = (scripts_dir / path).resolve()
-                if not full_path.is_relative_to(scripts_dir.resolve()):
-                    raise ValueError(f"load_yaml path escapes scripts_dir: {path}")
+                project_root = scripts_dir.resolve().parent
+                if not full_path.is_relative_to(project_root):
+                    raise ValueError(f"load_yaml path escapes project root: {path}")
                 with open(full_path) as f:
                     return yaml.safe_load(f)
 
+            environment.globals["load_yaml"] = load_yaml  # ty: ignore[invalid-assignment]
             template = environment.get_template(str(relative_path))
             code = template.render(env=os.environ, load_yaml=load_yaml)
         # Or it's a regular SQL file
@@ -115,6 +121,8 @@ class SQLScript:
             ),
             code=code,
             sql_dialect=sql_dialect,
+            fields=fields,
+            _cached_dependencies=cached_dependencies,
             updated_at=dt.datetime.fromtimestamp(
                 (scripts_dir / relative_path).stat().st_mtime, tz=dt.UTC
             ),
@@ -158,6 +166,9 @@ class SQLScript:
 
     @functools.cached_property
     def dependencies(self) -> set[TableRef]:
+        if self._cached_dependencies is not None:
+            return self._cached_dependencies
+
         def add_default_project(table_ref: TableRef) -> TableRef:
             if table_ref.project is None:
                 return table_ref.replace_project(self.table_ref.project)
@@ -165,10 +176,7 @@ class SQLScript:
 
         dependencies = set()
 
-        for expression in [
-            *(self.expressions[:-1] if len(self.expressions) > 1 else []),
-            self.ast,
-        ]:
+        for expression in self.expressions:
             for table_name in find_table_names(expression):
                 try:
                     table_ref = self.sql_dialect.parse_table_ref(table_ref=table_name)
@@ -257,28 +265,90 @@ class SQLScript:
 Script = SQLScript
 
 
+_CACHE_VERSION = f"1_{sqlglot.__version__}"  # ty: ignore[possibly-missing-attribute]
+
+
+def _env_hash() -> str:
+    """Hash all LEA_* environment variables to detect config changes."""
+    import hashlib
+
+    lea_vars = sorted((k, v) for k, v in os.environ.items() if k.startswith("LEA_"))
+    return hashlib.sha256(str(lea_vars).encode()).hexdigest()
+
+
+def _load_cache(cache_path: pathlib.Path) -> dict:
+    """Load the script cache. Returns {relative_path_str: entry}."""
+    try:
+        with open(cache_path, "rb") as f:
+            data = pickle.load(f)
+        if data.get("version") == _CACHE_VERSION and data.get("env_hash") == _env_hash():
+            return data.get("scripts", {})
+    except (FileNotFoundError, pickle.UnpicklingError, KeyError, EOFError):
+        pass
+    return {}
+
+
+def _save_cache(cache_path: pathlib.Path, entries: dict) -> None:
+    """Save the script cache."""
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, "wb") as f:
+        pickle.dump({"version": _CACHE_VERSION, "env_hash": _env_hash(), "scripts": entries}, f)
+
+
 def read_scripts(
     scripts_dir: pathlib.Path,
     sql_dialect: SQLDialect,
     dataset_name: str,
     project_name: str | None,
+    cache_dir: pathlib.Path | None = None,
 ) -> list[Script]:
+    # Load existing cache
+    cache_path = cache_dir / "cache.pkl" if cache_dir else None
+    cache_entries = _load_cache(cache_path) if cache_path else {}
+    cache_dirty = False
+
     def read_script(path: pathlib.Path) -> Script:
+        nonlocal cache_dirty
+
         match tuple(path.suffixes):
             case (".sql",) | (".sql", ".jinja"):
-                return SQLScript.from_path(
+                relative_path = path.relative_to(scripts_dir)
+                mtime = path.stat().st_mtime
+                cache_key = str(relative_path)
+
+                # Try cache — on hit, we still read the file content but skip
+                # expensive parsing (sqlglot.parse, qualify, traverse_scope)
+                cached = None
+                entry = cache_entries.get(cache_key)
+                if entry and entry.get("mtime") == mtime:
+                    cached = entry
+
+                script = SQLScript.from_path(
                     scripts_dir=scripts_dir,
-                    relative_path=path.relative_to(scripts_dir),
+                    relative_path=relative_path,
                     sql_dialect=sql_dialect,
                     project_name=project_name,
+                    fields=cached["fields"] if cached else None,
+                    cached_dependencies=cached["dependencies"] if cached else None,
                 )
+
+                # Update cache on miss
+                if cache_path and cached is None:
+                    cache_entries[cache_key] = {
+                        "mtime": mtime,
+                        "fields": script.fields,
+                        "dependencies": script.dependencies,
+                    }
+                    cache_dirty = True
+
+                return script
             case _:
                 raise ValueError(f"Unsupported script type: {path}")
 
     def set_dataset(script: Script) -> Script:
         return script.replace_table_ref(script.table_ref.replace_dataset(dataset=dataset_name))
 
-    return [
+    scripts = [
         set_dataset(read_script(path))
         for path in scripts_dir.rglob("*")
         if not path.is_dir()
@@ -286,6 +356,12 @@ def read_scripts(
         and not path.name.startswith("_")
         and path.stat().st_size > 0
     ]
+
+    # Write cache if anything changed
+    if cache_dirty:
+        _save_cache(cache_path, cache_entries)
+
+    return scripts
 
 
 def find_table_names(expression: sqlglot.Expression) -> set[str]:

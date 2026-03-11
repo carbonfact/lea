@@ -1,22 +1,19 @@
-files: .
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
-    hooks:
-      - id: check-json
-      - id: check-yaml
-      - id: trailing-whitespace
-      - id: mixed-line-ending
-
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.7
-    hooks:
-      - id: ruff
-      - id: ruff-format
   - repo: local
     hooks:
-      - id: check-external-actions-pinned
-        name: Check GitHub Actions are pinned
-        entry: pre-commit-hooks/check_pinned_actions.sh
-        language: script
+      - id: ruff
+        name: ruff linter
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff formatter
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      - id: ty
+        name: ty type checker
+        entry: uv run ty check lea
+        language: system
+        types: [python]
         pass_filenames: false

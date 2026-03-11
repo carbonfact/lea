@@ -23,6 +23,7 @@ class Job:
     table_ref: TableRef
     is_test: bool
     database_job: DatabaseJob
+    warehouse_label: str | None = None
     started_at: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
     ended_at: dt.datetime | None = None
     status: JobStatus = JobStatus.RUNNING

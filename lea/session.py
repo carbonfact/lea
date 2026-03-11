@@ -9,17 +9,25 @@ import time
 from collections.abc import Callable
 
 import lea
-from lea.databases import DatabaseClient, TableStats
+from lea.databases import DatabaseClient, DuckLakeClient, TableStats, Warehouse
+from lea.dialects import SQLDialect
 from lea.field import FieldTag
 from lea.job import Job, JobStatus
 from lea.scripts import Script
 from lea.table_ref import TableRef
 
 
+class ScriptError(Exception):
+    """Raised when a script fails during execution. Already logged by monitor_job."""
+
+    def __init__(self, table_ref: TableRef):
+        self.table_ref = table_ref
+
+
 class Session:
     def __init__(
         self,
-        database_client: DatabaseClient,
+        database_client: DatabaseClient | None,
         base_dataset: str,
         write_dataset: str,
         scripts: dict[TableRef, Script],
@@ -27,8 +35,15 @@ class Session:
         unselected_table_refs: set[TableRef],
         existing_tables: dict[TableRef, TableStats],
         existing_audit_tables: dict[TableRef, TableStats],
-        incremental_field_name=None,
-        incremental_field_values=None,
+        incremental_field_name: str | None = None,
+        incremental_field_values: list[str] | None = None,
+        # Quack mode fields
+        quack_database_client: DuckLakeClient | None = None,
+        native_table_refs: set[TableRef] | None = None,
+        duck_table_refs: set[TableRef] | None = None,
+        native_dialect: SQLDialect | None = None,
+        native_dataset: str | None = None,
+        quack_extension_setup_stmts: list[str] | None = None,
     ):
         self.database_client = database_client
         self.base_dataset = base_dataset
@@ -40,6 +55,16 @@ class Session:
         self.existing_audit_tables = existing_audit_tables
         self.incremental_field_name = incremental_field_name
         self.incremental_field_values = incremental_field_values
+
+        # Quack mode: dual-client support
+        self.quack_database_client = quack_database_client
+        self.native_table_refs = native_table_refs or set()
+        self.duck_table_refs = duck_table_refs or set()
+        self.native_dialect = native_dialect
+        self.native_dataset = native_dataset
+        self.pulled_table_refs: set[TableRef] = set()
+        self._quack_extension_setup_stmts = quack_extension_setup_stmts or []
+        self._quack_extension_loaded = False
 
         self.jobs: list[Job] = []
         self.started_at = dt.datetime.now()
@@ -84,21 +109,30 @@ class Session:
         table_ref = table_ref.remove_audit_suffix()
         return table_ref
 
+    def _is_dep_audited(self, dependency: TableRef) -> bool:
+        """Check if a dependency should use the audit table (WAP pattern)."""
+        dep_base = dependency.replace_dataset(self.base_dataset)
+        return (
+            dep_base
+            in self.selected_table_refs
+            | {
+                self.remove_write_context_from_table_ref(table_ref)
+                for table_ref in self.existing_audit_tables
+            }
+            and dep_base in self.scripts
+        )
+
     def add_context_to_script(self, script: Script) -> Script:
+        # In quack mode, duck scripts get a dedicated single-pass rewriting
+        if self.is_quack_mode and script.table_ref in self.duck_table_refs:
+            return self._add_quack_context_to_duck_script(script)
+
         def add_context_to_dependency(dependency: TableRef) -> TableRef | None:
             # We don't modify the project if is has been deliberately set
             if dependency.project is not None and dependency.project != script.table_ref.project:
                 return None
 
-            if (
-                dependency.replace_dataset(self.base_dataset)
-                in self.selected_table_refs
-                | {
-                    self.remove_write_context_from_table_ref(table_ref)
-                    for table_ref in self.existing_audit_tables
-                }
-                and dependency.replace_dataset(self.base_dataset) in self.scripts
-            ):
+            if self._is_dep_audited(dependency):
                 dependency = dependency.add_audit_suffix()
 
             dependency = dependency.replace_dataset(self.write_dataset)
@@ -149,28 +183,170 @@ class Session:
 
         return script.replace_table_ref(self.add_write_context_to_table_ref(script.table_ref))
 
+    def _add_quack_context_to_duck_script(self, script: Script) -> Script:
+        """Single-pass dependency rewriting for duck scripts in quack mode.
+
+        Rewrites dependencies directly to their target format:
+        - Native deps → read via extension (e.g. bq.dataset.schema__table___audit)
+        - Duck deps → DuckDB format (e.g. schema.table___audit)
+        Then transpiles the SQL and sets the script's dialect to DuckDB.
+
+        """
+        from lea.dialects import DuckDBDialect
+        from lea.quack import transpile_query
+
+        code = script.code
+
+        for dep in script.dependencies:
+            # Skip external deps (deliberately different project)
+            if dep.project is not None and dep.project != script.table_ref.project:
+                continue
+
+            # Determine audit suffix
+            dep_with_context = dep
+            if self._is_dep_audited(dep):
+                dep_with_context = dep_with_context.add_audit_suffix()
+
+            # What the dep looks like in the original code (native format, no project)
+            old_ref_str = script.sql_dialect.format_table_ref(dep.replace_project(None))
+
+            dep_base = dep.replace_dataset(self.base_dataset)
+            if dep_base in self.native_table_refs and dep_base not in self.pulled_table_refs:
+                # Native dep not pulled → read via attached extension
+                dep_for_ext = dep_with_context.replace_dataset(self.write_dataset)
+                if self.native_dialect is None:
+                    raise RuntimeError(
+                        "native_dialect is required for formatting native dependency refs"
+                    )
+                new_ref_str = self.native_dialect.format_table_ref_for_duckdb(dep_for_ext)
+            else:
+                # Duck dep or pulled native dep → DuckDB format (no dataset, no project)
+                duck_dep = dep_with_context.replace_dataset(None).replace_project(None)
+                new_ref_str = DuckDBDialect.format_table_ref(duck_dep)
+
+            code = re.sub(rf"\b{re.escape(old_ref_str)}\b", new_ref_str, code)
+
+        # Transpile SQL syntax from native dialect to DuckDB
+        if self.native_dialect is not None and self.native_dialect.sqlglot_dialect is not None:
+            from_dialect = str(self.native_dialect.sqlglot_dialect.value)
+            if from_dialect != "duckdb":
+                code = transpile_query(code, from_dialect=from_dialect)
+
+        # Keep the table_ref in native format with write context so that
+        # materialize_scripts can map back to the DAG via remove_write_context_from_table_ref.
+        # The conversion to DuckDB format happens later in run_script.
+        write_table_ref = self.add_write_context_to_table_ref(script.table_ref)
+
+        return dataclasses.replace(
+            script, code=code, sql_dialect=DuckDBDialect(), table_ref=write_table_ref
+        )
+
+    @property
+    def warehouse(self) -> Warehouse | None:
+        from lea.databases import BigQueryClient, MotherDuckClient
+
+        if self.database_client is None:
+            return None
+        if isinstance(self.database_client, BigQueryClient):
+            return Warehouse.BIGQUERY
+        if isinstance(self.database_client, MotherDuckClient):
+            return Warehouse.MOTHERDUCK
+        if isinstance(self.database_client, DuckLakeClient):
+            return Warehouse.DUCKLAKE
+        return Warehouse.DUCKDB
+
+    @property
+    def is_quack_mode(self) -> bool:
+        return self.quack_database_client is not None
+
+    def format_warehouse_name(self, warehouse: Warehouse) -> str:
+        """Return the warehouse name, colored only in quack mode where disambiguation matters."""
+        return warehouse.rich_name if self.is_quack_mode else warehouse.display_name
+
+    def ensure_quack_extension_loaded(self):
+        """Load the native DB extension (e.g. BigQuery) into the DuckLake connection.
+
+        Called lazily — only when we actually need to read from the native DB
+        (pulling deps or running native scripts referenced via the extension).
+        """
+        if self._quack_extension_loaded or not self._quack_extension_setup_stmts:
+            return
+        import lea
+        from lea.databases import Warehouse
+
+        warehouse_name = self.format_warehouse_name(self.warehouse) if self.warehouse else "native"
+        ducklake_name = self.format_warehouse_name(Warehouse.DUCKLAKE)
+        lea.log.info(f"🦆 Loading {warehouse_name} extension for {ducklake_name}")
+        if self.quack_database_client is None:
+            raise RuntimeError("quack_database_client is required to load the native DB extension")
+        conn = self.quack_database_client.connection
+        for stmt in self._quack_extension_setup_stmts:
+            conn.execute(stmt)
+        self._quack_extension_loaded = True
+
+    def _get_client_for_script(self, script: Script) -> DatabaseClient | DuckLakeClient:
+        """In quack mode, pick the right client based on script classification."""
+        if not self.is_quack_mode:
+            if self.database_client is None:
+                raise RuntimeError("database_client is required when not in quack mode")
+            return self.database_client
+        base_ref = self.remove_write_context_from_table_ref(script.table_ref)
+        if base_ref in self.duck_table_refs:
+            if self.quack_database_client is None:
+                raise RuntimeError("quack_database_client is required for duck table refs")
+            return self.quack_database_client
+        if self.database_client is None:
+            raise RuntimeError("database_client is required for non-duck table refs")
+        return self.database_client
+
     def run_script(self, script: Script):
+        client = self._get_client_for_script(script)
+
+        # For duck scripts, convert table_ref to DuckDB format for DuckLake materialization
+        if self.is_quack_mode and client == self.quack_database_client:
+            duck_table_ref = script.table_ref.replace_dataset(None).replace_project(None)
+            script = dataclasses.replace(script, table_ref=duck_table_ref)
+
         # If the script is a test, we don't materialize it, we just query it. A test fails if it
         # returns any rows.
         if script.is_test:
-            database_job = self.database_client.query_script(script=script)
+            database_job = client.query_script(script=script)
         # If the script is not a test, it's a regular table, so we materialize it. Instead of
         # directly materializing it to the destination table, we materialize it to a side-table
         # which we call an "audit" table. Once all the scripts have run successfully, we will
         # promote the audit tables to the destination tables. This is the WAP pattern.
         else:
-            database_job = self.database_client.materialize_script(script=script)
+            database_job = client.materialize_script(script=script)
 
-        job = Job(table_ref=script.table_ref, is_test=script.is_test, database_job=database_job)
+        # In quack mode, label each job with the warehouse it runs on
+        warehouse_label = None
+        if self.is_quack_mode:
+            from lea.databases import Warehouse
+
+            if client == self.quack_database_client:
+                warehouse_label = self.format_warehouse_name(Warehouse.DUCKLAKE)
+            elif self.warehouse is not None:
+                warehouse_label = self.format_warehouse_name(self.warehouse)
+
+        job = Job(
+            table_ref=script.table_ref,
+            is_test=script.is_test,
+            database_job=database_job,
+            warehouse_label=warehouse_label,
+        )
         self.jobs.append(job)
 
         msg = f"{job.status} {script.table_ref}"
-
+        if warehouse_label:
+            msg += f" ({warehouse_label})"
         if script.table_ref.remove_audit_suffix() in self.incremental_table_refs:
             msg += " (incremental)"
         lea.log.info(msg)
 
         self.monitor_job(job)
+
+        if job.status == JobStatus.ERRORED:
+            raise ScriptError(job.table_ref)
 
     def monitor_job(self, job: Job):
         # We're going to do exponential backoff. This is because we don't want to overload
@@ -201,12 +377,19 @@ class Session:
             # Case 2: the job succeeded, but it's a test and there are negative cases
             elif job.is_test and not (dataframe := job.database_job.result).empty:
                 job.status = JobStatus.ERRORED
-                lea.log.error(f"{job.status} {job.table_ref}\n{dataframe.head()}")
+                head = dataframe.head()
+                n_more = len(dataframe) - len(head)
+                lea.log.error(
+                    f"{job.status} {job.table_ref}\n{head}"
+                    + (f"({n_more} rows hidden)" if n_more else "")
+                )
 
             # Case 3: the job succeeded!
             else:
                 job.status = JobStatus.SUCCESS
                 msg = f"{job.status} {job.table_ref}"
+                if job.warehouse_label:
+                    msg += f" ({job.warehouse_label})"
                 job.ended_at = dt.datetime.now()
                 # Depending on the warehouse in use, jobs may have a conclude() method, for example
                 # for recording job statistics.
@@ -228,7 +411,13 @@ class Session:
 
             return
 
-    def promote_audit_table(self, table_ref: TableRef):
+    def promote_audit_table(
+        self, table_ref: TableRef, client: DatabaseClient | DuckLakeClient | None = None
+    ):
+        if client is None:
+            if self.database_client is None:
+                raise RuntimeError("database_client is required to promote audit tables")
+            client = self.database_client
         from_table_ref = table_ref
         to_table_ref = table_ref.remove_audit_suffix()
 
@@ -236,13 +425,13 @@ class Session:
             self.incremental_field_name is not None and to_table_ref in self.incremental_table_refs
         )
         if is_incremental:
-            database_job = self.database_client.delete_and_insert(
+            database_job = client.delete_and_insert(
                 from_table_ref=from_table_ref,
                 to_table_ref=to_table_ref,
                 on=self.incremental_field_name,  # type: ignore
             )
         else:
-            database_job = self.database_client.clone_table(
+            database_job = client.clone_table(
                 from_table_ref=from_table_ref, to_table_ref=to_table_ref
             )
 
@@ -255,12 +444,15 @@ class Session:
     def end(self):
         lea.log.info("😴 Ending session")
         self.stop_event.set()
+        stopped_count = 0
         for job in self.jobs:
             if job.status == JobStatus.RUNNING:
                 job.database_job.stop()
                 job.status = JobStatus.STOPPED
-                lea.log.info(f"{job.status} {job.table_ref}")
-        self.executor.shutdown()
+                stopped_count += 1
+        if stopped_count:
+            lea.log.info(f"STOPPED {stopped_count} running scripts")
+        self.executor.shutdown(cancel_futures=True)
         self.ended_at = dt.datetime.now()
 
     @property

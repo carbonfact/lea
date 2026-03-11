@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import datetime as dt
 import enum
@@ -7,13 +8,16 @@ import hashlib
 import typing
 import urllib.parse
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import duckdb
-import pandas as pd
 import requests
 import rich
-from google.cloud import bigquery
-from google.oauth2 import service_account
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
 
 import lea
 from lea import scripts
@@ -28,70 +32,76 @@ class Warehouse(enum.Enum):
     MOTHERDUCK = "motherduck"
     DUCKLAKE = "ducklake"
 
+    @property
+    def display_name(self) -> str:
+        return {
+            Warehouse.BIGQUERY: "BigQuery",
+            Warehouse.DUCKDB: "DuckDB",
+            Warehouse.MOTHERDUCK: "MotherDuck",
+            Warehouse.DUCKLAKE: "DuckLake",
+        }[self]
+
+    @property
+    def rich_name(self) -> str:
+        """Display name wrapped in rich markup color tags."""
+        color = {
+            Warehouse.BIGQUERY: "blue",
+            Warehouse.DUCKDB: "green",
+            Warehouse.MOTHERDUCK: "magenta",
+            Warehouse.DUCKLAKE: "dark_orange",
+        }[self]
+        return f"[{color}]{self.display_name}[/{color}]"
+
 
 class DatabaseJob(typing.Protocol):
     @property
-    def is_done(self) -> bool:
-        ...
+    def is_done(self) -> bool: ...
 
-    def stop(self):
-        ...
+    def stop(self): ...
 
     @property
-    def result(self) -> pd.DataFrame:
-        ...
+    def result(self) -> pd.DataFrame: ...
 
     @property
-    def exception(self) -> Exception | None:
-        ...
+    def exception(self) -> Exception | None: ...
 
     @property
-    def billed_dollars(self) -> float | None:
-        ...
+    def billed_dollars(self) -> float | None: ...
 
     @property
-    def statistics(self) -> TableStats | None:
-        ...
+    def statistics(self) -> TableStats | None: ...
 
     @property
     def metadata(self) -> list[str]:
         return []
 
-    def conclude(self):
-        ...
+    def conclude(self): ...
 
 
 class DatabaseClient(typing.Protocol):
-    def create_dataset(self, dataset_name: str):
-        ...
+    def create_dataset(self, dataset_name: str): ...
 
-    def delete_dataset(self, dataset_name: str):
-        ...
+    def delete_dataset(self, dataset_name: str): ...
 
-    def materialize_script(self, script: scripts.Script) -> DatabaseJob:
-        ...
+    def materialize_script(self, script: scripts.Script) -> DatabaseJob: ...
 
-    def query_script(self, script: scripts.Script) -> DatabaseJob:
-        ...
+    def query_script(self, script: scripts.Script) -> DatabaseJob: ...
 
     def clone_table(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
-    ) -> DatabaseJob:
-        ...
+    ) -> DatabaseJob: ...
 
     def delete_and_insert(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
-    ) -> DatabaseJob:
-        ...
+    ) -> DatabaseJob: ...
 
-    def delete_table(self, table_ref: scripts.TableRef) -> DatabaseJob:
-        ...
+    def delete_table(self, table_ref: scripts.TableRef) -> DatabaseJob: ...
 
-    def list_table_stats(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]:
-        ...
+    def list_table_stats(self, dataset_name: str) -> dict[scripts.TableRef, TableStats]: ...
 
-    def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:
-        ...
+    def list_table_fields(
+        self, dataset_name: str
+    ) -> dict[scripts.TableRef, list[scripts.Field]]: ...
 
 
 @dataclasses.dataclass
@@ -118,6 +128,8 @@ class BigQueryJob:
 
     @property
     def statistics(self) -> TableStats | None:
+        from google.cloud import bigquery
+
         if self.client.dry_run or self.destination is None:
             return None
         table = self.client.default_client.get_table(
@@ -275,6 +287,7 @@ class BigQueryClient(BigBluePickAPI):
         big_blue_pick_api_on_demand_project_id: str | None = None,
         big_blue_pick_api_reservation_project_id: str | None = None,
     ):
+
         self.credentials = credentials
         self.write_project_id = write_project_id
         self.compute_project_id = compute_project_id
@@ -282,27 +295,15 @@ class BigQueryClient(BigBluePickAPI):
         self.storage_billing_model = storage_billing_model
         self.location = location
         self.clients = {
-            compute_project_id: bigquery.Client(
-                project=compute_project_id,
-                credentials=self.credentials,
-                location=self.location,
-                client_options={
-                    "scopes": [
-                        "https://www.googleapis.com/auth/cloud-platform",
-                        "https://www.googleapis.com/auth/drive",
-                        "https://www.googleapis.com/auth/spreadsheets.readonly",
-                        "https://www.googleapis.com/auth/userinfo.email",
-                    ]
-                },
-            )
-            for compute_project_id in {
+            project_id: self._make_client(project_id)
+            for project_id in {
                 self.compute_project_id,
                 *(self.script_specific_compute_project_ids.values()),
                 big_blue_pick_api_on_demand_project_id,
                 big_blue_pick_api_reservation_project_id,
                 self.write_project_id,
             }
-            if compute_project_id is not None
+            if project_id is not None
         }
         self.dry_run = dry_run
         self.print_mode = print_mode
@@ -325,11 +326,33 @@ class BigQueryClient(BigBluePickAPI):
             else None
         )
 
+    def _make_client(self, project_id: str) -> bigquery.Client:
+        from google.cloud import bigquery
+
+        client = bigquery.Client(
+            project=project_id,
+            credentials=self.credentials,
+            location=self.location,
+            client_options={
+                "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform",
+                    "https://www.googleapis.com/auth/drive",
+                    "https://www.googleapis.com/auth/spreadsheets.readonly",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                ]
+            },
+        )
+        adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
+        client._http.mount("https://", adapter)
+        return client
+
     @property
     def default_client(self) -> bigquery.Client:
         return self.clients[self.compute_project_id]
 
     def create_dataset(self, dataset_name: str):
+        from google.cloud import bigquery
+
         dataset_ref = bigquery.DatasetReference(
             project=self.write_project_id, dataset_id=dataset_name
         )
@@ -366,6 +389,8 @@ class BigQueryClient(BigBluePickAPI):
         return self.clients[project_id]
 
     def materialize_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
+        from google.cloud import bigquery
+
         destination = BigQueryDialect.convert_table_ref_to_bigquery_table_reference(
             table_ref=sql_script.table_ref, project=self.write_project_id
         )
@@ -449,6 +474,8 @@ class BigQueryClient(BigBluePickAPI):
     def clone_table(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
     ) -> BigQueryJob:
+        from google.cloud import bigquery
+
         destination = BigQueryDialect.convert_table_ref_to_bigquery_table_reference(
             table_ref=to_table_ref, project=self.write_project_id
         )
@@ -465,7 +492,9 @@ class BigQueryClient(BigBluePickAPI):
         header_job_config = bigquery.QueryJobConfig(create_session=True)
         job = self.default_client.query(delete_code, job_config=header_job_config)
         job.result()
+        assert job.session_info is not None
         session_id = job.session_info.session_id
+        assert session_id is not None
 
         # Now, clone the source table to the destination.
         clone_code = f"""
@@ -474,7 +503,7 @@ class BigQueryClient(BigBluePickAPI):
         """
         job_config = self.make_job_config(
             script=scripts.SQLScript(
-                table_ref=to_table_ref, code=clone_code, sql_dialect=BigQueryDialect, fields=[]
+                table_ref=to_table_ref, code=clone_code, sql_dialect=BigQueryDialect(), fields=[]
             ),
             connection_properties=[bigquery.ConnectionProperty(key="session_id", value=session_id)],
         )
@@ -514,7 +543,7 @@ class BigQueryClient(BigBluePickAPI):
             script=scripts.SQLScript(
                 table_ref=to_table_ref,
                 code=delete_and_insert_code,
-                sql_dialect=BigQueryDialect,
+                sql_dialect=BigQueryDialect(),
                 fields=[],
             )
         )
@@ -537,7 +566,7 @@ class BigQueryClient(BigBluePickAPI):
             script=scripts.SQLScript(
                 table_ref=table_ref,
                 code=delete_code,
-                sql_dialect=BigQueryDialect,
+                sql_dialect=BigQueryDialect(),
                 fields=[],
             )
         )
@@ -584,6 +613,8 @@ class BigQueryClient(BigBluePickAPI):
         }
 
     def make_job_config(self, script: scripts.SQLScript, **kwargs) -> bigquery.QueryJobConfig:
+        from google.cloud import bigquery
+
         if self.print_mode:
             rich.print(script)
         return bigquery.QueryJobConfig(
@@ -599,20 +630,29 @@ class DuckDBJob:
     query: str
     connection: duckdb.DuckDBPyConnection
     destination: str | None = None
-    exception: str | None = None
+    exception: Exception | None = None
+    _future: concurrent.futures.Future | None = dataclasses.field(default=None, repr=False)
 
     def execute(self):
         self.connection.execute(self.query)
 
+    def execute_async(self):
+        """Start execution in a background thread so is_done can report progress."""
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self._future = executor.submit(self.execute)
+        executor.shutdown(wait=False)
+
     @property
     def is_done(self) -> bool:
-        try:
-            self.execute()
-        except Exception as e:
-            self.exception = repr(e)
-            raise e
-        else:
-            return True
+        if self._future is None:
+            self.execute_async()
+        assert self._future is not None
+        if not self._future.done():
+            return False
+        if exception := self._future.exception():
+            self.exception = Exception(exception)
+            raise exception
+        return True
 
     def stop(self):
         pass  # No support for stopping queries in DuckDB
@@ -664,6 +704,9 @@ class DuckDBClient:
     def create_dataset(self, dataset_name: str):
         self.database_path = self.database_path.with_stem(dataset_name)
 
+    def delete_dataset(self, dataset_name: str):
+        pass  # DuckDB does not support deleting datasets
+
     def create_schema(self, schema_name: str):
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
 
@@ -694,7 +737,7 @@ class DuckDBClient:
             script=scripts.SQLScript(
                 table_ref=sql_script.table_ref,
                 code=materialize_code,
-                sql_dialect=DuckDBDialect,
+                sql_dialect=DuckDBDialect(),
                 fields=[],
             ),
             destination=destination,
@@ -718,7 +761,7 @@ class DuckDBClient:
         """
         job = self.make_job_config(
             script=scripts.SQLScript(
-                table_ref=to_table_ref, code=clone_code, sql_dialect=DuckDBDialect, fields=[]
+                table_ref=to_table_ref, code=clone_code, sql_dialect=DuckDBDialect(), fields=[]
             ),
             destination=destination,
         )
@@ -742,7 +785,7 @@ class DuckDBClient:
             script=scripts.SQLScript(
                 table_ref=to_table_ref,
                 code=delete_and_insert_code,
-                sql_dialect=DuckDBDialect,
+                sql_dialect=DuckDBDialect(),
                 fields=[],
             ),
             destination=to_table_reference,
@@ -757,7 +800,7 @@ class DuckDBClient:
         delete_code = f"DROP TABLE IF EXISTS {table_reference}"
         job = self.make_job_config(
             script=scripts.SQLScript(
-                table_ref=table_ref, code=delete_code, sql_dialect=DuckDBDialect, fields=[]
+                table_ref=table_ref, code=delete_code, sql_dialect=DuckDBDialect(), fields=[]
             )
         )
         job.execute()
@@ -771,6 +814,8 @@ class DuckDBClient:
         """
 
     def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
+        import pandas as pd
+
         tables_result = self.connection.execute(self._tables_query).fetchdf()
 
         table_stats = {}
@@ -828,7 +873,7 @@ class DuckDBClient:
 class MotherDuckClient(DuckDBClient):
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
-        return duckdb
+        return duckdb  # ty: ignore[invalid-return-type]
 
     @property
     def _tables_query(self) -> str:
@@ -840,14 +885,62 @@ class MotherDuckClient(DuckDBClient):
 
 
 class DuckLakeClient(DuckDBClient):
+    def __init__(self, *args, catalog_path: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Store a persistent connection so that DuckLake attach, extensions, etc. persist
+        self._conn = duckdb.connect()
+        self._active_database: str | None = None
+        self._catalog_path: str | None = catalog_path
+
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
-        return duckdb
+        return self._conn
+
+    def set_active_database(self, database_name: str):
+        """Remember the active database so cursors can inherit it."""
+        self._active_database = database_name
+
+    def make_job_config(
+        self, script: scripts.SQLScript, destination: str | None = None
+    ) -> DuckDBJob:
+        if self.print_mode:
+            rich.print(script)
+        # Use a cursor for thread safety — each job gets its own cursor
+        # sharing the parent connection's state (attached DBs, loaded extensions).
+        # Cursors don't inherit the USE context, so we set it explicitly.
+        cursor = self._conn.cursor()
+        if self._active_database:
+            cursor.execute(f"USE {self._active_database};")
+        return DuckDBJob(query=script.query, connection=cursor, destination=destination)
+
+    def list_existing_table_refs(self) -> set[scripts.TableRef]:
+        """List table refs in the DuckLake catalog by querying its metadata database directly.
+
+        This avoids triggering catalog scans on attached databases (e.g. the BigQuery
+        extension) by opening a separate read-only connection to the .ducklake file.
+
+        """
+        if not self._catalog_path:
+            return set()
+        meta_conn = duckdb.connect(self._catalog_path, read_only=True)
+        try:
+            rows = meta_conn.execute(
+                "SELECT s.schema_name, t.table_name "
+                "FROM ducklake_table t "
+                "JOIN ducklake_schema s ON t.schema_id = s.schema_id "
+                "WHERE t.end_snapshot IS NULL AND s.end_snapshot IS NULL"
+            ).fetchall()
+        finally:
+            meta_conn.close()
+        return {DuckDBDialect.parse_table_ref(f"{schema}.{table}") for schema, table in rows}
 
     @property
     def _tables_query(self) -> str:
-        return """
+        db_filter = (
+            f"AND database_name = '{self._active_database}'" if self._active_database else ""
+        )
+        return f"""
         SELECT table_name, schema_name, estimated_size
         FROM duckdb_tables()
-        WHERE NOT STARTS_WITH(table_name, 'ducklake_');
+        WHERE NOT STARTS_WITH(table_name, 'ducklake_') {db_filter};
         """
