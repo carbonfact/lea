@@ -27,7 +27,7 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Check code quality
-        run: uv run pre-commit run --all-files
+        run: uv run prek run --all-files
 
       - name: Smoke test
         run: uv run pytest
