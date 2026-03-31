@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import duckdb
 import requests
+import requests.adapters
 import rich
 
 if TYPE_CHECKING:

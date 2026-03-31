@@ -133,7 +133,7 @@ class SQLScript:
         return self.table_ref.is_test
 
     @functools.cached_property
-    def expressions(self) -> list[sqlglot.Expression]:
+    def expressions(self) -> list[sqlglot.expressions.Expr]:
         return list(
             filter(
                 None,
@@ -265,7 +265,7 @@ class SQLScript:
 Script = SQLScript
 
 
-_CACHE_VERSION = f"1_{sqlglot.__version__}"  # ty: ignore[possibly-missing-attribute]
+_CACHE_VERSION = f"1_{sqlglot.__version__}"
 
 
 def _env_hash() -> str:
@@ -364,13 +364,13 @@ def read_scripts(
     return scripts
 
 
-def find_table_names(expression: sqlglot.Expression) -> set[str]:
+def find_table_names(expression: sqlglot.expressions.Expr) -> set[str]:
     if isinstance(expression, sqlglot.expressions.Set | sqlglot.expressions.Declare):
         return find_table_names_using_find_all(expression)
     return find_table_names_using_find_all_in_scope(expression)
 
 
-def find_table_names_using_find_all(expression: sqlglot.Expression) -> set[str]:
+def find_table_names_using_find_all(expression: sqlglot.expressions.Expr) -> set[str]:
     return {
         sqlglot.expressions.table_name(e)
         for e in expression.walk()
@@ -379,7 +379,7 @@ def find_table_names_using_find_all(expression: sqlglot.Expression) -> set[str]:
 
 
 def find_table_names_using_find_all_in_scope(
-    expression: sqlglot.Expression,
+    expression: sqlglot.expressions.Expr,
 ) -> set[str]:
     return {
         sqlglot.expressions.table_name(table)
