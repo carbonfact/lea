@@ -172,6 +172,16 @@ LEA_DUCKLAKE_GCS_KEY_ID=GOOG1E...
 LEA_DUCKLAKE_GCS_SECRET=...
 ```
 
+**R2**
+```sh
+LEA_WAREHOUSE=ducklake
+LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
+LEA_DUCKLAKE_DATA_PATH=r2://ducklake/data
+LEA_DUCKLAKE_R2_KEY_ID=key_id
+LEA_DUCKLAKE_R2_SECRET=secret_key
+LEA_DUCKLAKE_R2_ACCOUNT_ID=my_account_id
+```
+
 ## Usage
 
 ### Selecting scripts
