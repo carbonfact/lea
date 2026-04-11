@@ -260,6 +260,12 @@ class Conductor:
                     )
                     database_client.connection.execute(f"USE {write_dataset};")
                 elif self.warehouse == databases.Warehouse.DUCKLAKE:
+                    if r2_key_id := os.environ.get("LEA_DUCKLAKE_R2_KEY_ID"):
+                        r2_secret = os.environ["LEA_DUCKLAKE_R2_SECRET"]
+                        r2_account_id = os.environ["LEA_DUCKLAKE_R2_ACCOUNT_ID"]
+                        database_client.connection.execute(
+                            f"CREATE SECRET (TYPE r2, KEY_ID '{r2_key_id}', SECRET '{r2_secret}', ACCOUNT_ID '{r2_account_id}');"
+                        )
                     if gcs_key_id := os.environ.get("LEA_DUCKLAKE_GCS_KEY_ID"):
                         gcs_secret = os.environ["LEA_DUCKLAKE_GCS_SECRET"]
                         database_client.connection.execute(
