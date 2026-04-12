@@ -32,6 +32,7 @@ class Warehouse(enum.Enum):
     DUCKDB = "duckdb"
     MOTHERDUCK = "motherduck"
     DUCKLAKE = "ducklake"
+    ICEBERG = "iceberg"
 
     @property
     def display_name(self) -> str:
@@ -40,6 +41,7 @@ class Warehouse(enum.Enum):
             Warehouse.DUCKDB: "DuckDB",
             Warehouse.MOTHERDUCK: "MotherDuck",
             Warehouse.DUCKLAKE: "DuckLake",
+            Warehouse.ICEBERG: "Iceberg",
         }[self]
 
     @property
@@ -50,6 +52,7 @@ class Warehouse(enum.Enum):
             Warehouse.DUCKDB: "green",
             Warehouse.MOTHERDUCK: "magenta",
             Warehouse.DUCKLAKE: "dark_orange",
+            Warehouse.ICEBERG: "cyan",
         }[self]
         return f"[{color}]{self.display_name}[/{color}]"
 
@@ -944,4 +947,218 @@ class DuckLakeClient(DuckDBClient):
         SELECT table_name, schema_name, estimated_size
         FROM duckdb_tables()
         WHERE NOT STARTS_WITH(table_name, 'ducklake_') {db_filter};
+        """
+
+
+class IcebergClient(DuckDBClient):
+    CATALOG_ALIAS = "iceberg_catalog"
+
+    def __init__(
+        self,
+        *args,
+        warehouse: str,
+        endpoint: str,
+        token: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        oauth2_server_uri: str | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._conn = duckdb.connect()
+        self._active_database: str | None = None
+        self._warehouse = warehouse
+        self._endpoint = endpoint
+
+        self._conn.execute("INSTALL iceberg; LOAD iceberg;")
+
+        if token:
+            self._conn.execute(f"CREATE SECRET iceberg_secret (TYPE iceberg, TOKEN '{token}');")
+        elif client_id and client_secret:
+            secret_sql = (
+                f"CREATE SECRET iceberg_secret (TYPE iceberg, "
+                f"CLIENT_ID '{client_id}', CLIENT_SECRET '{client_secret}'"
+            )
+            if oauth2_server_uri:
+                secret_sql += f", OAUTH2_SERVER_URI '{oauth2_server_uri}'"
+            secret_sql += ");"
+            self._conn.execute(secret_sql)
+        else:
+            self._conn.execute(
+                "CREATE SECRET iceberg_secret (TYPE iceberg, AUTHORIZATION_TYPE 'none');"
+            )
+
+        self._conn.execute(
+            f"ATTACH '{warehouse}' AS {self.CATALOG_ALIAS} (TYPE iceberg, ENDPOINT '{endpoint}');"
+        )
+
+    @property
+    def connection(self) -> duckdb.DuckDBPyConnection:
+        return self._conn
+
+    def set_active_database(self, database_name: str):
+        self._active_database = database_name
+
+    def create_dataset(self, dataset_name: str):
+        pass
+
+    def _format_fqt(self, table_ref: scripts.TableRef) -> str:
+        return f"{self.CATALOG_ALIAS}.{DuckDBDialect.convert_table_ref_to_duckdb_table_reference(table_ref)}"
+
+    def create_schema(self, schema_name: str):
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {self.CATALOG_ALIAS}.{schema_name}")
+
+    def _drop_table_if_exists(self, table_ref: scripts.TableRef):
+        fqt = self._format_fqt(table_ref)
+        schema = table_ref.schema[0] if table_ref.schema else "main"
+        cursor = self._conn.cursor()
+        cursor.execute(f"USE {self.CATALOG_ALIAS}.{schema};")
+        cursor.execute(f"DROP TABLE IF EXISTS {fqt}")
+
+    def materialize_sql_script(self, sql_script: scripts.SQLScript) -> DuckDBJob:
+        if sql_script.header_statements:
+            raise ValueError("Header statements are not (yet) supported for Iceberg")
+
+        destination = self._format_fqt(sql_script.table_ref)
+        self._drop_table_if_exists(sql_script.table_ref)
+
+        materialize_code = f"""
+        CREATE TABLE {destination} AS (
+        WITH logic_table AS ({sql_script.query}),
+        materialized_infos AS (SELECT CURRENT_LOCALTIMESTAMP() AS _materialized_timestamp)
+        SELECT * FROM logic_table, materialized_infos
+        );
+        """
+        return self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=sql_script.table_ref,
+                code=materialize_code,
+                sql_dialect=DuckDBDialect(),
+                fields=[],
+            ),
+            destination=destination,
+        )
+
+    def clone_table(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
+    ) -> DuckDBJob:
+        destination = self._format_fqt(to_table_ref)
+        source = self._format_fqt(from_table_ref)
+        self._drop_table_if_exists(to_table_ref)
+
+        clone_code = f"""
+        CREATE TABLE {destination} AS SELECT * FROM {source};
+        """
+        return self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=to_table_ref, code=clone_code, sql_dialect=DuckDBDialect(), fields=[]
+            ),
+            destination=destination,
+        )
+
+    def delete_and_insert(
+        self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef, on: str
+    ) -> DuckDBJob:
+        to_ref = self._format_fqt(to_table_ref)
+        from_ref = self._format_fqt(from_table_ref)
+        delete_and_insert_code = f"""
+        DELETE FROM {to_ref} WHERE {on} IN (SELECT DISTINCT {on} FROM {from_ref});
+        INSERT INTO {to_ref} SELECT * FROM {from_ref};
+        """
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=to_table_ref,
+                code=delete_and_insert_code,
+                sql_dialect=DuckDBDialect(),
+                fields=[],
+            ),
+            destination=to_ref,
+        )
+        job.execute()
+        return job
+
+    def delete_table(self, table_ref: scripts.TableRef) -> DuckDBJob:
+        self._drop_table_if_exists(table_ref)
+        job = self.make_job_config(
+            script=scripts.SQLScript(
+                table_ref=table_ref, code="SELECT 1", sql_dialect=DuckDBDialect(), fields=[]
+            )
+        )
+        return job
+
+    def make_job_config(
+        self, script: scripts.SQLScript, destination: str | None = None
+    ) -> DuckDBJob:
+        if self.print_mode:
+            rich.print(script)
+        cursor = self._conn.cursor()
+        schema = script.table_ref.schema[0] if script.table_ref.schema else "main"
+        cursor.execute(f"USE {self.CATALOG_ALIAS}.{schema};")
+        return DuckDBJob(query=script.query, connection=cursor, destination=destination)
+
+    def list_table_stats(self, dataset_name: str) -> dict[TableRef, TableStats]:
+        import pandas as pd
+
+        from lea.dialects import DuckDBDialect
+
+        cursor = self._conn.cursor()
+        tables_result = cursor.execute(self._tables_query).fetchdf()
+        table_stats = {}
+        for _, row in tables_result.iterrows():
+            table_name = row["table_name"]
+            table_schema = row["schema_name"]
+            n_rows = int(row["estimated_size"]) if not pd.isna(row["estimated_size"]) else None
+            fqt = f"{self.CATALOG_ALIAS}.{table_schema}.{table_name}"
+            stats_cursor = self._conn.cursor()
+            result = (
+                stats_cursor.execute(
+                    f"SELECT MAX(_materialized_timestamp) AS last_modified FROM {fqt}"
+                )
+                .fetchdf()
+                .dropna()
+            )
+            if result.empty:
+                updated_at = dt.datetime.now(dt.UTC)
+            else:
+                updated_at = dt.datetime.fromtimestamp(
+                    result.iloc[0]["last_modified"].to_pydatetime().timestamp(),
+                    tz=dt.UTC,
+                )
+            table_stats[
+                DuckDBDialect.parse_table_ref(f"{table_schema}.{table_name}").replace_dataset(
+                    dataset_name
+                )
+            ] = TableStats(
+                n_rows=n_rows,
+                n_bytes=None,
+                updated_at=updated_at,
+            )
+        return table_stats
+
+    def list_table_fields(self, dataset_name: str) -> dict[scripts.TableRef, list[scripts.Field]]:
+        from lea.dialects import DuckDBDialect
+
+        cursor = self._conn.cursor()
+        query = (
+            "SELECT table_schema, table_name, column_name "
+            "FROM information_schema.columns "
+            f"WHERE table_catalog = '{self.CATALOG_ALIAS}'"
+        )
+        result = cursor.execute(query).fetchdf()
+        table_fields = {}
+        for (table_schema, table_name), rows in result.groupby(["table_schema", "table_name"]):
+            table_ref = DuckDBDialect.parse_table_ref(
+                f"{table_schema}.{table_name}"
+            ).replace_dataset(dataset_name)
+            table_fields[table_ref] = [
+                scripts.Field(name=row["column_name"]) for _, row in rows.iterrows()
+            ]
+        return table_fields
+
+    @property
+    def _tables_query(self) -> str:
+        return f"""
+        SELECT table_name, schema_name, estimated_size
+        FROM duckdb_tables()
+        WHERE database_name = '{self.CATALOG_ALIAS}';
         """
