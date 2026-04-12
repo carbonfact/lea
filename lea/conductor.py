@@ -45,6 +45,8 @@ class Conductor:
                 dataset_name = pathlib.Path(os.environ["LEA_MOTHERDUCK_DATABASE"]).stem
             elif self.warehouse == databases.Warehouse.DUCKLAKE:
                 dataset_name = pathlib.Path(os.environ["LEA_DUCKLAKE_DATA_PATH"]).stem
+            elif self.warehouse == databases.Warehouse.ICEBERG:
+                dataset_name = os.environ["LEA_ICEBERG_WAREHOUSE"]
             else:
                 raise ValueError(f"Unsupported warehouse {self.warehouse!r}")
         self.dataset_name = dataset_name
@@ -56,6 +58,7 @@ class Conductor:
                 databases.Warehouse.DUCKDB,
                 databases.Warehouse.MOTHERDUCK,
                 databases.Warehouse.DUCKLAKE,
+                databases.Warehouse.ICEBERG,
             }:
                 project_name = dataset_name
             else:
@@ -77,6 +80,7 @@ class Conductor:
             databases.Warehouse.DUCKDB,
             databases.Warehouse.MOTHERDUCK,
             databases.Warehouse.DUCKLAKE,
+            databases.Warehouse.ICEBERG,
         }:
             self.dag = DAGOfScripts.from_directory(
                 scripts_dir=self.scripts_dir,
@@ -276,6 +280,8 @@ class Conductor:
                         USE my_ducklake;
                         """
                     )
+                elif self.warehouse == databases.Warehouse.ICEBERG:
+                    database_client.set_active_database("iceberg_catalog")
 
                 # When using DuckDB, we need to create schema for the tables
                 for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
@@ -321,6 +327,7 @@ class Conductor:
             native_dialect=native_dialect,
             native_dataset=native_dataset,
             quack_extension_setup_stmts=session_quack_setup_stmts,
+            max_workers=1 if self.warehouse == databases.Warehouse.ICEBERG else None,
         )
 
         return session
@@ -375,6 +382,7 @@ class Conductor:
         | databases.DuckDBClient
         | databases.MotherDuckClient
         | databases.DuckLakeClient
+        | databases.IcebergClient
     ):
         if self.warehouse == databases.Warehouse.BIGQUERY:
             # Do imports here to avoid loading them all the time
@@ -447,6 +455,19 @@ class Conductor:
         elif self.warehouse == databases.Warehouse.DUCKLAKE:
             return databases.DuckLakeClient(
                 database_path=pathlib.Path(os.environ["LEA_DUCKLAKE_DATA_PATH"]),
+                dry_run=dry_run,
+                print_mode=print_mode,
+            )
+
+        elif self.warehouse == databases.Warehouse.ICEBERG:
+            return databases.IcebergClient(
+                database_path=pathlib.Path(os.environ["LEA_ICEBERG_WAREHOUSE"]),
+                warehouse=os.environ["LEA_ICEBERG_WAREHOUSE"],
+                endpoint=os.environ["LEA_ICEBERG_ENDPOINT"],
+                token=os.environ.get("LEA_ICEBERG_TOKEN"),
+                client_id=os.environ.get("LEA_ICEBERG_CLIENT_ID"),
+                client_secret=os.environ.get("LEA_ICEBERG_CLIENT_SECRET"),
+                oauth2_server_uri=os.environ.get("LEA_ICEBERG_OAUTH2_SERVER_URI"),
                 dry_run=dry_run,
                 print_mode=print_mode,
             )
@@ -846,6 +867,11 @@ def promote_audit_tables(session: Session):
             lea.log.error(f"Promotion failed\n{exception}")
 
 
+def _make_delete_executor(session: Session) -> concurrent.futures.ThreadPoolExecutor:
+    max_workers = 1 if session.warehouse == databases.Warehouse.ICEBERG else None
+    return concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+
+
 def delete_audit_tables(session: Session):
     # Depending on when delete_audit_tables is called, there might be new audit tables that have
     # been created. We need to delete them too. We do this by adding the write context to the
@@ -876,7 +902,7 @@ def delete_audit_tables(session: Session):
             delete_table_refs(
                 table_refs=native_audit_refs,
                 database_client=session.database_client,
-                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                executor=_make_delete_executor(session),
                 verbose=False,
             )
         if duck_audit_refs and session.quack_database_client is not None:
@@ -886,7 +912,7 @@ def delete_audit_tables(session: Session):
             delete_table_refs(
                 table_refs=duck_audit_refs,
                 database_client=session.quack_database_client,
-                executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+                executor=_make_delete_executor(session),
                 verbose=False,
             )
     elif table_refs_to_delete and session.database_client is not None:
@@ -897,7 +923,7 @@ def delete_audit_tables(session: Session):
         delete_table_refs(
             table_refs=table_refs_to_delete,
             database_client=session.database_client,
-            executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+            executor=_make_delete_executor(session),
             verbose=False,
         )
     session.existing_audit_tables = {}
@@ -913,7 +939,7 @@ def delete_orphan_tables(session: Session):
         delete_table_refs(
             table_refs=table_refs_to_delete,
             database_client=session.database_client,
-            executor=concurrent.futures.ThreadPoolExecutor(max_workers=None),
+            executor=_make_delete_executor(session),
             verbose=True,
         )
         session.existing_audit_tables = {}

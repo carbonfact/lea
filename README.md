@@ -66,6 +66,7 @@ lea parses the SQL, sees that `core.revenue` depends on `staging.customers` and 
   - [DuckDB](#duckdb)
   - [MotherDuck](#motherduck)
   - [DuckLake](#ducklake)
+- [Iceberg](#iceberg)
 - [Usage](#usage)
   - [Selecting scripts](#selecting-scripts)
   - [Development vs. production](#development-vs-production)
@@ -170,6 +171,19 @@ LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
 LEA_DUCKLAKE_DATA_PATH=gcs://my-bucket/data
 LEA_DUCKLAKE_GCS_KEY_ID=GOOG1E...
 LEA_DUCKLAKE_GCS_SECRET=...
+```
+
+### Iceberg
+
+lea supports Apache Iceberg tables via [DuckDB's iceberg extension](https://duckdb.org/docs/stable/core_extensions/iceberg/overview) and a REST catalog.
+
+**Cloudflare R2 Catalog:**
+
+```sh
+LEA_WAREHOUSE=iceberg
+LEA_ICEBERG_WAREHOUSE=<warehouse>
+LEA_ICEBERG_ENDPOINT=<catalog-uri>
+LEA_ICEBERG_TOKEN=<r2_token>
 ```
 
 ## Usage

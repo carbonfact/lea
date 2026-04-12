@@ -44,6 +44,7 @@ class Session:
         native_dialect: SQLDialect | None = None,
         native_dataset: str | None = None,
         quack_extension_setup_stmts: list[str] | None = None,
+        max_workers: int | None = None,
     ):
         self.database_client = database_client
         self.base_dataset = base_dataset
@@ -69,7 +70,7 @@ class Session:
         self.jobs: list[Job] = []
         self.started_at = dt.datetime.now()
         self.ended_at: dt.datetime | None = None
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=None)
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         self.run_script_futures: dict = {}
         self.run_script_futures_complete: dict = {}
         self.promote_audit_tables_futures: dict = {}
@@ -243,7 +244,7 @@ class Session:
 
     @property
     def warehouse(self) -> Warehouse | None:
-        from lea.databases import BigQueryClient, MotherDuckClient
+        from lea.databases import BigQueryClient, IcebergClient, MotherDuckClient
 
         if self.database_client is None:
             return None
@@ -251,6 +252,8 @@ class Session:
             return Warehouse.BIGQUERY
         if isinstance(self.database_client, MotherDuckClient):
             return Warehouse.MOTHERDUCK
+        if isinstance(self.database_client, IcebergClient):
+            return Warehouse.ICEBERG
         if isinstance(self.database_client, DuckLakeClient):
             return Warehouse.DUCKLAKE
         return Warehouse.DUCKDB
