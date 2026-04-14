@@ -301,14 +301,14 @@ lea automatically pulls the necessary upstream tables from your warehouse into a
 
 You'll need to configure a DuckLake instance for storage, in addition to your regular warehouse configuration.
 
-**Local storage:**
+**Local storage**
 
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=/path/to/quack/data
 ```
 
-**Cloud storage:**
+**Cloud storage**
 
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
