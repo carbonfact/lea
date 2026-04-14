@@ -9,3 +9,5 @@ dist/
 *.parquet
 *.ducklake
 ui
+examples/r2-ducklake/jaffle_shop
+.lea_cache
