@@ -1,6 +1,6 @@
 [project]
 name = "lea-cli"
-version = "0.17.0"
+version = "0.18.0"
 description = "A minimalist alternative to dbt"
 authors = [{name = "Max Halford", email = "maxhalford25@gmail.com"}]
 requires-python = ">=3.11,<4"
@@ -14,7 +14,7 @@ dependencies = [
   "pandas>=2.1.3,<4",
   "python-dotenv>=1.0.0,<2",
   "rich>=13.5.3,<16",
-  "sqlglot>=27.8",
+  "sqlglot>=30.2",
   "rsa>=4.7,<5",
   "google-cloud-bigquery-storage>=2.27.0,<3",
   "requests>=2.32.3,<3",

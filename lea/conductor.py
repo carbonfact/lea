@@ -253,6 +253,8 @@ class Conductor:
                         f"CREATE DATABASE IF NOT EXISTS {write_dataset};"
                     )
                     database_client.connection.execute(f"USE {write_dataset};")
+                    if isinstance(database_client, databases.MotherDuckClient):
+                        database_client.set_active_database(write_dataset)
                 elif self.warehouse == databases.Warehouse.DUCKLAKE:
                     if secret := os.environ.get("LEA_DUCKLAKE_SECRET"):
                         database_client.connection.execute(f"CREATE SECRET ({secret});")
