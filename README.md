@@ -143,9 +143,9 @@ LEA_DUCKDB_EXTENSIONS=parquet,httpfs
 
 ### DuckLake
 
-DuckLake needs a database to [manage metadata](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database), which is what `LEA_DUCKLAKE_CATALOG_DATABASE` is for.
+DuckLake needs a database to [manage metadata](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database), which is what `LEA_DUCKLAKE_CATALOG_DATABASE` is for. By default this is a local DuckDB file, but it can also be a remote PostgreSQL or MySQL database for multi-user setups.
 
-**Local storage:**
+**Local catalog, local storage**
 
 ```sh
 LEA_WAREHOUSE=ducklake
@@ -153,23 +153,32 @@ LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
 LEA_DUCKLAKE_DATA_PATH=/path/to/data
 ```
 
-**S3:**
+**Remote catalog (e.g. PostgreSQL)**
 
 ```sh
 LEA_WAREHOUSE=ducklake
-LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
+LEA_DUCKLAKE_CATALOG_DATABASE="postgres:dbname=ducklake_catalog host=myhost.com user=myuser password=mypass"
 LEA_DUCKLAKE_DATA_PATH=s3://my-bucket/data
-LEA_DUCKLAKE_S3_ENDPOINT=storage.googleapis.com
+LEA_DUCKLAKE_SECRET="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key'"
+LEA_DUCKDB_EXTENSIONS=postgres
 ```
 
-**GCS** (requires [HMAC keys](https://cloud.google.com/storage/docs/authentication/hmackeys)):
+**Cloud storage**
+
+For cloud storage, set `LEA_DUCKLAKE_SECRET` to the body of a DuckDB [`CREATE SECRET`](https://duckdb.org/docs/current/configuration/secrets_manager) statement. This works with any secret type DuckDB supports (S3, GCS, R2, Azure, etc.).
 
 ```sh
-LEA_WAREHOUSE=ducklake
-LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
+# R2
+LEA_DUCKLAKE_DATA_PATH=r2://my-bucket/data
+LEA_DUCKLAKE_SECRET="TYPE r2, KEY_ID 'key_id', SECRET 'secret_key', ACCOUNT_ID 'my_account_id'"
+
+# GCS (requires HMAC keys)
 LEA_DUCKLAKE_DATA_PATH=gcs://my-bucket/data
-LEA_DUCKLAKE_GCS_KEY_ID=GOOG1E...
-LEA_DUCKLAKE_GCS_SECRET=...
+LEA_DUCKLAKE_SECRET="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
+
+# S3
+LEA_DUCKLAKE_DATA_PATH=s3://my-bucket/data
+LEA_DUCKLAKE_SECRET="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key', ENDPOINT 'storage.googleapis.com'"
 ```
 
 ## Usage
@@ -292,28 +301,19 @@ lea automatically pulls the necessary upstream tables from your warehouse into a
 
 You'll need to configure a DuckLake instance for storage, in addition to your regular warehouse configuration.
 
-**Local storage:**
+**Local storage**
 
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=/path/to/quack/data
 ```
 
-**S3:**
-
-```sh
-LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
-LEA_QUACK_DUCKLAKE_DATA_PATH=s3://my-bucket/quack/data
-LEA_QUACK_DUCKLAKE_S3_ENDPOINT=storage.googleapis.com
-```
-
-**GCS** (requires [HMAC keys](https://cloud.google.com/storage/docs/authentication/hmackeys)):
+**Cloud storage**
 
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=gcs://my-bucket/quack/data
-LEA_QUACK_DUCKLAKE_GCS_KEY_ID=GOOG1E...
-LEA_QUACK_DUCKLAKE_GCS_SECRET=...
+LEA_QUACK_DUCKLAKE_SECRET="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
 ```
 
 You can push the DuckLake tables back to your warehouse with `--quack-push`:

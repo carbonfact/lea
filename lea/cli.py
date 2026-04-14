@@ -100,14 +100,15 @@ def quack_ui(env_file):
             "LEA_QUACK_DUCKLAKE_CATALOG_DATABASE and LEA_QUACK_DUCKLAKE_DATA_PATH must be set"
         )
 
+    secret_sql = ""
+    if secret := os.environ.get("LEA_QUACK_DUCKLAKE_SECRET"):
+        secret_sql = f"CREATE SECRET ({secret}); "
     setup_sql = (
+        f"{secret_sql}"
         "INSTALL ducklake; LOAD ducklake; "
         "INSTALL ui FROM core_nightly; LOAD ui; "
         f"ATTACH 'ducklake:{catalog}' AS quack_ducklake (DATA_PATH '{data_path}', AUTOMATIC_MIGRATION TRUE); "
         "USE quack_ducklake;"
     )
-    s3_endpoint = os.environ.get("LEA_QUACK_DUCKLAKE_S3_ENDPOINT")
-    if s3_endpoint:
-        setup_sql = f"SET s3_endpoint='{s3_endpoint}'; " + setup_sql
 
     subprocess.run(["duckdb", "-cmd", setup_sql, "-ui"])
