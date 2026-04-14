@@ -386,10 +386,12 @@ LEA_BQ_BIG_BLUE_PICK_API_REVERVATION_PROJECT_ID=reservation-compute-project-id
 ## Examples
 
 - [Jaffle shop](examples/jaffle_shop/)
-- [Incremental](examples/incremental)
-- [School](examples/school/)
+- [R2 + DuckLake](examples/r2-ducklake/)
+- [MotherDuck](examples/motherduck/)
+- [Quack mode](examples/quack/)
+- [Incremental](examples/incremental/)
 - [Compare development to production](examples/diff/)
-- [Using MotherDuck](examples/motherduck/)
+- [School](examples/school/)
 
 ## Contributing
 
