@@ -157,9 +157,9 @@ LEA_DUCKLAKE_DATA_PATH=/path/to/data
 
 ```sh
 LEA_WAREHOUSE=ducklake
-LEA_DUCKLAKE_CATALOG_DATABASE=postgres:dbname=ducklake_catalog host=myhost.com user=myuser password=mypass
+LEA_DUCKLAKE_CATALOG_DATABASE="postgres:dbname=ducklake_catalog host=myhost.com user=myuser password=mypass"
 LEA_DUCKLAKE_DATA_PATH=s3://my-bucket/data
-LEA_DUCKLAKE_SECRET=TYPE s3, KEY_ID 'key_id', SECRET 'secret_key'
+LEA_DUCKLAKE_SECRET="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key'"
 LEA_DUCKDB_EXTENSIONS=postgres
 ```
 
@@ -170,15 +170,15 @@ For cloud storage, set `LEA_DUCKLAKE_SECRET` to the body of a DuckDB [`CREATE SE
 ```sh
 # R2
 LEA_DUCKLAKE_DATA_PATH=r2://my-bucket/data
-LEA_DUCKLAKE_SECRET=TYPE r2, KEY_ID 'key_id', SECRET 'secret_key', ACCOUNT_ID 'my_account_id'
+LEA_DUCKLAKE_SECRET="TYPE r2, KEY_ID 'key_id', SECRET 'secret_key', ACCOUNT_ID 'my_account_id'"
 
 # GCS (requires HMAC keys)
 LEA_DUCKLAKE_DATA_PATH=gcs://my-bucket/data
-LEA_DUCKLAKE_SECRET=TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'
+LEA_DUCKLAKE_SECRET="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
 
 # S3
 LEA_DUCKLAKE_DATA_PATH=s3://my-bucket/data
-LEA_DUCKLAKE_SECRET=TYPE s3, KEY_ID 'key_id', SECRET 'secret_key', ENDPOINT 'storage.googleapis.com'
+LEA_DUCKLAKE_SECRET="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key', ENDPOINT 'storage.googleapis.com'"
 ```
 
 ## Usage
@@ -313,7 +313,7 @@ LEA_QUACK_DUCKLAKE_DATA_PATH=/path/to/quack/data
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=gcs://my-bucket/quack/data
-LEA_QUACK_DUCKLAKE_SECRET=TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'
+LEA_QUACK_DUCKLAKE_SECRET="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
 ```
 
 You can push the DuckLake tables back to your warehouse with `--quack-push`:

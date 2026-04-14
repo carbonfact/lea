@@ -82,5 +82,5 @@ By default, DuckLake stores data locally in `./quack_data/` as Parquet files. Yo
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=s3://my-bucket/quack-data/
-LEA_QUACK_DUCKLAKE_SECRET=TYPE s3, KEY_ID 'key_id', SECRET 'secret_key', ENDPOINT 'storage.googleapis.com'
+LEA_QUACK_DUCKLAKE_SECRET="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key', ENDPOINT 'storage.googleapis.com'"
 ```
