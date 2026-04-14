@@ -266,12 +266,12 @@ class Conductor:
                         database_client.connection.execute(
                             f"CREATE SECRET (TYPE r2, KEY_ID '{r2_key_id}', SECRET '{r2_secret}', ACCOUNT_ID '{r2_account_id}');"
                         )
-                    if gcs_key_id := os.environ.get("LEA_DUCKLAKE_GCS_KEY_ID"):
+                    elif gcs_key_id := os.environ.get("LEA_DUCKLAKE_GCS_KEY_ID"):
                         gcs_secret = os.environ["LEA_DUCKLAKE_GCS_SECRET"]
                         database_client.connection.execute(
                             f"CREATE SECRET (TYPE gcs, KEY_ID '{gcs_key_id}', SECRET '{gcs_secret}');"
                         )
-                    if s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
+                    elif s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
                         lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
                         database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
                     database_client.connection.execute(
