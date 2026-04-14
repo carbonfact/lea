@@ -872,9 +872,27 @@ class DuckDBClient:
 
 
 class MotherDuckClient(DuckDBClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._conn = duckdb.connect()
+        self._active_database: str | None = None
+
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
-        return duckdb  # ty: ignore[invalid-return-type]
+        return self._conn
+
+    def set_active_database(self, database_name: str):
+        self._active_database = database_name
+
+    def make_job_config(
+        self, script: scripts.SQLScript, destination: str | None = None
+    ) -> DuckDBJob:
+        if self.print_mode:
+            rich.print(script)
+        cursor = self._conn.cursor()
+        if self._active_database:
+            cursor.execute(f"USE {self._active_database};")
+        return DuckDBJob(query=script.query, connection=cursor, destination=destination)
 
     @property
     def _tables_query(self) -> str:

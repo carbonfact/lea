@@ -1,28 +1,22 @@
-# Using MotherDuck
+# MotherDuck
 
-lea works with DuckDB, and thus can be used with [MotherDuck](https://motherduck.com/) too.
+This example runs the [jaffle shop](../jaffle_shop/) pipeline on [MotherDuck](https://motherduck.com/). Local CSV files are read via hybrid execution and materialized as tables in MotherDuck.
 
-Here is an example `.env` file:
+Create a token at [app.motherduck.com/settings/tokens](https://app.motherduck.com/settings/tokens).
 
 ```sh
 echo "
 LEA_USERNAME=max
-LEA_WAREHOUSE=duckdb
-LEA_DUCKDB_PATH=md:jaffle_shop
-MOTHERDUCK_TOKEN=<provided by MotherDuck>
+LEA_WAREHOUSE=motherduck
+LEA_MOTHERDUCK_DATABASE=jaffle_shop
+MOTHERDUCK_TOKEN=<your token>
 " > .env
 ```
 
-The token can be obtained by logging into MotherDuck from the terminal, as documented [here](https://motherduck.com/docs/getting-started/connect-query-from-python/installation-authentication#authenticating-to-motherduck).
+```sh
+ln -s ../jaffle_shop/jaffle_shop jaffle_shop
+```
 
 ```sh
-lea run ../jaffle_shop/views
+lea run --scripts ../jaffle_shop/scripts
 ```
-
-```
-Created schema analytics
-Created schema staging
-Created schema core
-```
-
-You should see the views in your MotherDuck UI.
