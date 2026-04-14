@@ -276,6 +276,7 @@ class Conductor:
                         USE my_ducklake;
                         """
                     )
+                    database_client.set_active_database("my_ducklake")
 
                 # When using DuckDB, we need to create schema for the tables
                 for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
