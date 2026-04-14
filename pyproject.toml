@@ -27,7 +27,6 @@ lea = "lea.cli:app"
 
 [dependency-groups]
 dev = [
-  "ipykernel>=6.21.2,<8",
   "prek",
   "pytest>=7.4.2,<10",
   "ruff>=0.1,<0.16",
