@@ -25,7 +25,7 @@ ln -s ../jaffle_shop/jaffle_shop jaffle_shop
 And then run the scripts:
 
 ```sh
-lea run --scripts jaffle_shop/scripts
+lea run --scripts ../jaffle_shop/scripts
 ```
 
 This will create the `staging`, `core`, and `analytics` tables as Parquet files in your R2 bucket, with the metadata tracked locally in `metadata.ducklake`.
