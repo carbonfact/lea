@@ -15,10 +15,8 @@ MOTHERDUCK_TOKEN=<provided by MotherDuck>
 
 The token can be obtained by logging into MotherDuck from the terminal, as documented [here](https://motherduck.com/docs/getting-started/connect-query-from-python/installation-authentication#authenticating-to-motherduck).
 
-Then, you can run the usual commands. For the sake of example, let's re-use the jaffle shop views:
-
 ```sh
-lea prepare ../jaffle_shop/views
+lea run ../jaffle_shop/views
 ```
 
 ```
@@ -27,8 +25,4 @@ Created schema staging
 Created schema core
 ```
 
-```sh
-lea run ../jaffle_shop/views
-```
-
-You should see the views in your MotherDuck UI:
+You should see the views in your MotherDuck UI.

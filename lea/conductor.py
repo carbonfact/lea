@@ -197,14 +197,8 @@ class Conductor:
 
             # Set up DuckLake
             conn = quack_database_client.connection
-            if gcs_key_id := os.environ.get("LEA_QUACK_DUCKLAKE_GCS_KEY_ID"):
-                gcs_secret = os.environ["LEA_QUACK_DUCKLAKE_GCS_SECRET"]
-                conn.execute(
-                    f"CREATE SECRET (TYPE gcs, KEY_ID '{gcs_key_id}', SECRET '{gcs_secret}');"
-                )
-            if s3_endpoint := os.environ.get("LEA_QUACK_DUCKLAKE_S3_ENDPOINT"):
-                lea.log.info(f"🦆 Setting S3 endpoint to {s3_endpoint!r}")
-                conn.execute(f"SET s3_endpoint='{s3_endpoint}'")
+            if secret := os.environ.get("LEA_QUACK_DUCKLAKE_SECRET"):
+                conn.execute(f"CREATE SECRET ({secret});")
 
             conn.execute(
                 f"""
@@ -260,20 +254,8 @@ class Conductor:
                     )
                     database_client.connection.execute(f"USE {write_dataset};")
                 elif self.warehouse == databases.Warehouse.DUCKLAKE:
-                    if r2_key_id := os.environ.get("LEA_DUCKLAKE_R2_KEY_ID"):
-                        r2_secret = os.environ["LEA_DUCKLAKE_R2_SECRET"]
-                        r2_account_id = os.environ["LEA_DUCKLAKE_R2_ACCOUNT_ID"]
-                        database_client.connection.execute(
-                            f"CREATE SECRET (TYPE r2, KEY_ID '{r2_key_id}', SECRET '{r2_secret}', ACCOUNT_ID '{r2_account_id}');"
-                        )
-                    elif gcs_key_id := os.environ.get("LEA_DUCKLAKE_GCS_KEY_ID"):
-                        gcs_secret = os.environ["LEA_DUCKLAKE_GCS_SECRET"]
-                        database_client.connection.execute(
-                            f"CREATE SECRET (TYPE gcs, KEY_ID '{gcs_key_id}', SECRET '{gcs_secret}');"
-                        )
-                    elif s3_endpoint := os.environ.get("LEA_DUCKLAKE_S3_ENDPOINT"):
-                        lea.log.info(f"🔩 Setting S3 endpoint to {s3_endpoint!r}")
-                        database_client.connection.execute(f"SET s3_endpoint='{s3_endpoint}'")
+                    if secret := os.environ.get("LEA_DUCKLAKE_SECRET"):
+                        database_client.connection.execute(f"CREATE SECRET ({secret});")
                     database_client.connection.execute(
                         f"""
                         ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
