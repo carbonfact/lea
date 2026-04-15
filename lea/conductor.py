@@ -384,16 +384,22 @@ class Conductor:
                 is not None
                 else None
             )
+            compute_project_id = os.environ.get(
+                "LEA_BQ_COMPUTE_PROJECT_ID",
+                credentials.project_id if credentials is not None else None,
+            )
+            if compute_project_id is None:
+                raise ValueError(
+                    "LEA_BQ_COMPUTE_PROJECT_ID must be set (or a service account credential "
+                    "must provide a project_id)"
+                )
             client = databases.BigQueryClient(
                 credentials=credentials,
                 location=os.environ["LEA_BQ_LOCATION"],
                 write_project_id=os.environ["LEA_BQ_PROJECT_ID"],
-                compute_project_id=os.environ.get(
-                    "LEA_BQ_COMPUTE_PROJECT_ID",
-                    credentials.project_id if credentials is not None else None,
-                ),
-                script_specific_compute_project_ids=parse_bigquery_script_specific_compute_project_ids(
-                    env_var=os.environ.get("LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS"),
+                compute_project_id=compute_project_id,
+                script_specific_reservations=parse_bigquery_script_specific_reservations(
+                    env_var=os.environ.get("LEA_BQ_SCRIPT_SPECIFIC_RESERVATIONS"),
                     dataset_name=(
                         self.dataset_name if production else self.dataset_name_with_username
                     ),
@@ -411,11 +417,8 @@ class Conductor:
                 ],
                 big_blue_pick_api_url=os.environ.get("LEA_BQ_BIG_BLUE_PICK_API_URL"),
                 big_blue_pick_api_key=os.environ.get("LEA_BQ_BIG_BLUE_PICK_API_KEY"),
-                big_blue_pick_api_on_demand_project_id=os.environ.get(
-                    "LEA_BQ_BIG_BLUE_PICK_API_ON_DEMAND_PROJECT_ID"
-                ),
-                big_blue_pick_api_reservation_project_id=os.environ.get(
-                    "LEA_BQ_BIG_BLUE_PICK_API_REVERVATION_PROJECT_ID"
+                big_blue_pick_api_reservation=os.environ.get(
+                    "LEA_BQ_BIG_BLUE_PICK_API_RESERVATION"
                 ),
             )
             if client.big_blue_pick_api is not None:
@@ -996,20 +999,33 @@ def determine_table_refs_to_run(
     return table_refs_to_run
 
 
-def parse_bigquery_script_specific_compute_project_ids(
+def parse_bigquery_script_specific_reservations(
     env_var: str | None,
     dataset_name: str,
     write_project_id: str,
 ) -> dict[scripts.TableRef, str]:
+    """Parse ``LEA_BQ_SCRIPT_SPECIFIC_RESERVATIONS`` JSON into a ``TableRef → reservation`` map.
+
+    Values are either ``"none"`` (to force on-demand) or a fully-qualified reservation path
+    ``projects/P/locations/L/reservations/R``. Anything else raises — surfacing the typo at
+    startup is much friendlier than a BigQuery error mid-run.
+    """
     if env_var is None:
         return {}
     mapping = json.loads(env_var)
+    for table_ref_str, reservation in mapping.items():
+        if reservation != "none" and not reservation.startswith("projects/"):
+            raise ValueError(
+                f"Invalid reservation {reservation!r} for {table_ref_str!r} in "
+                "LEA_BQ_SCRIPT_SPECIFIC_RESERVATIONS: expected 'none' or "
+                "'projects/.../reservations/...'"
+            )
     return {
         (
             BigQueryDialect.parse_table_ref(table_ref_str)
             .replace_dataset(dataset_name)
             .replace_project(write_project_id)
             .add_audit_suffix()
-        ): compute_project_id
-        for table_ref_str, compute_project_id in mapping.items()
+        ): reservation
+        for table_ref_str, reservation in mapping.items()
     }

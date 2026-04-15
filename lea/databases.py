@@ -133,13 +133,14 @@ class BigQueryJob:
 
         if self.client.dry_run or self.destination is None:
             return None
-        table = self.client.default_client.get_table(
+        table = self.client.client.get_table(
             self.destination, retry=bigquery.DEFAULT_RETRY.with_deadline(10)
         )
         return TableStats(n_rows=table.num_rows, n_bytes=table.num_bytes, updated_at=table.modified)
 
     def stop(self):
-        self.client.default_client.cancel_job(self.query_job.job_id)
+        if self.query_job.job_id is not None:
+            self.client.client.cancel_job(self.query_job.job_id)
 
     @property
     def result(self) -> pd.DataFrame:
@@ -150,16 +151,22 @@ class BigQueryJob:
         return self.query_job.exception()
 
     @property
-    def is_using_reservation(self) -> bool:
-        return (
-            self.query_job._properties.get("statistics", {})
-            .get("reservationUsage", [{}])[0]
-            .get("name")
-        ) is not None
+    def reservation_id(self) -> str | None:
+        """The reservation the job actually ran under, or ``None`` for on-demand.
+
+        BigQuery exposes this at ``statistics.reservation_id`` (e.g.
+        ``"int-data-kaya-prod:EU.default"``). The older ``reservationUsage`` field only
+        fires for slot-consuming queries and is unreliable — don't read from it.
+        """
+        return self.query_job._properties.get("statistics", {}).get("reservation_id")
 
     @property
     def metadata(self) -> list[str]:
-        billing_model = ("reservation" if self.is_using_reservation else "on-demand") + " billing"
+        billing_model = (
+            f"reservation billing ({self.reservation_id})"
+            if self.reservation_id is not None
+            else "on-demand billing"
+        )
         return [billing_model]
 
     def conclude(self):
@@ -176,36 +183,28 @@ class TableStats:
     updated_at: dt.datetime | None
 
 
+ON_DEMAND_RESERVATION = "none"
+
+
 class BigBluePickAPI:
     """Big Blue Pick API implementation.
 
     https://biq.blue/blog/compute/how-to-implement-bigquery-autoscaling-reservation-in-10-minutes
 
-    Parameters
-    ----------
-    on_demand_project_id
-        The project ID of the on-demand BigQuery project.
-    reservation_project_id
-        The project ID of the reservation BigQuery project.
-    default_project_id
-        The project ID of the default BigQuery project. This is used if something with the
-        BigBlue Pick API fails.
-
+    Given a script, the Pick API returns either ``"ON-DEMAND"`` or ``"RESERVATION"``. We translate
+    those to a value for the BigQuery ``@@reservation`` system variable: ``"none"`` for on-demand,
+    and the caller-supplied reservation path for the reservation case.
     """
 
     def __init__(
         self,
         api_url: str,
         api_key: str,
-        on_demand_project_id: str,
-        reservation_project_id: str,
-        default_project_id: str,
+        reservation: str,
     ):
         self.api_url = api_url
         self.api_key = api_key
-        self.on_demand_project_id = on_demand_project_id
-        self.reservation_project_id = reservation_project_id
-        self.default_project_id = default_project_id
+        self.reservation = reservation
 
     def call_pick_api(self, path, body):
         try:
@@ -229,22 +228,23 @@ class BigBluePickAPI:
             str(script.table_ref.replace_dataset("FREEZE").replace_project("FREEZE")).encode()
         ).hexdigest()
 
-    def pick_project_id_for_script(self, script: scripts.SQLScript) -> str:
+    def pick_reservation_for_script(self, script: scripts.SQLScript) -> str | None:
+        """Return the reservation identifier to use for this script, or None to fall back."""
         response = self.call_pick_api(
             path="/pick",
             body={"hash": self.hash_script(script)},
         )
         if not response or not (pick := response.get("pick")):
-            lea.log.warning("Big Blue Pick API call failed, using default project ID")
-        elif pick not in {"ON-DEMAND", "RESERVATION"}:
-            lea.log.warning(
-                f"Big Blue Pick API returned unexpected choice {response['pick']!r}, using default project ID"
-            )
-        elif pick == "ON-DEMAND":
-            return self.on_demand_project_id
-        elif pick == "RESERVATION":
-            return self.reservation_project_id
-        return self.default_project_id
+            lea.log.warning("Big Blue Pick API call failed, falling back to default reservation")
+            return None
+        if pick == "ON-DEMAND":
+            return ON_DEMAND_RESERVATION
+        if pick == "RESERVATION":
+            return self.reservation
+        lea.log.warning(
+            f"Big Blue Pick API returned unexpected choice {pick!r}, falling back to default reservation"
+        )
+        return None
 
     def record_job_for_script(self, script: scripts.SQLScript, job: bigquery.QueryJob):
         self.call_pick_api(
@@ -271,41 +271,30 @@ class BigBluePickAPI:
         )
 
 
-class BigQueryClient(BigBluePickAPI):
+class BigQueryClient:
     def __init__(
         self,
         credentials: service_account.Credentials | None,
         location: str,
         write_project_id: str,
-        compute_project_id: str | None,
-        script_specific_compute_project_ids: dict[scripts.TableRef, str] | None = None,
+        compute_project_id: str,
+        script_specific_reservations: dict[scripts.TableRef, str] | None = None,
         storage_billing_model: str = "PHYSICAL",
         dry_run: bool = False,
         print_mode: bool = False,
         default_clustering_fields: list[str] | None = None,
         big_blue_pick_api_url: str | None = None,
         big_blue_pick_api_key: str | None = None,
-        big_blue_pick_api_on_demand_project_id: str | None = None,
-        big_blue_pick_api_reservation_project_id: str | None = None,
+        big_blue_pick_api_reservation: str | None = None,
     ):
 
         self.credentials = credentials
         self.write_project_id = write_project_id
         self.compute_project_id = compute_project_id
-        self.script_specific_compute_project_ids = script_specific_compute_project_ids or {}
+        self.script_specific_reservations = script_specific_reservations or {}
         self.storage_billing_model = storage_billing_model
         self.location = location
-        self.clients = {
-            project_id: self._make_client(project_id)
-            for project_id in {
-                self.compute_project_id,
-                *(self.script_specific_compute_project_ids.values()),
-                big_blue_pick_api_on_demand_project_id,
-                big_blue_pick_api_reservation_project_id,
-                self.write_project_id,
-            }
-            if project_id is not None
-        }
+        self.client = self._make_client(compute_project_id)
         self.dry_run = dry_run
         self.print_mode = print_mode
         self.default_clustering_fields = default_clustering_fields or []
@@ -314,15 +303,12 @@ class BigQueryClient(BigBluePickAPI):
             BigBluePickAPI(
                 api_url=big_blue_pick_api_url,
                 api_key=big_blue_pick_api_key,
-                on_demand_project_id=big_blue_pick_api_on_demand_project_id,
-                reservation_project_id=big_blue_pick_api_reservation_project_id,
-                default_project_id=self.write_project_id,
+                reservation=big_blue_pick_api_reservation,
             )
             if (
                 big_blue_pick_api_url is not None
                 and big_blue_pick_api_key is not None
-                and big_blue_pick_api_on_demand_project_id is not None
-                and big_blue_pick_api_reservation_project_id is not None
+                and big_blue_pick_api_reservation is not None
             )
             else None
         )
@@ -347,10 +333,6 @@ class BigQueryClient(BigBluePickAPI):
         client._http.mount("https://", adapter)
         return client
 
-    @property
-    def default_client(self) -> bigquery.Client:
-        return self.clients[self.compute_project_id]
-
     def create_dataset(self, dataset_name: str):
         from google.cloud import bigquery
 
@@ -360,10 +342,10 @@ class BigQueryClient(BigBluePickAPI):
         dataset = bigquery.Dataset(dataset_ref)
         dataset.location = self.location
         dataset.storage_billing_model = self.storage_billing_model
-        dataset = self.default_client.create_dataset(dataset, exists_ok=True)
+        dataset = self.client.create_dataset(dataset, exists_ok=True)
 
     def delete_dataset(self, dataset_name: str):
-        self.default_client.delete_dataset(
+        self.client.delete_dataset(
             dataset=f"{self.write_project_id}.{dataset_name}",
             delete_contents=True,
             not_found_ok=True,
@@ -379,19 +361,63 @@ class BigQueryClient(BigBluePickAPI):
             return self.materialize_sql_script(sql_script=script)
         raise ValueError("Unsupported script type")
 
-    def determine_client_for_script(self, sql_script: scripts.SQLScript) -> bigquery.Client:
-        project_id = (
-            self.big_blue_pick_api.pick_project_id_for_script(script=sql_script)
-            if self.big_blue_pick_api is not None
-            else self.script_specific_compute_project_ids.get(
-                sql_script.table_ref, self.compute_project_id
-            )
-        )
-        return self.clients[project_id]
+    def determine_reservation_for_script(self, sql_script: scripts.SQLScript) -> str | None:
+        """Resolve which reservation to set via ``SET @@reservation`` for this script.
 
-    def materialize_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
+        Precedence: script-specific override → Big Blue Pick API → ``None`` (meaning: emit no
+        SET and let the compute project's GCP-level reservation assignment apply as-is). Static
+        overrides win over Pick API so that deliberately routed queries don't get re-routed
+        behind the user's back.
+        """
+        if sql_script.table_ref in self.script_specific_reservations:
+            return self.script_specific_reservations[sql_script.table_ref]
+        if self.big_blue_pick_api is not None:
+            return self.big_blue_pick_api.pick_reservation_for_script(script=sql_script)
+        return None
+
+    def _open_session(
+        self, reservation: str | None, extra_header_statements: list[str] | None = None
+    ) -> str | None:
+        """Open a BigQuery session, preloading ``SET @@reservation`` and any header statements.
+
+        Returns the session id, or ``None`` if nothing had to be preloaded (no reservation
+        override and no header statements) — in which case the caller should just run its query
+        without a session. Skipped entirely when ``dry_run`` is true, since dry-run doesn't
+        execute sessions.
+        """
         from google.cloud import bigquery
 
+        if self.dry_run:
+            return None
+        preload: list[str] = []
+        if reservation is not None:
+            preload.append(f"SET @@reservation = '{reservation}'")
+        if extra_header_statements:
+            preload.extend(extra_header_statements)
+        if not preload:
+            return None
+        code = "".join(f"{stmt};\n" for stmt in preload)
+        header_job_config = bigquery.QueryJobConfig(create_session=True)
+        job = self.client.query(code, job_config=header_job_config)
+        job.result()
+        if job.session_info is None or job.session_info.session_id is None:
+            raise RuntimeError(
+                "BigQuery did not return a session id after `create_session=True`; cannot "
+                "propagate SET @@reservation or header statements to the main query"
+            )
+        return job.session_info.session_id
+
+    @staticmethod
+    def _attach_session(job_config: bigquery.QueryJobConfig, session_id: str | None):
+        if session_id is None:
+            return
+        from google.cloud import bigquery
+
+        job_config.connection_properties = [
+            bigquery.ConnectionProperty(key="session_id", value=session_id)
+        ]
+
+    def materialize_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
         destination = BigQueryDialect.convert_table_ref_to_bigquery_table_reference(
             table_ref=sql_script.table_ref, project=self.write_project_id
         )
@@ -405,7 +431,6 @@ class BigQueryClient(BigBluePickAPI):
             for field in (sql_script.fields or [])
             if FieldTag.CLUSTERING_FIELD in field.tags
         ]
-        clustering_fields = []
         # Remove duplicates but preserve order
         clustering_fields = list(
             dict.fromkeys([*default_clustering_fields, *tagged_clustering_fields])
@@ -421,31 +446,20 @@ class BigQueryClient(BigBluePickAPI):
             ),
         )
 
-        # Determine which client to use
-        client = self.determine_client_for_script(sql_script=sql_script)
-        if client.project != self.compute_project_id:
+        reservation = self.determine_reservation_for_script(sql_script=sql_script)
+        if reservation is not None:
             lea.log.info(
-                f"Using compute project {client.project!r} for materializing {sql_script.table_ref}"
+                f"Using reservation {reservation!r} for materializing {sql_script.table_ref}"
             )
-
-        # Run header statements if there are any
-        if sql_script.header_statements:
-            code = "".join(f"{hs};\n" for hs in sql_script.header_statements)
-            header_job_config = bigquery.QueryJobConfig(create_session=True)
-            job = client.query(code, job_config=header_job_config)
-            job.result()
-            session_id = job.session_info.session_id  # type: ignore
-        else:
-            session_id = None
-
-        if session_id is not None:
-            job_config.connection_properties = [
-                bigquery.ConnectionProperty(key="session_id", value=session_id)
-            ]
+        session_id = self._open_session(
+            reservation=reservation,
+            extra_header_statements=list(sql_script.header_statements) or None,
+        )
+        self._attach_session(job_config, session_id)
 
         return BigQueryJob(
             client=self,
-            query_job=client.query(
+            query_job=self.client.query(
                 query=sql_script.query,
                 job_config=job_config,
                 location=self.location,
@@ -460,11 +474,13 @@ class BigQueryClient(BigBluePickAPI):
         raise ValueError("Unsupported script type")
 
     def query_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
-        client = self.determine_client_for_script(sql_script=sql_script)
         job_config = self.make_job_config(script=sql_script)
+        reservation = self.determine_reservation_for_script(sql_script=sql_script)
+        session_id = self._open_session(reservation=reservation)
+        self._attach_session(job_config, session_id)
         return BigQueryJob(
             client=self,
-            query_job=client.query(
+            query_job=self.client.query(
                 query=sql_script.query,
                 job_config=job_config,
                 location=self.location,
@@ -475,8 +491,6 @@ class BigQueryClient(BigBluePickAPI):
     def clone_table(
         self, from_table_ref: scripts.TableRef, to_table_ref: scripts.TableRef
     ) -> BigQueryJob:
-        from google.cloud import bigquery
-
         destination = BigQueryDialect.convert_table_ref_to_bigquery_table_reference(
             table_ref=to_table_ref, project=self.write_project_id
         )
@@ -486,16 +500,10 @@ class BigQueryClient(BigBluePickAPI):
 
         # First, delete the destination table if it exists. We need to do this because the existing
         # table potentially has a different clustering configuration, which cannot be changed with
-        # a CLONE.
-        delete_code = f"""
-        DROP TABLE IF EXISTS {destination};
-        """
-        header_job_config = bigquery.QueryJobConfig(create_session=True)
-        job = self.default_client.query(delete_code, job_config=header_job_config)
-        job.result()
-        assert job.session_info is not None
-        session_id = job.session_info.session_id
-        assert session_id is not None
+        # a CLONE. Run in a session so the CLONE that follows sees the DROP even if BQ takes a
+        # moment to propagate it.
+        delete_code = f"DROP TABLE IF EXISTS {destination}"
+        session_id = self._open_session(reservation=None, extra_header_statements=[delete_code])
 
         # Now, clone the source table to the destination.
         clone_code = f"""
@@ -506,14 +514,12 @@ class BigQueryClient(BigBluePickAPI):
             script=scripts.SQLScript(
                 table_ref=to_table_ref, code=clone_code, sql_dialect=BigQueryDialect(), fields=[]
             ),
-            connection_properties=[bigquery.ConnectionProperty(key="session_id", value=session_id)],
         )
+        self._attach_session(job_config, session_id)
 
         return BigQueryJob(
             client=self,
-            query_job=self.default_client.query(
-                clone_code, job_config=job_config, location=self.location
-            ),
+            query_job=self.client.query(clone_code, job_config=job_config, location=self.location),
             destination=destination,
         )
 
@@ -550,7 +556,7 @@ class BigQueryClient(BigBluePickAPI):
         )
         return BigQueryJob(
             client=self,
-            query_job=self.default_client.query(
+            query_job=self.client.query(
                 delete_and_insert_code, job_config=job_config, location=self.location
             ),
             destination=destination,
@@ -573,7 +579,7 @@ class BigQueryClient(BigBluePickAPI):
         )
         return BigQueryJob(
             client=self,
-            query_job=self.default_client.query(
+            query_job=self.client.query(
                 delete_code, job_config=job_config, location=self.location
             ),
         )
@@ -583,7 +589,7 @@ class BigQueryClient(BigBluePickAPI):
         SELECT table_id, row_count, size_bytes, last_modified_time
         FROM `{self.write_project_id}.{dataset_name}.__TABLES__`
         """
-        job = self.default_client.query(query, location=self.location)
+        job = self.client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(
                 f"{self.write_project_id}.{dataset_name}.{row['table_id']}"
@@ -602,7 +608,7 @@ class BigQueryClient(BigBluePickAPI):
         SELECT table_name, column_name
         FROM `{self.write_project_id}.{dataset_name}.INFORMATION_SCHEMA.COLUMNS`
         """
-        job = self.default_client.query(query, location=self.location)
+        job = self.client.query(query, location=self.location)
         return {
             BigQueryDialect.parse_table_ref(
                 f"{self.write_project_id}.{dataset_name}.{table_name}"

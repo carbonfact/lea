@@ -362,26 +362,31 @@ FROM my_table
 
 Table-specific clustering fields are added *in addition to* the default ones.
 
-#### Script-specific compute projects
+#### Script-specific reservations
 
-You can route specific scripts to different compute projects:
+By default every query runs under whatever [reservation assignment](https://cloud.google.com/bigquery/docs/reservations-assignments) is attached to `LEA_BQ_COMPUTE_PROJECT_ID` at the GCP level — or on-demand if none. You can override that per script, in either direction, using BigQuery's `SET @@reservation` [system variable](https://docs.cloud.google.com/bigquery/docs/reservations-assignments#sql_3):
 
 ```sh
-LEA_BQ_SCRIPT_SPECIFIC_COMPUTE_PROJECT_IDS={"dataset.schema__table": "reservation-project-id"}
+# Force specific scripts to on-demand even if the compute project has a reservation.
+LEA_BQ_SCRIPT_SPECIFIC_RESERVATIONS={"dataset.schema__table": "none"}
+
+# Or route specific scripts to a reservation even if the compute project has none.
+LEA_BQ_SCRIPT_SPECIFIC_RESERVATIONS={"dataset.schema__table": "projects/P/locations/EU/reservations/R"}
 ```
 
-Scripts not listed use the default `LEA_BQ_COMPUTE_PROJECT_ID`.
+lea emits `SET @@reservation = '<value>'` in a session before running the query. Scripts not listed inherit the compute project's assignment.
 
 #### Big Blue Pick API
 
-[Big Blue](https://biq.blue/) provides a [Pick API](https://biq.blue/blog/compute/how-to-implement-bigquery-autoscaling-reservation-in-10-minutes) that suggests whether to run a query on-demand or on a reservation. lea supports this out of the box:
+[Big Blue](https://biq.blue/) provides a [Pick API](https://biq.blue/blog/compute/how-to-implement-bigquery-autoscaling-reservation-in-10-minutes) that suggests per-query whether to run on-demand or on a reservation. lea supports it out of the box:
 
 ```sh
 LEA_BQ_BIG_BLUE_PICK_API_KEY=<get from https://your-company.biq.blue/settings.html>
 LEA_BQ_BIG_BLUE_PICK_API_URL=https://pick.biq.blue
-LEA_BQ_BIG_BLUE_PICK_API_ON_DEMAND_PROJECT_ID=on-demand-compute-project-id
-LEA_BQ_BIG_BLUE_PICK_API_REVERVATION_PROJECT_ID=reservation-compute-project-id
+LEA_BQ_BIG_BLUE_PICK_API_RESERVATION=projects/P/locations/EU/reservations/R
 ```
+
+When Pick API returns `ON-DEMAND`, lea sets `@@reservation = 'none'`; when it returns `RESERVATION`, lea sets it to `LEA_BQ_BIG_BLUE_PICK_API_RESERVATION`. `LEA_BQ_SCRIPT_SPECIFIC_RESERVATIONS` takes priority over Pick API — deliberately routed scripts aren't re-routed behind your back.
 
 ## Examples
 
