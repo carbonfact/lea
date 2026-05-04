@@ -127,7 +127,7 @@ LEA_DUCKDB_PATH=duckdb.db
 # Optional
 LEA_DUCKDB_EXTENSIONS=parquet,httpfs
 # Optional — semicolon-separated CREATE SECRET bodies
-LEA_DUCKDB_SECRETS=TYPE gsheet, PROVIDER access_token, TOKEN 'your_token'
+LEA_DUCKDB_SECRETS="TYPE gsheet, PROVIDER access_token, TOKEN 'your_token'"
 ```
 
 `LEA_DUCKDB_SECRETS` creates [DuckDB secrets](https://duckdb.org/docs/current/configuration/secrets_manager) before running queries. This is useful for extensions like [gsheets](https://duckdb-gsheets.com/) that require authentication. Multiple secrets can be separated with `;`.
