@@ -10,11 +10,11 @@ LEA_USERNAME=max
 LEA_WAREHOUSE=ducklake
 LEA_DUCKLAKE_CATALOG_DATABASE=metadata.ducklake
 LEA_DUCKLAKE_DATA_PATH=r2://your-bucket-name
-LEA_DUCKLAKE_SECRET=TYPE r2, KEY_ID 'your_access_key_id', SECRET 'your_secret_access_key', ACCOUNT_ID 'your_account_id'
+LEA_DUCKDB_SECRETS=TYPE r2, KEY_ID 'your_access_key_id', SECRET 'your_secret_access_key', ACCOUNT_ID 'your_account_id'
 " > .env
 ```
 
-The `LEA_DUCKLAKE_SECRET` value is the body of a DuckDB [`CREATE SECRET`](https://duckdb.org/docs/current/configuration/secrets_manager) statement. This same pattern works for S3, GCS, Azure, etc.
+The `LEA_DUCKDB_SECRETS` value is the body of a DuckDB [`CREATE SECRET`](https://duckdb.org/docs/current/configuration/secrets_manager) statement. Multiple secrets can be separated with `;`. This works for S3, GCS, R2, Azure, etc.
 
 Symlink the jaffle shop scripts:
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.19.0
+
+### Breaking changes
+
+- Replaced `LEA_DUCKLAKE_SECRET` with `LEA_DUCKDB_SECRETS` and `LEA_QUACK_DUCKLAKE_SECRET` with `LEA_QUACK_DUCKDB_SECRETS`. The new variables support multiple semicolon-separated secrets and work across all DuckDB-based warehouses (DuckDB, MotherDuck, DuckLake), not just DuckLake. This enables extensions like [gsheets](https://duckdb-gsheets.com/) that require a `CREATE SECRET` statement.
+
 ## v0.18.0
 
 ### Breaking changes
