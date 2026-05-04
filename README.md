@@ -126,7 +126,11 @@ LEA_WAREHOUSE=duckdb
 LEA_DUCKDB_PATH=duckdb.db
 # Optional
 LEA_DUCKDB_EXTENSIONS=parquet,httpfs
+# Optional — semicolon-separated CREATE SECRET bodies
+LEA_DUCKDB_SECRETS=TYPE gsheet, PROVIDER access_token, TOKEN 'your_token'
 ```
+
+`LEA_DUCKDB_SECRETS` creates [DuckDB secrets](https://duckdb.org/docs/current/configuration/secrets_manager) before running queries. This is useful for extensions like [gsheets](https://duckdb-gsheets.com/) that require authentication. Multiple secrets can be separated with `;`.
 
 ### MotherDuck
 
@@ -139,6 +143,8 @@ MOTHERDUCK_TOKEN=<get this from https://app.motherduck.com/settings/tokens>
 LEA_MOTHERDUCK_DATABASE=bike_sharing
 # Optional
 LEA_DUCKDB_EXTENSIONS=parquet,httpfs
+# Optional
+LEA_DUCKDB_SECRETS=...
 ```
 
 ### DuckLake
@@ -159,26 +165,26 @@ LEA_DUCKLAKE_DATA_PATH=/path/to/data
 LEA_WAREHOUSE=ducklake
 LEA_DUCKLAKE_CATALOG_DATABASE="postgres:dbname=ducklake_catalog host=myhost.com user=myuser password=mypass"
 LEA_DUCKLAKE_DATA_PATH=s3://my-bucket/data
-LEA_DUCKLAKE_SECRET="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key'"
+LEA_DUCKDB_SECRETS="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key'"
 LEA_DUCKDB_EXTENSIONS=postgres
 ```
 
 **Cloud storage**
 
-For cloud storage, set `LEA_DUCKLAKE_SECRET` to the body of a DuckDB [`CREATE SECRET`](https://duckdb.org/docs/current/configuration/secrets_manager) statement. This works with any secret type DuckDB supports (S3, GCS, R2, Azure, etc.).
+For cloud storage, set `LEA_DUCKDB_SECRETS` to the body of a DuckDB [`CREATE SECRET`](https://duckdb.org/docs/current/configuration/secrets_manager) statement. This works with any secret type DuckDB supports (S3, GCS, R2, Azure, etc.).
 
 ```sh
 # R2
 LEA_DUCKLAKE_DATA_PATH=r2://my-bucket/data
-LEA_DUCKLAKE_SECRET="TYPE r2, KEY_ID 'key_id', SECRET 'secret_key', ACCOUNT_ID 'my_account_id'"
+LEA_DUCKDB_SECRETS="TYPE r2, KEY_ID 'key_id', SECRET 'secret_key', ACCOUNT_ID 'my_account_id'"
 
 # GCS (requires HMAC keys)
 LEA_DUCKLAKE_DATA_PATH=gcs://my-bucket/data
-LEA_DUCKLAKE_SECRET="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
+LEA_DUCKDB_SECRETS="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
 
 # S3
 LEA_DUCKLAKE_DATA_PATH=s3://my-bucket/data
-LEA_DUCKLAKE_SECRET="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key', ENDPOINT 'storage.googleapis.com'"
+LEA_DUCKDB_SECRETS="TYPE s3, KEY_ID 'key_id', SECRET 'secret_key', ENDPOINT 'storage.googleapis.com'"
 ```
 
 ## Usage
@@ -313,7 +319,7 @@ LEA_QUACK_DUCKLAKE_DATA_PATH=/path/to/quack/data
 ```sh
 LEA_QUACK_DUCKLAKE_CATALOG_DATABASE=quack.ducklake
 LEA_QUACK_DUCKLAKE_DATA_PATH=gcs://my-bucket/quack/data
-LEA_QUACK_DUCKLAKE_SECRET="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
+LEA_QUACK_DUCKDB_SECRETS="TYPE gcs, KEY_ID 'GOOG1E...', SECRET '...'"
 ```
 
 You can push the DuckLake tables back to your warehouse with `--quack-push`:

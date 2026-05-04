@@ -197,8 +197,10 @@ class Conductor:
 
             # Set up DuckLake
             conn = quack_database_client.connection
-            if secret := os.environ.get("LEA_QUACK_DUCKLAKE_SECRET"):
-                conn.execute(f"CREATE SECRET ({secret});")
+            for secret in os.environ.get("LEA_QUACK_DUCKDB_SECRETS", "").split(";"):
+                secret = secret.strip()
+                if secret:
+                    conn.execute(f"CREATE SECRET ({secret});")
 
             conn.execute(
                 f"""
@@ -243,6 +245,19 @@ class Conductor:
             database_client.create_dataset(write_dataset)
 
             if isinstance(database_client, databases.DuckDBClient):
+                for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
+                    extension = extension.strip()
+                    if extension:
+                        lea.log.info(f"🔩 Loading extension {extension}")
+                        database_client.connection.execute(f"INSTALL '{extension}';")
+                        database_client.connection.execute(f"LOAD '{extension}';")
+
+                for secret in os.environ.get("LEA_DUCKDB_SECRETS", "").split(";"):
+                    secret = secret.strip()
+                    if secret:
+                        lea.log.info("🔩 Creating secret")
+                        database_client.connection.execute(f"CREATE SECRET ({secret});")
+
                 if self.warehouse == databases.Warehouse.DUCKDB:
                     lea.log.info(
                         f"🔩 Using DuckDB database at {database_client.database_path.absolute()}"
@@ -256,8 +271,6 @@ class Conductor:
                     if isinstance(database_client, databases.MotherDuckClient):
                         database_client.set_active_database(write_dataset)
                 elif self.warehouse == databases.Warehouse.DUCKLAKE:
-                    if secret := os.environ.get("LEA_DUCKLAKE_SECRET"):
-                        database_client.connection.execute(f"CREATE SECRET ({secret});")
                     database_client.connection.execute(
                         f"""
                         ATTACH 'ducklake:{os.environ["LEA_DUCKLAKE_CATALOG_DATABASE"]}' AS my_ducklake (
@@ -268,14 +281,6 @@ class Conductor:
                     )
                     if isinstance(database_client, databases.DuckLakeClient):
                         database_client.set_active_database("my_ducklake")
-
-                # When using DuckDB, we need to create schema for the tables
-                for extension in os.environ.get("LEA_DUCKDB_EXTENSIONS", "").split(","):
-                    extension = extension.strip()
-                    if extension:
-                        lea.log.info(f"🔩 Loading extension {extension}")
-                        database_client.connection.execute(f"INSTALL '{extension}';")
-                        database_client.connection.execute(f"LOAD '{extension}';")
 
                 lea.log.info("🔩 Creating schemas")
                 schema_names = set(
