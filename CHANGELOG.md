@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.19.1
+
+### Performance
+
+- Speed up script reading by sharing a single Jinja environment and caching YAML files across all templates. This reduces startup time by ~60% for projects with many Jinja templates.
+
 ## v0.19.0
 
 ### Breaking changes

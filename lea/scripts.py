@@ -92,22 +92,14 @@ class SQLScript:
         project_name: str | None,
         fields: list[Field] | None = None,
         cached_dependencies: set[TableRef] | None = None,
+        jinja_environment: jinja2.Environment | None = None,
     ) -> SQLScript:
         # Either the file is a Jinja template
         if relative_path.suffixes == [".sql", ".jinja"]:
-            loader = jinja2.FileSystemLoader(scripts_dir)
-            environment = jinja2.Environment(loader=loader)
-
-            def load_yaml(path: str) -> dict:
-                full_path = (scripts_dir / path).resolve()
-                project_root = scripts_dir.resolve().parent
-                if not full_path.is_relative_to(project_root):
-                    raise ValueError(f"load_yaml path escapes project root: {path}")
-                with open(full_path) as f:
-                    return yaml.safe_load(f)
-
-            environment.globals["load_yaml"] = load_yaml  # ty: ignore[invalid-assignment]
-            template = environment.get_template(str(relative_path))
+            if jinja_environment is None:
+                jinja_environment = _make_jinja_environment(scripts_dir)
+            template = jinja_environment.get_template(str(relative_path))
+            load_yaml = jinja_environment.globals["load_yaml"]
             code = template.render(env=os.environ, load_yaml=load_yaml)
         # Or it's a regular SQL file
         else:
@@ -268,6 +260,26 @@ Script = SQLScript
 _CACHE_VERSION = f"1_{sqlglot.__version__}"
 
 
+def _make_jinja_environment(scripts_dir: pathlib.Path) -> jinja2.Environment:
+    """Create a Jinja environment with a caching load_yaml helper."""
+    loader = jinja2.FileSystemLoader(scripts_dir)
+    environment = jinja2.Environment(loader=loader)
+    yaml_cache: dict[str, dict] = {}
+    project_root = scripts_dir.resolve().parent
+
+    def load_yaml(path: str) -> dict:
+        if path not in yaml_cache:
+            full_path = (scripts_dir / path).resolve()
+            if not full_path.is_relative_to(project_root):
+                raise ValueError(f"load_yaml path escapes project root: {path}")
+            with open(full_path) as f:
+                yaml_cache[path] = yaml.safe_load(f)
+        return yaml_cache[path]
+
+    environment.globals["load_yaml"] = load_yaml  # ty: ignore[invalid-assignment]
+    return environment
+
+
 def _env_hash() -> str:
     """Hash all LEA_* environment variables to detect config changes."""
     import hashlib
@@ -307,6 +319,9 @@ def read_scripts(
     cache_entries = _load_cache(cache_path) if cache_path else {}
     cache_dirty = False
 
+    # Share a single Jinja environment (with yaml cache) across all templates
+    jinja_env = _make_jinja_environment(scripts_dir)
+
     def read_script(path: pathlib.Path) -> Script:
         nonlocal cache_dirty
 
@@ -330,6 +345,7 @@ def read_scripts(
                     project_name=project_name,
                     fields=cached["fields"] if cached else None,
                     cached_dependencies=cached["dependencies"] if cached else None,
+                    jinja_environment=jinja_env,
                 )
 
                 # Update cache on miss
