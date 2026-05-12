@@ -349,6 +349,8 @@ class BigQueryClient(BigBluePickAPI):
 
     @property
     def default_client(self) -> bigquery.Client:
+        if self.compute_project_id is None:
+            raise ValueError("compute_project_id is not set")
         return self.clients[self.compute_project_id]
 
     def create_dataset(self, dataset_name: str):
@@ -387,6 +389,8 @@ class BigQueryClient(BigBluePickAPI):
                 sql_script.table_ref, self.compute_project_id
             )
         )
+        if project_id is None:
+            raise ValueError("Could not determine compute project for script")
         return self.clients[project_id]
 
     def materialize_sql_script(self, sql_script: scripts.SQLScript) -> BigQueryJob:
