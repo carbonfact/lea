@@ -428,7 +428,7 @@ class Session:
             database_job = client.delete_and_insert(
                 from_table_ref=from_table_ref,
                 to_table_ref=to_table_ref,
-                on=self.incremental_field_name,  # type: ignore
+                on=self.incremental_field_name,
             )
         else:
             database_job = client.clone_table(

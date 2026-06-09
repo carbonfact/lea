@@ -374,7 +374,7 @@ def read_scripts(
     ]
 
     # Write cache if anything changed
-    if cache_dirty:
+    if cache_dirty and cache_path is not None:
         _save_cache(cache_path, cache_entries)
 
     return scripts
