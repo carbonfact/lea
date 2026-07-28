@@ -29,7 +29,7 @@ lea = "lea.cli:app"
 dev = [
   "prek",
   "pytest>=7.4.2,<10",
-  "ruff>=0.1,<0.16",
+  "ruff>=0.1,<0.17",
   "ty>=0.0.21",
 ]
 
