@@ -569,7 +569,7 @@ wheels = [
 
 [[package]]
 name = "lea-cli"
-version = "0.19.2"
+version = "0.19.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -613,7 +613,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.3,<3" },
     { name = "rich", specifier = ">=13.5.3,<16" },
     { name = "rsa", specifier = ">=4.7,<5" },
-    { name = "sqlglot", specifier = ">=30.2,<30.15" },
+    { name = "sqlglot", specifier = ">=30.2" },
 ]
 
 [package.metadata.requires-dev]
