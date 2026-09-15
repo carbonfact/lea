@@ -9,7 +9,7 @@ on:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: gcp
     permissions:
       id-token: write
       contents: read
