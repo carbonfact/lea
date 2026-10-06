@@ -18,7 +18,7 @@ dependencies = [
   "rsa>=4.7,<5",
   "google-cloud-bigquery-storage>=2.27.0,<3",
   "requests>=2.32.3,<3",
-  "filelock>=3.20.1,<4",
+  "filelock>=3.20.1,<5",
   "pyyaml>=6,<7",
 ]
 
