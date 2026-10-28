@@ -226,14 +226,14 @@ class DuckDBDialect(SQLDialect):
         TableRef(dataset=None, schema=(), name='my_table', project=None)
         """
         if "." in table_ref:
-            project, schema, leftover = None, *tuple(table_ref.rsplit(".", 1))
+            schema, leftover = table_ref.rsplit(".", 1)
             *subschema, name = tuple(re.split(r"(?<!_)__(?!_)", leftover))
 
             return TableRef(
                 dataset=None,
                 schema=tuple([strip_quotes(schema), *[strip_quotes(ss) for ss in subschema]]),
                 name=strip_quotes(name),
-                project=strip_quotes(project) if project else None,
+                project=None,
             )
         return TableRef(dataset=None, schema=(), name=table_ref, project=None)
 
