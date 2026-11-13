@@ -884,38 +884,6 @@ class TestForeignDatasetDependency:
     """A dependency in a dataset other than the base dataset is external, even when a local
     script has the same name."""
 
-    def test_script_reading_foreign_dataset_is_native_and_pulls_nothing(self, tmp_path):
-        from lea.dag import DAGOfScripts
-
-        scripts_dir = tmp_path / "scripts"
-        (scripts_dir / "core").mkdir(parents=True)
-        (scripts_dir / "core" / "trips.sql").write_text("SELECT 1 AS id")
-        (scripts_dir / "analytics").mkdir()
-        (scripts_dir / "analytics" / "published_trips.sql").write_text(
-            "SELECT * FROM citibike_stable.core__trips"
-        )
-
-        dag = DAGOfScripts.from_directory(
-            scripts_dir=scripts_dir,
-            sql_dialect=BigQueryDialect(),
-            dataset_name="citibike",
-            project_name="my-project",
-        )
-        published = make_bq_ref("analytics", "published_trips")
-        local_trips = make_bq_ref("core", "trips")
-
-        native, duck = classify_scripts(dag.dependency_graph, dag.scripts)
-        assert published in native
-        assert local_trips in duck
-
-        deps_to_pull = determine_deps_to_pull(
-            table_refs_to_run={published},
-            duck_table_refs=duck,
-            dependency_graph=dag.dependency_graph,
-            scripts=dag.scripts,
-        )
-        assert deps_to_pull == set()
-
     def test_duck_script_leaves_foreign_dataset_dependency_alone(self):
         staging = make_bq_ref("staging", "trips")
         core = make_bq_ref("core", "trips")

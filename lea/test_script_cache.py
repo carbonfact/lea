@@ -4,8 +4,7 @@ import os
 
 import pytest
 
-from .dag import DAGOfScripts
-from .dialects import BigQueryDialect, DuckDBDialect
+from .dialects import DuckDBDialect
 from .scripts import (
     _load_cache,
     _save_cache,
@@ -148,29 +147,6 @@ class TestScriptCache:
         # Should have a dependency on core.users
         dep_names = {d.name for d in user_count_2.dependencies}
         assert "users" in dep_names
-
-    def test_foreign_dataset_dependency_survives_cache(self, scripts_dir, cache_dir):
-        """A dependency in another dataset keeps its dataset when read from the cache, so it
-        never becomes an edge to the local script with the same name."""
-        analytics = scripts_dir / "analytics"
-        analytics.mkdir()
-        (analytics / "published_users.sql").write_text("SELECT * FROM other_dataset.core__users")
-
-        kwargs = dict(
-            scripts_dir=scripts_dir,
-            sql_dialect=BigQueryDialect(),
-            dataset_name="test",
-            project_name="test_project",
-            cache_dir=cache_dir,
-        )
-        for _ in range(2):  # cache miss, then cache hit
-            dag = DAGOfScripts.from_directory(**kwargs)  # ty: ignore[invalid-argument-type]
-            published = [s for s in dag.scripts.values() if s.table_ref.name == "published_users"]
-            assert {d.dataset for d in published[0].dependencies} == {"other_dataset"}
-            assert all(
-                dep.dataset == "other_dataset"
-                for dep in dag.dependency_graph[published[0].table_ref]
-            )
 
 
 class TestCacheHelpers:

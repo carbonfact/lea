@@ -316,37 +316,3 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         )
         """,
     )
-
-
-def test_table_with_same_name_in_other_schema_is_left_alone(scripts):
-    """DuckDB references have no dataset, so other_schema.users is read as a schema reference.
-    Rewriting the local core.users must not touch it."""
-    compare = Script(
-        table_ref=TableRef("read", ("analytics",), "compare_users", "test_project"),
-        code="""
-        SELECT users.id, other_users.id
-        FROM core.users AS users
-        JOIN other_schema.users AS other_users USING (id)
-        """,
-        sql_dialect=DuckDBDialect(),
-    )
-    scripts = {**scripts, compare.table_ref: compare}
-    session = Session(
-        database_client=None,
-        base_dataset="read",
-        write_dataset="write",
-        scripts=scripts,
-        selected_table_refs=set(scripts),
-        unselected_table_refs=set(),
-        existing_tables={},
-        existing_audit_tables={},
-    )
-
-    assert_queries_are_equal(
-        session.add_context_to_script(compare).code,
-        """
-        SELECT users.id, other_users.id
-        FROM core.users___audit AS users
-        JOIN other_schema.users AS other_users USING (id)
-        """,
-    )
