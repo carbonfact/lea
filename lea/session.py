@@ -515,10 +515,23 @@ def replace_script_dependencies(
             project = re.escape(dependency_to_edit.project)
             project_prefix = rf"(?:`{project}`\.|{project}\.)?"
 
+        # The dataset may also be written with backticks, as in `dataset`.table
+        dependency_pattern = re.escape(dependency_to_edit_without_project_str)
+        if dependency_to_edit.dataset and dependency_to_edit_without_project_str.startswith(
+            f"{dependency_to_edit.dataset}."
+        ):
+            dataset = re.escape(dependency_to_edit.dataset)
+            leftover = re.escape(
+                dependency_to_edit_without_project_str.removeprefix(
+                    f"{dependency_to_edit.dataset}."
+                )
+            )
+            dependency_pattern = rf"(?:`{dataset}`|{dataset})\.{leftover}"
+
         # The lookbehind prevents matching a table with the same name in another dataset or
         # project, such as other_dataset.table when the dependency is dataset.table
         code = re.sub(
-            rf"(?<![\w.]){project_prefix}{re.escape(dependency_to_edit_without_project_str)}\b",
+            rf"(?<![\w.]){project_prefix}{dependency_pattern}\b",
             new_dependency_str,
             code,
         )

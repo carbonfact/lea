@@ -514,3 +514,47 @@ def test_foreign_dataset_dependency_is_not_a_dag_edge(tmp_path):
         TableRef("read", ("core",), "users", "test_project"),
         TableRef("other_dataset", ("core",), "users", "test_project"),
     }
+
+
+def test_quoted_references_with_hyphenated_project():
+    """Each way of quoting a reference in BigQuery, with a project that needs backticks."""
+    users = Script(
+        table_ref=TableRef("read", ("core",), "users", "my-project"),
+        code="SELECT 1 AS id",
+        sql_dialect=BigQueryDialect(),
+    )
+    compare = Script(
+        table_ref=TableRef("read", ("analytics",), "compare_users", "my-project"),
+        code="""
+        SELECT *
+        FROM `my-project`.read.core__users
+        JOIN `read`.core__users USING (id)
+        JOIN `my-project.read.core__users` USING (id)
+        JOIN `my-project`.read_stable.core__users USING (id)
+        JOIN `my-project.read_stable.core__users` USING (id)
+        """,
+        sql_dialect=BigQueryDialect(),
+    )
+    scripts = {users.table_ref: users, compare.table_ref: compare}
+    session = Session(
+        database_client=None,
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs=set(scripts),
+        unselected_table_refs=set(),
+        existing_tables={},
+        existing_audit_tables={},
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(compare).code,
+        """
+        SELECT *
+        FROM my-project.write.core__users___audit
+        JOIN my-project.write.core__users___audit USING (id)
+        JOIN `my-project.write.core__users___audit` USING (id)
+        JOIN `my-project`.read_stable.core__users USING (id)
+        JOIN `my-project.read_stable.core__users` USING (id)
+        """,
+    )
