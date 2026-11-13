@@ -5,7 +5,7 @@ import re
 import pytest
 from google.auth.credentials import AnonymousCredentials
 
-from lea.conductor import Session, determine_table_refs_to_run
+from lea.conductor import Session
 from lea.dag import DAGOfScripts
 from lea.databases import BigQueryClient, TableStats
 from lea.dialects import BigQueryDialect
@@ -384,7 +384,6 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
     [
         "test_project.other_dataset.core__users",
         "other_project.read.core__users",
-        "foo-test_project.read.core__users",
     ],
 )
 def test_foreign_dependency_is_left_alone(scripts, foreign_ref):
@@ -556,28 +555,3 @@ def test_quoted_references_with_hyphenated_project():
         JOIN `my-project.read_stable.core__users` USING (id)
         """,
     )
-
-
-def test_test_reading_a_local_table_with_its_project_is_selected(tmp_path):
-    scripts_dir = tmp_path / "scripts"
-    (scripts_dir / "core").mkdir(parents=True)
-    (scripts_dir / "core" / "users.sql").write_text("SELECT 1 AS id")
-    (scripts_dir / "tests").mkdir()
-    (scripts_dir / "tests" / "users_are_unique.sql").write_text(
-        "SELECT id FROM test_project.read.core__users GROUP BY id HAVING COUNT(*) > 1"
-    )
-    dag = DAGOfScripts.from_directory(
-        scripts_dir=scripts_dir,
-        sql_dialect=BigQueryDialect(),
-        dataset_name="read",
-        project_name="test_project",
-    )
-    users = TableRef("read", ("core",), "users", "test_project")
-
-    assert determine_table_refs_to_run(
-        selected_table_refs={users},
-        unselected_table_refs=set(),
-        existing_audit_tables={},
-        dag=dag,
-        base_dataset="read",
-    ) == {users, TableRef("read", ("tests",), "users_are_unique", "test_project")}

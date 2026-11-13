@@ -40,8 +40,9 @@ class TableRef:
     def replace_project(self, project: str | None) -> TableRef:
         return dataclasses.replace(self, project=project)
 
-    def replace_project_is_explicit(self, project_is_explicit: bool) -> TableRef:
-        return dataclasses.replace(self, project_is_explicit=project_is_explicit)
+    def as_local(self) -> TableRef:
+        """Forget that the project was written, once the dependency is known to be local."""
+        return dataclasses.replace(self, project_is_explicit=False)
 
     def is_external(self, project: str | None, dataset: str) -> bool:
         """Check if this dependency deliberately points outside of the scripts being run.

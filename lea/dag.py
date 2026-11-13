@@ -55,7 +55,7 @@ class DAGOfScripts(graphlib.TopologicalSorter):
             script.table_ref: {
                 dependency
                 if dependency.is_external(project_name, dataset_name)
-                else dependency.replace_dataset(dataset_name).replace_project_is_explicit(False)
+                else dependency.replace_dataset(dataset_name).as_local()
                 for dependency in script.dependencies
             }
             for script in scripts

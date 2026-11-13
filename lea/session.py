@@ -131,7 +131,7 @@ class Session:
             # We don't modify the dependency if its project or dataset has been deliberately set
             if dependency.is_external(script.table_ref.project, self.base_dataset):
                 return None
-            dependency = dependency.replace_project_is_explicit(False)
+            dependency = dependency.as_local()
 
             if self._is_dep_audited(dependency):
                 dependency = dependency.add_audit_suffix()
@@ -202,7 +202,7 @@ class Session:
             # Skip external deps (written with another project, or a project and another dataset)
             if dep.is_external(script.table_ref.project, self.base_dataset):
                 continue
-            dep = dep.replace_project_is_explicit(False)
+            dep = dep.as_local()
 
             # Determine audit suffix
             dep_with_context = dep
