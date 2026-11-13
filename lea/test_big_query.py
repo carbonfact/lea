@@ -382,13 +382,13 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
 @pytest.mark.parametrize(
     "foreign_ref",
     [
-        "other_dataset.core__users",
+        "test_project.other_dataset.core__users",
         "other_project.read.core__users",
     ],
 )
 def test_foreign_dependency_is_left_alone(scripts, foreign_ref):
-    """A dependency in another dataset or project is not rewritten, even if a local script has
-    the same name."""
+    """A dependency written with its project, in another dataset or project, is not rewritten,
+    even if a local script has the same name."""
     compare = Script(
         table_ref=TableRef("read", ("analytics",), "compare_users", "test_project"),
         code=f"""
@@ -420,13 +420,39 @@ def test_foreign_dependency_is_left_alone(scripts, foreign_ref):
     )
 
 
+def test_dependency_without_project_is_local_whatever_its_dataset(scripts):
+    """The code may name a dataset other than the one being built, for instance when the same
+    scripts are built into a stable dataset. Without a project, the dependency is still local."""
+    compare = Script(
+        table_ref=TableRef("read", ("analytics",), "compare_users", "test_project"),
+        code="SELECT id FROM other_dataset.core__users",
+        sql_dialect=BigQueryDialect(),
+    )
+    scripts = {**scripts, compare.table_ref: compare}
+    session = Session(
+        database_client=None,
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs=set(scripts),
+        unselected_table_refs=set(),
+        existing_tables={},
+        existing_audit_tables={},
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(compare).code,
+        "SELECT id FROM test_project.write.core__users___audit",
+    )
+
+
 def test_foreign_dataset_dependency_is_not_a_dag_edge(tmp_path):
     scripts_dir = tmp_path / "scripts"
     (scripts_dir / "core").mkdir(parents=True)
     (scripts_dir / "core" / "users.sql").write_text("SELECT 1 AS id")
     (scripts_dir / "analytics").mkdir()
     (scripts_dir / "analytics" / "compare_users.sql").write_text(
-        "SELECT * FROM read.core__users JOIN other_dataset.core__users USING (id)"
+        "SELECT * FROM written.core__users JOIN test_project.other_dataset.core__users USING (id)"
     )
 
     dag = DAGOfScripts.from_directory(

@@ -881,8 +881,8 @@ class TestIterScripts:
 
 
 class TestForeignDatasetDependency:
-    """A dependency in a dataset other than the base dataset is external, even when a local
-    script has the same name."""
+    """A dependency written with its project and a dataset other than the base dataset is
+    external, even when a local script has the same name."""
 
     def test_duck_script_leaves_foreign_dataset_dependency_alone(self):
         staging = make_bq_ref("staging", "trips")
@@ -893,7 +893,7 @@ class TestForeignDatasetDependency:
             core: make_script(
                 core,
                 "SELECT * FROM citibike.staging__trips "
-                "UNION ALL SELECT * FROM citibike_stable.staging__trips",
+                "UNION ALL SELECT * FROM `my-project`.citibike_stable.staging__trips",
             ),
         }
         session = TestAddContextForDuckScript()._make_session(
@@ -906,4 +906,4 @@ class TestForeignDatasetDependency:
         result = session.add_context_to_script(scripts[core])
 
         assert "staging.trips___audit" in result.code
-        assert "citibike_stable.staging__trips" in result.code
+        assert '"my-project".citibike_stable.staging__trips' in result.code

@@ -112,13 +112,15 @@ class Session:
     def _is_external_dependency(self, dependency: TableRef, script: Script) -> bool:
         """Check if a dependency deliberately points outside of the scripts being run.
 
-        This is the case when the dependency names a project other than the script's, or a
-        dataset other than the base dataset. Such dependencies are left as they are written.
+        This is the case when the dependency is written with its project, and that project is not
+        the script's or that dataset is not the base dataset. Such dependencies are left as they
+        are written. A dependency written without a project is always local, whatever its dataset.
 
         """
-        if dependency.project is not None and dependency.project != script.table_ref.project:
-            return True
-        return dependency.dataset is not None and dependency.dataset != self.base_dataset
+        return dependency.project_is_explicit and (
+            dependency.project != script.table_ref.project
+            or dependency.dataset != self.base_dataset
+        )
 
     def _is_dep_audited(self, dependency: TableRef) -> bool:
         """Check if a dependency should use the audit table (WAP pattern)."""
@@ -209,7 +211,7 @@ class Session:
         code = script.code
 
         for dep in script.dependencies:
-            # Skip external deps (deliberately different project or dataset)
+            # Skip external deps (written with another project, or a project and another dataset)
             if self._is_external_dependency(dep, script):
                 continue
 

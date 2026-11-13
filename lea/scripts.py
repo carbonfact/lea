@@ -257,7 +257,7 @@ class SQLScript:
 Script = SQLScript
 
 
-_CACHE_VERSION = f"1_{sqlglot.__version__}"
+_CACHE_VERSION = f"2_{sqlglot.__version__}"
 
 
 def _make_jinja_environment(scripts_dir: pathlib.Path) -> jinja2.Environment:

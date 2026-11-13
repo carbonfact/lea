@@ -13,6 +13,8 @@ class TableRef:
     schema: tuple[str, ...]
     name: str
     project: str | None
+    # Whether the project was written in the code, rather than filled in with a default
+    project_is_explicit: bool = dataclasses.field(default=False, compare=False, repr=False)
 
     def __str__(self):
         return ".".join(filter(None, [self.project, self.dataset, *self.schema, self.name]))

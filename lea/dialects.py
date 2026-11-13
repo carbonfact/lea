@@ -183,6 +183,7 @@ class BigQueryDialect(SQLDialect):
             schema=tuple([strip_quotes(s) for s in schema]),
             name=strip_quotes(name),
             project=strip_quotes(project) if project else None,
+            project_is_explicit=bool(project),
         )
 
     @staticmethod
