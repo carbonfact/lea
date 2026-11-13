@@ -50,13 +50,12 @@ class DAGOfScripts(graphlib.TopologicalSorter):
 
         # TODO: the following is quite slow. This is because parsing dependencies from each script
         # is slow. There are several optimizations that could be done.
-        # A dependency written with its project and a dataset other than the scripts' dataset is
-        # external, so it is not mapped to the script with the same name
+        # An external dependency is not mapped to the script with the same name
         dependency_graph = {
             script.table_ref: {
                 dependency
-                if dependency.project_is_explicit and dependency.dataset != dataset_name
-                else dependency.replace_dataset(dataset_name)
+                if dependency.is_external(project_name, dataset_name)
+                else dependency.replace_dataset(dataset_name).replace_project_is_explicit(False)
                 for dependency in script.dependencies
             }
             for script in scripts

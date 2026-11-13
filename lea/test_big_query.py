@@ -5,7 +5,7 @@ import re
 import pytest
 from google.auth.credentials import AnonymousCredentials
 
-from lea.conductor import Session
+from lea.conductor import Session, determine_table_refs_to_run
 from lea.dag import DAGOfScripts
 from lea.databases import BigQueryClient, TableStats
 from lea.dialects import BigQueryDialect
@@ -384,6 +384,7 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
     [
         "test_project.other_dataset.core__users",
         "other_project.read.core__users",
+        "foo-test_project.read.core__users",
     ],
 )
 def test_foreign_dependency_is_left_alone(scripts, foreign_ref):
@@ -394,6 +395,7 @@ def test_foreign_dependency_is_left_alone(scripts, foreign_ref):
         code=f"""
         SELECT core__users.id, foreign_users.id
         FROM read.core__users
+        JOIN test_project.read.core__users USING (id)
         FULL OUTER JOIN {foreign_ref} AS foreign_users USING (id)
         """,
         sql_dialect=BigQueryDialect(),
@@ -415,6 +417,7 @@ def test_foreign_dependency_is_left_alone(scripts, foreign_ref):
         f"""
         SELECT core__users___audit.id, foreign_users.id
         FROM test_project.write.core__users___audit
+        JOIN test_project.write.core__users___audit USING (id)
         FULL OUTER JOIN {foreign_ref} AS foreign_users USING (id)
         """,
     )
@@ -446,13 +449,52 @@ def test_dependency_without_project_is_local_whatever_its_dataset(scripts):
     )
 
 
+def test_same_table_with_and_without_project(scripts):
+    """Each way of writing the table is handled on its own: without a project it is local, with
+    its project and another dataset it is external."""
+    compare = Script(
+        table_ref=TableRef("read", ("analytics",), "compare_users", "test_project"),
+        code="""
+        SELECT *
+        FROM other_dataset.core__users
+        JOIN test_project.other_dataset.core__users USING (id)
+        """,
+        sql_dialect=BigQueryDialect(),
+    )
+    scripts = {**scripts, compare.table_ref: compare}
+    session = Session(
+        database_client=None,
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs=set(scripts),
+        unselected_table_refs=set(),
+        existing_tables={},
+        existing_audit_tables={},
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(compare).code,
+        """
+        SELECT *
+        FROM test_project.write.core__users___audit
+        JOIN test_project.other_dataset.core__users USING (id)
+        """,
+    )
+
+
 def test_foreign_dataset_dependency_is_not_a_dag_edge(tmp_path):
     scripts_dir = tmp_path / "scripts"
     (scripts_dir / "core").mkdir(parents=True)
     (scripts_dir / "core" / "users.sql").write_text("SELECT 1 AS id")
     (scripts_dir / "analytics").mkdir()
     (scripts_dir / "analytics" / "compare_users.sql").write_text(
-        "SELECT * FROM written.core__users JOIN test_project.other_dataset.core__users USING (id)"
+        """
+        SELECT *
+        FROM other_dataset.core__users
+        JOIN test_project.other_dataset.core__users USING (id)
+        JOIN test_project.read.core__users USING (id)
+        """
     )
 
     dag = DAGOfScripts.from_directory(
@@ -466,7 +508,7 @@ def test_foreign_dataset_dependency_is_not_a_dag_edge(tmp_path):
         TableRef("read", ("analytics",), "compare_users", "test_project")
     ] == {
         TableRef("read", ("core",), "users", "test_project"),
-        TableRef("other_dataset", ("core",), "users", "test_project"),
+        TableRef("other_dataset", ("core",), "users", "test_project", project_is_explicit=True),
     }
 
 
@@ -514,3 +556,28 @@ def test_quoted_references_with_hyphenated_project():
         JOIN `my-project.read_stable.core__users` USING (id)
         """,
     )
+
+
+def test_test_reading_a_local_table_with_its_project_is_selected(tmp_path):
+    scripts_dir = tmp_path / "scripts"
+    (scripts_dir / "core").mkdir(parents=True)
+    (scripts_dir / "core" / "users.sql").write_text("SELECT 1 AS id")
+    (scripts_dir / "tests").mkdir()
+    (scripts_dir / "tests" / "users_are_unique.sql").write_text(
+        "SELECT id FROM test_project.read.core__users GROUP BY id HAVING COUNT(*) > 1"
+    )
+    dag = DAGOfScripts.from_directory(
+        scripts_dir=scripts_dir,
+        sql_dialect=BigQueryDialect(),
+        dataset_name="read",
+        project_name="test_project",
+    )
+    users = TableRef("read", ("core",), "users", "test_project")
+
+    assert determine_table_refs_to_run(
+        selected_table_refs={users},
+        unselected_table_refs=set(),
+        existing_audit_tables={},
+        dag=dag,
+        base_dataset="read",
+    ) == {users, TableRef("read", ("tests",), "users_are_unique", "test_project")}

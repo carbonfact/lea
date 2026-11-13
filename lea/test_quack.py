@@ -875,35 +875,3 @@ class TestIterScripts:
         batch = list(dag.iter_scripts(selected))
         assert len(batch) == 2
         assert {s.table_ref for s in batch} == {a, b}
-
-
-# --- foreign dataset tests ---
-
-
-class TestForeignDatasetDependency:
-    """A dependency written with its project and a dataset other than the base dataset is
-    external, even when a local script has the same name."""
-
-    def test_duck_script_leaves_foreign_dataset_dependency_alone(self):
-        staging = make_bq_ref("staging", "trips")
-        core = make_bq_ref("core", "trips")
-
-        scripts = {
-            staging: make_script(staging, "SELECT 1 AS id"),
-            core: make_script(
-                core,
-                "SELECT * FROM citibike.staging__trips "
-                "UNION ALL SELECT * FROM `my-project`.citibike_stable.staging__trips",
-            ),
-        }
-        session = TestAddContextForDuckScript()._make_session(
-            scripts=scripts,
-            selected_table_refs={staging, core},
-            native_table_refs=set(),
-            duck_table_refs={staging, core},
-        )
-
-        result = session.add_context_to_script(scripts[core])
-
-        assert "staging.trips___audit" in result.code
-        assert '"my-project".citibike_stable.staging__trips' in result.code

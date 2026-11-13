@@ -13,8 +13,10 @@ class TableRef:
     schema: tuple[str, ...]
     name: str
     project: str | None
-    # Whether the project was written in the code, rather than filled in with a default
-    project_is_explicit: bool = dataclasses.field(default=False, compare=False, repr=False)
+    # Whether the project was written in the code, rather than filled in with a default. It is
+    # part of equality, so that the same table written with and without its project gives two
+    # dependencies, which may be treated differently.
+    project_is_explicit: bool = dataclasses.field(default=False, repr=False)
 
     def __str__(self):
         return ".".join(filter(None, [self.project, self.dataset, *self.schema, self.name]))
@@ -37,6 +39,20 @@ class TableRef:
 
     def replace_project(self, project: str | None) -> TableRef:
         return dataclasses.replace(self, project=project)
+
+    def replace_project_is_explicit(self, project_is_explicit: bool) -> TableRef:
+        return dataclasses.replace(self, project_is_explicit=project_is_explicit)
+
+    def is_external(self, project: str | None, dataset: str) -> bool:
+        """Check if this dependency deliberately points outside of the scripts being run.
+
+        This is the case when it is written with its project, and that project is not the
+        scripts' project or its dataset is not the scripts' dataset. A dependency written without
+        a project is always local, whatever its dataset, because scripts are often written against
+        one dataset and built into another.
+
+        """
+        return self.project_is_explicit and (self.project != project or self.dataset != dataset)
 
     def add_audit_suffix(self) -> TableRef:
         if self.is_audit_table:

@@ -985,7 +985,10 @@ def determine_table_refs_to_run(
         script.table_ref
         for script in dag.scripts.values()
         if script.is_test
-        and all(dependency in table_refs_to_run for dependency in script.dependencies)
+        and all(
+            dependency.replace_project_is_explicit(False) in table_refs_to_run
+            for dependency in script.dependencies
+        )
     }
     table_refs_to_run |= applicable_test_scripts_table_refs
 

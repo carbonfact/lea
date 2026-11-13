@@ -109,19 +109,6 @@ class Session:
         table_ref = table_ref.remove_audit_suffix()
         return table_ref
 
-    def _is_external_dependency(self, dependency: TableRef, script: Script) -> bool:
-        """Check if a dependency deliberately points outside of the scripts being run.
-
-        This is the case when the dependency is written with its project, and that project is not
-        the script's or that dataset is not the base dataset. Such dependencies are left as they
-        are written. A dependency written without a project is always local, whatever its dataset.
-
-        """
-        return dependency.project_is_explicit and (
-            dependency.project != script.table_ref.project
-            or dependency.dataset != self.base_dataset
-        )
-
     def _is_dep_audited(self, dependency: TableRef) -> bool:
         """Check if a dependency should use the audit table (WAP pattern)."""
         dep_base = dependency.replace_dataset(self.base_dataset)
@@ -142,8 +129,9 @@ class Session:
 
         def add_context_to_dependency(dependency: TableRef) -> TableRef | None:
             # We don't modify the dependency if its project or dataset has been deliberately set
-            if self._is_external_dependency(dependency, script):
+            if dependency.is_external(script.table_ref.project, self.base_dataset):
                 return None
+            dependency = dependency.replace_project_is_explicit(False)
 
             if self._is_dep_audited(dependency):
                 dependency = dependency.add_audit_suffix()
@@ -212,8 +200,9 @@ class Session:
 
         for dep in script.dependencies:
             # Skip external deps (written with another project, or a project and another dataset)
-            if self._is_external_dependency(dep, script):
+            if dep.is_external(script.table_ref.project, self.base_dataset):
                 continue
+            dep = dep.replace_project_is_explicit(False)
 
             # Determine audit suffix
             dep_with_context = dep
@@ -505,23 +494,16 @@ def replace_script_dependencies(
         )
         new_dependency_str = script.sql_dialect.format_table_ref(new_dependency)
 
-        # The new dependency string includes the project when the dialect renders it. In that
-        # case, a project written in the code, with or without backticks, has to be replaced
-        # too. Otherwise it would end up duplicated, as in `project`.project.dataset.table.
+        # A project written in the code, with or without backticks, has to be replaced too.
+        # Otherwise it would end up duplicated, as in `project`.project.dataset.table.
         project_prefix = ""
-        if (
-            dependency_to_edit.project
-            and script.sql_dialect.format_table_ref(dependency_to_edit)
-            != dependency_to_edit_without_project_str
-        ):
+        if dependency_to_edit.project_is_explicit and dependency_to_edit.project:
             project = re.escape(dependency_to_edit.project)
-            project_prefix = rf"(?:`{project}`\.|{project}\.)?"
+            project_prefix = rf"(?:`{project}`\.|{project}\.)"
 
         # The dataset may also be written with backticks, as in `dataset`.table
         dependency_pattern = re.escape(dependency_to_edit_without_project_str)
-        if dependency_to_edit.dataset and dependency_to_edit_without_project_str.startswith(
-            f"{dependency_to_edit.dataset}."
-        ):
+        if dependency_to_edit.dataset:
             dataset = re.escape(dependency_to_edit.dataset)
             leftover = re.escape(
                 dependency_to_edit_without_project_str.removeprefix(
@@ -531,9 +513,10 @@ def replace_script_dependencies(
             dependency_pattern = rf"(?:`{dataset}`|{dataset})\.{leftover}"
 
         # The lookbehind prevents matching a table with the same name in another dataset or
-        # project, such as other_dataset.table when the dependency is dataset.table
+        # project, such as other_dataset.table when the dependency is dataset.table. Hyphens are
+        # included because BigQuery projects may contain them.
         code = re.sub(
-            rf"(?<![\w.]){project_prefix}{dependency_pattern}\b",
+            rf"(?<![\w.-]){project_prefix}{dependency_pattern}\b",
             new_dependency_str,
             code,
         )
@@ -553,7 +536,7 @@ def replace_script_dependencies(
             new_dependency_without_dataset
         )
         code = re.sub(
-            rf"(?<![\w.]){re.escape(dependency_to_edit_without_dataset_str)}\b",
+            rf"(?<![\w.-]){re.escape(dependency_to_edit_without_dataset_str)}\b",
             new_dependency_without_dataset_str,
             code,
         )
