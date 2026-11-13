@@ -6,6 +6,7 @@ import pytest
 from google.auth.credentials import AnonymousCredentials
 
 from lea.conductor import Session
+from lea.dag import DAGOfScripts
 from lea.databases import BigQueryClient, TableStats
 from lea.dialects import BigQueryDialect
 from lea.scripts import Script, TableRef
@@ -376,3 +377,140 @@ def test_incremental_field_but_no_incremental_table_selected_and_yet_dependency_
         )
         """,
     )
+
+
+@pytest.mark.parametrize(
+    "foreign_ref",
+    [
+        "other_dataset.core__users",
+        "test_project.other_dataset.core__users",
+        "`test_project`.other_dataset.core__users",
+        "other_project.read.core__users",
+    ],
+)
+def test_foreign_dependency_is_left_alone(scripts, foreign_ref):
+    """A dependency in another dataset or project is not rewritten, even if a local script has
+    the same name."""
+    compare = Script(
+        table_ref=TableRef("read", ("analytics",), "compare_users", "test_project"),
+        code=f"""
+        SELECT core__users.id, foreign_users.id
+        FROM read.core__users
+        FULL OUTER JOIN {foreign_ref} AS foreign_users USING (id)
+        """,
+        sql_dialect=BigQueryDialect(),
+    )
+    scripts = {**scripts, compare.table_ref: compare}
+    session = Session(
+        database_client=None,
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs=set(scripts),
+        unselected_table_refs=set(),
+        existing_tables={},
+        existing_audit_tables={},
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(compare).code,
+        f"""
+        SELECT core__users___audit.id, foreign_users.id
+        FROM test_project.write.core__users___audit
+        FULL OUTER JOIN {foreign_ref} AS foreign_users USING (id)
+        """,
+    )
+
+
+def test_foreign_dataset_dependency_is_left_alone_with_incremental_field(scripts):
+    """The incremental logic only applies to the local dependency."""
+    compare = Script(
+        table_ref=TableRef("read", ("analytics",), "compare_users", "test_project"),
+        code="""
+        SELECT COUNT(*)
+        FROM read.core__users
+        JOIN other_dataset.core__users AS foreign_users USING (id)
+        """,
+        sql_dialect=BigQueryDialect(),
+    )
+    scripts = {**scripts, compare.table_ref: compare}
+    session = Session(
+        database_client=None,
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs=set(scripts),
+        unselected_table_refs=set(),
+        existing_tables={},
+        existing_audit_tables={},
+        incremental_field_name="name",
+        incremental_field_values=["Alice"],
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(compare).code,
+        """
+        SELECT COUNT(*)
+        FROM
+        (
+            SELECT * FROM test_project.write.core__users___audit
+            WHERE name IN ('Alice')
+            UNION ALL
+            SELECT * FROM test_project.write.core__users
+            WHERE name NOT IN ('Alice')
+        )
+        JOIN other_dataset.core__users AS foreign_users USING (id)
+        """,
+    )
+
+
+@pytest.mark.parametrize(
+    "local_ref",
+    ["test_project.read.core__users", "`test_project`.read.core__users"],
+)
+def test_local_dependency_with_explicit_project(scripts, local_ref):
+    """A local dependency written with its project does not end up with the project twice."""
+    n_users = Script(
+        table_ref=TableRef("read", ("analytics",), "n_users", "test_project"),
+        code=f"SELECT COUNT(*) FROM {local_ref}",
+        sql_dialect=BigQueryDialect(),
+    )
+    session = Session(
+        database_client=None,
+        base_dataset="read",
+        write_dataset="write",
+        scripts=scripts,
+        selected_table_refs=scripts.keys(),
+        unselected_table_refs=set(),
+        existing_tables={},
+        existing_audit_tables={},
+    )
+
+    assert_queries_are_equal(
+        session.add_context_to_script(n_users).code,
+        "SELECT COUNT(*) FROM test_project.write.core__users___audit",
+    )
+
+
+def test_foreign_dataset_dependency_is_not_a_dag_edge(tmp_path):
+    scripts_dir = tmp_path / "scripts"
+    (scripts_dir / "core").mkdir(parents=True)
+    (scripts_dir / "core" / "users.sql").write_text("SELECT 1 AS id")
+    (scripts_dir / "analytics").mkdir()
+    (scripts_dir / "analytics" / "compare_users.sql").write_text(
+        "SELECT * FROM read.core__users JOIN other_dataset.core__users USING (id)"
+    )
+
+    dag = DAGOfScripts.from_directory(
+        scripts_dir=scripts_dir,
+        sql_dialect=BigQueryDialect(),
+        dataset_name="read",
+        project_name="test_project",
+    )
+
+    assert dag.dependency_graph[
+        TableRef("read", ("analytics",), "compare_users", "test_project")
+    ] == {
+        TableRef("read", ("core",), "users", "test_project"),
+        TableRef("other_dataset", ("core",), "users", "test_project"),
+    }
