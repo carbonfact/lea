@@ -164,7 +164,8 @@ class SQLScript:
         def add_default_project(table_ref: TableRef) -> TableRef:
             if table_ref.project is None:
                 return table_ref.replace_project(self.table_ref.project)
-            return table_ref
+            # The project is written in the code, which may point outside of the scripts
+            return dataclasses.replace(table_ref, project_is_explicit=True)
 
         dependencies = set()
 

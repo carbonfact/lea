@@ -555,3 +555,10 @@ def test_quoted_references_with_hyphenated_project():
         JOIN `my-project.read_stable.core__users` USING (id)
         """,
     )
+
+
+def test_warehouse_table_ref_matches_script_table_ref():
+    """Table refs listed from the warehouse name their project, but are not written in code."""
+    assert BigQueryDialect.parse_table_ref("test_project.read.core__users") == TableRef(
+        "read", ("core",), "users", "test_project"
+    )

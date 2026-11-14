@@ -13,7 +13,8 @@ class TableRef:
     schema: tuple[str, ...]
     name: str
     project: str | None
-    # Whether the project was written in the code, rather than filled in with a default. It is
+    # Whether the project was written in a script's code, rather than filled in with a default.
+    # Table refs read from the warehouse never set it, so they match script refs. It is
     # part of equality, so that the same table written with and without its project gives two
     # dependencies, which may be treated differently.
     project_is_explicit: bool = dataclasses.field(default=False, repr=False)
