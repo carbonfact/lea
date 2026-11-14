@@ -14,9 +14,10 @@ class TableRef:
     name: str
     project: str | None
     # Whether the project was written in a script's code, rather than filled in with a default.
-    # Table refs read from the warehouse never set it, so they match script refs. It is
-    # part of equality, so that the same table written with and without its project gives two
-    # dependencies, which may be treated differently.
+    # Table refs read from the warehouse never set it, so they match the scripts' own table refs.
+    # It is part of equality, so that the same table written with and without its project gives
+    # two dependencies, which may be treated differently. A dependency known to be local drops it
+    # with as_local before being compared to other table refs.
     project_is_explicit: bool = dataclasses.field(default=False, repr=False)
 
     def __str__(self):
