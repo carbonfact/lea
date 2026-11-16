@@ -164,7 +164,8 @@ class SQLScript:
         def add_default_project(table_ref: TableRef) -> TableRef:
             if table_ref.project is None:
                 return table_ref.replace_project(self.table_ref.project)
-            return table_ref
+            # The project is written in the code, which may point outside of the scripts
+            return dataclasses.replace(table_ref, project_is_explicit=True)
 
         dependencies = set()
 
@@ -257,7 +258,7 @@ class SQLScript:
 Script = SQLScript
 
 
-_CACHE_VERSION = f"1_{sqlglot.__version__}"
+_CACHE_VERSION = f"2_{sqlglot.__version__}"
 
 
 def _make_jinja_environment(scripts_dir: pathlib.Path) -> jinja2.Environment:
